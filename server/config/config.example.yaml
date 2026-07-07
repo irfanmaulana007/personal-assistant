@@ -1,0 +1,42 @@
+owner:
+  whatsapp_jid: "6281234567890@s.whatsapp.net"
+  name: "Your Name"
+  timezone: "Asia/Jakarta"
+
+whatsapp:
+  enabled: true
+  database: "server/data/whatsmeow.db"
+
+web:
+  enabled: true
+  port: 8080
+  password: "" # Set via WEB_PASSWORD env var
+  static_dir: "client/dist"
+
+database:
+  path: "server/data/assistant.db"
+
+google:
+  credentials_file: "server/config/google_credentials.json"
+
+capabilities:
+  calendar:
+    enabled: true
+    default_duration: "1h"
+    max_results: 10
+  email:
+    enabled: true
+    auto_send: false
+  reminders:
+    enabled: true
+    check_interval: "30s"
+  knowledge:
+    enabled: true
+    max_note_length: 10000
+
+security:
+  encryption_key: "" # Set via ENCRYPTION_KEY env var (32 bytes, base64 encoded)
+
+logging:
+  level: "info"
+  format: "text"

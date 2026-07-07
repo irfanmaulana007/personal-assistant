@@ -1,0 +1,23 @@
+{
+  "name": "personal-assistant",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "eslint": "^10.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.4"
+  },
+  "lint-staged": {
+    "client/src/**/*.{ts,tsx}": [
+      "prettier --write",
+      "eslint -c client/eslint.config.js --max-warnings 0"
+    ],
+    "client/src/**/*.{css,json}": [
+      "prettier --write"
+    ]
+  }
+}

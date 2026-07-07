@@ -1,0 +1,60 @@
+package intent
+
+// Capability identifies which capability should handle a message.
+type Capability string
+
+const (
+	CapabilityCalendar  Capability = "calendar"
+	CapabilityEmail     Capability = "email"
+	CapabilityReminder  Capability = "reminder"
+	CapabilityKnowledge Capability = "knowledge"
+	CapabilityHelp      Capability = "help"
+	CapabilityUnknown   Capability = "unknown"
+)
+
+// Action identifies the specific operation within a capability.
+type Action string
+
+// Calendar actions
+const (
+	ActionCalendarList   Action = "calendar.list"
+	ActionCalendarCreate Action = "calendar.create"
+	ActionCalendarUpdate Action = "calendar.update"
+	ActionCalendarDelete Action = "calendar.delete"
+)
+
+// Email actions
+const (
+	ActionEmailInbox  Action = "email.inbox"
+	ActionEmailRead   Action = "email.read"
+	ActionEmailSearch Action = "email.search"
+	ActionEmailDraft  Action = "email.draft"
+)
+
+// Reminder actions
+const (
+	ActionReminderSet    Action = "reminder.set"
+	ActionReminderList   Action = "reminder.list"
+	ActionReminderCancel Action = "reminder.cancel"
+)
+
+// Knowledge actions
+const (
+	ActionNoteSave   Action = "note.save"
+	ActionNoteSearch Action = "note.search"
+	ActionNoteList   Action = "note.list"
+	ActionNoteDelete Action = "note.delete"
+)
+
+const (
+	ActionHelp Action = "help"
+)
+
+// ParseResult holds the result of intent parsing.
+type ParseResult struct {
+	Capability Capability
+	Action     Action
+	Entities   map[string]string
+	Confidence float64
+	RawText    string
+}

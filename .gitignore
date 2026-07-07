@@ -1,0 +1,33 @@
+# Binaries
+/personal-assistant
+
+# Data
+/server/data/*.db
+/server/data/*.db-wal
+/server/data/*.db-shm
+/server/data/files/
+
+# Config (contains secrets)
+/server/config/config.yaml
+/server/config/google_credentials.json
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+vendor/
+/server/tmp/
+
+# Node
+node_modules/
+
+# Client
+/client/dist/
