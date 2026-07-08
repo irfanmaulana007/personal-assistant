@@ -169,7 +169,7 @@ func main() {
 				return
 			}
 
-			// Log outgoing message + usage
+			// Log outgoing message (chat history)
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
@@ -178,21 +178,25 @@ func main() {
 				Body:      response,
 				Intent:    "agent",
 			})
-			if res != nil {
-				_ = db.LogUsage(ctx, &store.LLMUsage{
-					UserID:           userID,
-					Model:            res.Model,
-					PromptTokens:     res.Usage.PromptTokens,
-					CompletionTokens: res.Usage.CompletionTokens,
-					TotalTokens:      res.Usage.TotalTokens,
-					LatencyMs:        latencyMs,
-					ToolCalls:        len(res.Tools),
-					Platform:         msg.Platform,
-				})
+
+			// Record the trace (dashboard + logs).
+			trace := &store.Trace{UserID: userID, Platform: msg.Platform, Input: msg.Text, LatencyMs: latencyMs}
+			if err != nil {
+				trace.Status = "error"
+				trace.Error = err.Error()
+			} else if res != nil {
+				trace.Output = res.Reply
+				trace.Model = res.Model
+				trace.PromptTokens = res.Usage.PromptTokens
+				trace.CompletionTokens = res.Usage.CompletionTokens
+				trace.TotalTokens = res.Usage.TotalTokens
+				trace.ToolCount = len(res.Tools)
 				for _, tool := range res.Tools {
-					_ = db.LogToolUsage(ctx, userID, tool, msg.Platform)
+					trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result})
+					_ = db.LogToolUsage(ctx, userID, tool.Name, msg.Platform)
 				}
 			}
+			_, _ = db.CreateTrace(ctx, trace)
 		})
 
 		// Reminders are delivered to the paired WhatsApp account (derived from

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -97,15 +98,24 @@ func (s *SQLiteStore) migrate() error {
 			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 
-		`CREATE TABLE IF NOT EXISTS llm_usage (
+		`CREATE TABLE IF NOT EXISTS traces (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			model TEXT NOT NULL,
+			user_id INTEGER NOT NULL DEFAULT 0,
+			platform TEXT NOT NULL DEFAULT '',
+			input TEXT NOT NULL DEFAULT '',
+			output TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
 			prompt_tokens INTEGER NOT NULL DEFAULT 0,
 			completion_tokens INTEGER NOT NULL DEFAULT 0,
 			total_tokens INTEGER NOT NULL DEFAULT 0,
-			platform TEXT NOT NULL DEFAULT '',
+			latency_ms INTEGER NOT NULL DEFAULT 0,
+			tool_count INTEGER NOT NULL DEFAULT 0,
+			tools_json TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'ok',
+			error TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_traces_created ON traces(created_at)`,
 
 		`CREATE TABLE IF NOT EXISTS tool_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,12 +133,9 @@ func (s *SQLiteStore) migrate() error {
 
 	// Additive column migrations for tables created by earlier versions.
 	addColumns := []struct{ table, column, ddl string }{
-		{"llm_usage", "latency_ms", "INTEGER NOT NULL DEFAULT 0"},
-		{"llm_usage", "tool_calls", "INTEGER NOT NULL DEFAULT 0"},
 		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
-		{"llm_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range addColumns {
@@ -515,17 +522,7 @@ func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string][]byte, er
 	return settings, rows.Err()
 }
 
-// --- LLM Usage ---
-
-func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO llm_usage (user_id, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_calls, platform, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		usage.UserID, usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
-		usage.LatencyMs, usage.ToolCalls, usage.Platform, time.Now().UTC(),
-	)
-	return err
-}
+// --- Tool usage ---
 
 func (s *SQLiteStore) LogToolUsage(ctx context.Context, userID int64, tool, platform string) error {
 	_, err := s.db.ExecContext(ctx,
@@ -535,26 +532,117 @@ func (s *SQLiteStore) LogToolUsage(ctx context.Context, userID int64, tool, plat
 	return err
 }
 
-// UsageStatsBetween aggregates LLM token usage in the half-open interval
-// [from, to). Callers pass `to` as the exclusive end (e.g. start of the day
-// after the last day they want included).
-func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error) {
+// --- Traces ---
+
+func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) {
+	toolsJSON := "[]"
+	if len(t.Tools) > 0 {
+		if b, err := json.Marshal(t.Tools); err == nil {
+			toolsJSON = string(b)
+		}
+	}
+	status := t.Status
+	if status == "" {
+		status = "ok"
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO traces (user_id, platform, input, output, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_count, tools_json, status, error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.UserID, t.Platform, t.Input, t.Output, t.Model, t.PromptTokens, t.CompletionTokens, t.TotalTokens,
+		t.LatencyMs, t.ToolCount, toolsJSON, status, t.Error, time.Now().UTC(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert trace: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return id, nil
+}
+
+func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error) {
+	q := `SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
+	             total_tokens, latency_ms, tool_count, status, error, created_at
+	      FROM traces WHERE created_at >= ? AND created_at < ?`
+	args := []any{f.From.UTC(), f.To.UTC()}
+	if f.Platform != "" {
+		q += ` AND platform = ?`
+		args = append(args, f.Platform)
+	}
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, f.Offset)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list traces: %w", err)
+	}
+	defer rows.Close()
+
+	var traces []Trace
+	for rows.Next() {
+		var t Trace
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
+			&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
+			&t.Status, &t.Error, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan trace: %w", err)
+		}
+		traces = append(traces, t)
+	}
+	return traces, rows.Err()
+}
+
+func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
+	var t Trace
+	var toolsJSON string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
+		        total_tokens, latency_ms, tool_count, tools_json, status, error, created_at
+		 FROM traces WHERE id = ?`, id,
+	).Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
+		&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
+		&toolsJSON, &t.Status, &t.Error, &t.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get trace: %w", err)
+	}
+	if toolsJSON != "" {
+		_ = json.Unmarshal([]byte(toolsJSON), &t.Tools)
+	}
+	return &t, nil
+}
+
+// UsageStatsBetween aggregates traces in the half-open interval [from, to),
+// optionally restricted to a platform ("" = all).
+func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error) {
 	fromUTC := from.UTC()
 	toUTC := to.UTC()
 	stats := &UsageStats{}
 
-	// Summary (incl. average latency and total tool calls)
+	// Optional platform filter appended after the [from,to) args.
+	pc := ""
+	base := []any{fromUTC, toUTC}
+	if platform != "" {
+		pc = " AND platform = ?"
+		base = append(base, platform)
+	}
+
+	// Summary
 	var avgLatency sql.NullFloat64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*),
 		        COALESCE(SUM(prompt_tokens), 0),
 		        COALESCE(SUM(completion_tokens), 0),
 		        COALESCE(SUM(total_tokens), 0),
-		        COALESCE(SUM(tool_calls), 0),
+		        COALESCE(SUM(tool_count), 0),
+		        COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0),
 		        AVG(NULLIF(latency_ms, 0))
-		 FROM llm_usage WHERE created_at >= ? AND created_at < ?`, fromUTC, toUTC,
+		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc, base...,
 	).Scan(&stats.Summary.Requests, &stats.Summary.PromptTokens, &stats.Summary.CompletionTokens,
-		&stats.Summary.TotalTokens, &stats.ToolCalls, &avgLatency)
+		&stats.Summary.TotalTokens, &stats.ToolCalls, &stats.Errors, &avgLatency)
 	if err != nil {
 		return nil, fmt.Errorf("usage summary: %w", err)
 	}
@@ -565,8 +653,8 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time)
 	// By day
 	dayRows, err := s.db.QueryContext(ctx,
 		`SELECT date(created_at) AS d, COUNT(*), COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
-		 GROUP BY d ORDER BY d ASC`, fromUTC, toUTC,
+		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc+`
+		 GROUP BY d ORDER BY d ASC`, base...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("usage by day: %w", err)
@@ -589,8 +677,8 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time)
 		        COALESCE(SUM(prompt_tokens), 0),
 		        COALESCE(SUM(completion_tokens), 0),
 		        COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
-		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, fromUTC, toUTC,
+		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc+`
+		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, base...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("usage by model: %w", err)
@@ -607,10 +695,10 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time)
 		return nil, err
 	}
 
-	// By platform
+	// By platform (ignores the platform filter so the split is always visible)
 	platRows, err := s.db.QueryContext(ctx,
 		`SELECT platform, COUNT(*), COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 FROM traces WHERE created_at >= ? AND created_at < ?
 		 GROUP BY platform ORDER BY COUNT(*) DESC`, fromUTC, toUTC,
 	)
 	if err != nil {
@@ -632,10 +720,16 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time)
 	}
 
 	// Top tools
+	toolArgs := []any{fromUTC, toUTC}
+	toolPC := ""
+	if platform != "" {
+		toolPC = " AND platform = ?"
+		toolArgs = append(toolArgs, platform)
+	}
 	toolRows, err := s.db.QueryContext(ctx,
 		`SELECT tool, COUNT(*) AS c
-		 FROM tool_usage WHERE created_at >= ? AND created_at < ?
-		 GROUP BY tool ORDER BY c DESC LIMIT 10`, fromUTC, toUTC,
+		 FROM tool_usage WHERE created_at >= ? AND created_at < ?`+toolPC+`
+		 GROUP BY tool ORDER BY c DESC LIMIT 10`, toolArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("top tools: %w", err)

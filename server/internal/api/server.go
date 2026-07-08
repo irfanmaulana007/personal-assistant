@@ -91,6 +91,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
 	mux.Handle("/api/metrics/usage", admin(s.handleMetricsUsage))
+	mux.Handle("GET /api/logs", admin(s.handleListLogs))
+	mux.Handle("GET /api/logs/{id}", admin(s.handleGetLog))
 	mux.Handle("GET /api/users", admin(s.handleListUsers))
 	mux.Handle("POST /api/users", admin(s.handleCreateUser))
 	mux.Handle("PATCH /api/users/{id}", admin(s.handleUpdateUser))

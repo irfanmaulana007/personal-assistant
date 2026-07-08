@@ -61,12 +61,19 @@ func New(client *llm.Client, settingsSvc *settings.Service, router *capability.R
 	}
 }
 
+// ToolInvocation records a single tool call made during a run.
+type ToolInvocation struct {
+	Name      string
+	Arguments string
+	Result    string
+}
+
 // Result is the outcome of an agent run.
 type Result struct {
 	Reply string
 	Usage llm.Usage
 	Model string
-	Tools []string // names of tools invoked during the run
+	Tools []ToolInvocation // tools invoked during the run, in order
 }
 
 // Message is a prior conversation turn used as context.
@@ -97,7 +104,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 		tools = append(tools, a.provider.Tools(ctx)...)
 	}
 	var total llm.Usage
-	var used []string
+	var used []ToolInvocation
 
 	for i := 0; i < maxIterations; i++ {
 		res, err := a.client.Complete(ctx, cfg, messages, tools)
@@ -114,13 +121,13 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 		}
 
 		for _, tc := range msg.ToolCalls {
-			used = append(used, tc.Function.Name)
 			var result string
 			if a.provider != nil && a.provider.Handles(tc.Function.Name) {
 				result = a.provider.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 			} else {
 				result = a.execTool(ctx, tc)
 			}
+			used = append(used, ToolInvocation{Name: tc.Function.Name, Arguments: tc.Function.Arguments, Result: result})
 			messages = append(messages, llm.Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,
