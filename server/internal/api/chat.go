@@ -42,11 +42,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := claimsFrom(r.Context())
+	userID := int64(0)
+	if claims != nil {
+		userID = claims.UserID()
+	}
+
 	// Load recent conversation history for context (before logging the new message).
-	history := s.recentHistory(r.Context())
+	history := s.recentHistory(r.Context(), userID)
 
 	// Log incoming message
 	_ = s.store.LogMessage(r.Context(), &store.MessageLog{
+		UserID:    userID,
 		Platform:  "web",
 		Direction: "in",
 		Sender:    "owner",
@@ -71,6 +78,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Log outgoing message
 	_ = s.store.LogMessage(r.Context(), &store.MessageLog{
+		UserID:    userID,
 		Platform:  "web",
 		Direction: "out",
 		Sender:    "assistant",
@@ -81,6 +89,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Record token usage + tool usage for the dashboard.
 	_ = s.store.LogUsage(r.Context(), &store.LLMUsage{
+		UserID:           userID,
 		Model:            res.Model,
 		PromptTokens:     res.Usage.PromptTokens,
 		CompletionTokens: res.Usage.CompletionTokens,
@@ -90,16 +99,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Platform:         "web",
 	})
 	for _, tool := range res.Tools {
-		_ = s.store.LogToolUsage(r.Context(), tool, "web")
+		_ = s.store.LogToolUsage(r.Context(), userID, tool, "web")
 	}
 
 	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply})
 }
 
 // recentHistory returns the last few web turns as agent context (oldest first).
-func (s *Server) recentHistory(ctx context.Context) []agent.Message {
+func (s *Server) recentHistory(ctx context.Context, userID int64) []agent.Message {
 	const maxTurns = 10
-	logs, err := s.store.GetMessageHistory(ctx, "web", maxTurns)
+	logs, err := s.store.GetMessageHistory(ctx, userID, "web", maxTurns)
 	if err != nil {
 		s.log.Warn("failed to load history for agent context", "error", err)
 		return nil
@@ -124,7 +133,11 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.store.GetMessageHistory(r.Context(), "web", 100)
+	userID := int64(0)
+	if claims := claimsFrom(r.Context()); claims != nil {
+		userID = claims.UserID()
+	}
+	logs, err := s.store.GetMessageHistory(r.Context(), userID, "web", 100)
 	if err != nil {
 		s.log.Error("failed to get chat history", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load history"})

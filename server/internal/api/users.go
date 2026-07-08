@@ -1,0 +1,189 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+func validRole(role string) bool {
+	return role == "admin" || role == "member"
+}
+
+// handleListUsers returns all users (admin only).
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.store.ListUsers(r.Context())
+	if err != nil {
+		s.log.Error("list users", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load users"})
+		return
+	}
+	out := make([]userResp, 0, len(users))
+	for i := range users {
+		out = append(out, toUserResp(&users[i]))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type createUserRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+// handleCreateUser creates a new user (admin only).
+func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req createUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.Role == "" {
+		req.Role = "member"
+	}
+	if !validRole(req.Role) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+		return
+	}
+	if msg := validateCredentials(credentials{Email: req.Email, Password: req.Password}); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	existing, err := s.store.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "a user with that email already exists"})
+		return
+	}
+
+	user, err := s.createUser(r, email, req.Password, req.Role)
+	if err != nil {
+		s.log.Error("create user", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, toUserResp(user))
+}
+
+type updateUserRequest struct {
+	Role     *string `json:"role"`
+	Password *string `json:"password"`
+}
+
+// handleUpdateUser updates a user's role and/or password (admin only).
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+
+	var req updateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	target, err := s.store.GetUserByID(r.Context(), id)
+	if err != nil || target == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+
+	if req.Role != nil {
+		if !validRole(*req.Role) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+			return
+		}
+		// Prevent removing the last admin.
+		if target.Role == "admin" && *req.Role != "admin" {
+			if ok, err := s.isLastAdmin(r, target.ID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+				return
+			} else if ok {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot demote the last admin"})
+				return
+			}
+		}
+		if err := s.store.UpdateUserRole(r.Context(), id, *req.Role); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update role"})
+			return
+		}
+	}
+
+	if req.Password != nil {
+		if len(*req.Password) < minPasswordLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password too short"})
+			return
+		}
+		hash, err := hashPassword(*req.Password)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+		if err := s.store.UpdateUserPassword(r.Context(), id, hash); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update password"})
+			return
+		}
+	}
+
+	updated, _ := s.store.GetUserByID(r.Context(), id)
+	writeJSON(w, http.StatusOK, toUserResp(updated))
+}
+
+// handleDeleteUser deletes a user (admin only). Cannot delete self or the last admin.
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+
+	claims := claimsFrom(r.Context())
+	if claims != nil && claims.UserID() == id {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "you cannot delete your own account"})
+		return
+	}
+
+	target, err := s.store.GetUserByID(r.Context(), id)
+	if err != nil || target == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+	if target.Role == "admin" {
+		if ok, err := s.isLastAdmin(r, target.ID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		} else if ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot delete the last admin"})
+			return
+		}
+	}
+
+	if err := s.store.DeleteUser(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete user"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// isLastAdmin reports whether the given admin user is the only admin.
+func (s *Server) isLastAdmin(r *http.Request, id int64) (bool, error) {
+	users, err := s.store.ListUsers(r.Context())
+	if err != nil {
+		return false, err
+	}
+	admins := 0
+	for _, u := range users {
+		if u.Role == "admin" {
+			admins++
+		}
+	}
+	return admins <= 1, nil
+}

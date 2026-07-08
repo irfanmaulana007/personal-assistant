@@ -3,14 +3,20 @@ package api
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
+
+const minPasswordLen = 8
 
 type jwtHeader struct {
 	Alg string `json:"alg"`
@@ -18,57 +24,227 @@ type jwtHeader struct {
 }
 
 type jwtClaims struct {
-	Sub string `json:"sub"`
-	Exp int64  `json:"exp"`
-	Iat int64  `json:"iat"`
+	Sub   string `json:"sub"` // user id
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	Exp   int64  `json:"exp"`
+	Iat   int64  `json:"iat"`
 }
 
-type loginRequest struct {
+// UserID parses the subject claim into a user id.
+func (c *jwtClaims) UserID() int64 {
+	id, _ := strconv.ParseInt(c.Sub, 10, 64)
+	return id
+}
+
+type credentials struct {
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-type loginResponse struct {
-	Token     string `json:"token"`
-	ExpiresAt int64  `json:"expires_at"`
+type userResp struct {
+	ID        int64  `json:"id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
 }
 
+type loginResponse struct {
+	Token     string   `json:"token"`
+	ExpiresAt int64    `json:"expires_at"`
+	User      userResp `json:"user"`
+}
+
+func toUserResp(u *store.User) userResp {
+	return userResp{ID: u.ID, Email: u.Email, Role: u.Role, CreatedAt: u.CreatedAt.Format(time.RFC3339)}
+}
+
+// handleAuthStatus reports whether initial setup (first admin) is required.
+func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	n, err := s.store.CountUsers(r.Context())
+	if err != nil {
+		s.log.Error("count users", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"setup_required": n == 0})
+}
+
+// handleSetup creates the first admin account. Only allowed when no users exist.
+func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	n, err := s.store.CountUsers(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if n > 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "setup already completed"})
+		return
+	}
+
+	var req credentials
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if msg := validateCredentials(req); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+
+	user, err := s.createUser(r, req.Email, req.Password, "admin")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create admin"})
+		return
+	}
+	s.issueToken(w, user)
+}
+
+// handleLogin authenticates a user by email + password.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req loginRequest
+	var req credentials
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(s.password)) != 1 {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
+	user, err := s.store.GetUserByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	// Always run a bcrypt comparison to reduce user-enumeration timing signal.
+	hash := dummyHash
+	if user != nil {
+		hash = user.PasswordHash
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil || user == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 		return
 	}
 
+	s.issueToken(w, user)
+}
+
+// handleMe returns the current authenticated user.
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	user, err := s.store.GetUserByID(r.Context(), claims.UserID())
+	if err != nil || user == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserResp(user))
+}
+
+type passwordChange struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// handleChangePassword updates the current user's own password.
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req passwordChange
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if len(req.NewPassword) < minPasswordLen {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("password must be at least %d characters", minPasswordLen)})
+		return
+	}
+
+	user, err := s.store.GetUserByID(r.Context(), claims.UserID())
+	if err != nil || user == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)) != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "current password is incorrect"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if err := s.store.UpdateUserPassword(r.Context(), user.ID, string(hash)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update password"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func hashPassword(pw string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	return string(h), err
+}
+
+func (s *Server) createUser(r *http.Request, email, password, role string) (*store.User, error) {
+	hash, err := hashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.CreateUser(r.Context(), strings.ToLower(strings.TrimSpace(email)), hash, role)
+}
+
+func (s *Server) issueToken(w http.ResponseWriter, user *store.User) {
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
-	token, err := s.generateToken(expiresAt)
+	token, err := s.generateToken(user, expiresAt)
 	if err != nil {
 		s.log.Error("failed to generate token", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, loginResponse{
-		Token:     token,
-		ExpiresAt: expiresAt.Unix(),
-	})
+	writeJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: expiresAt.Unix(), User: toUserResp(user)})
 }
 
-func (s *Server) generateToken(expiresAt time.Time) (string, error) {
+func validateCredentials(c credentials) string {
+	if !strings.Contains(c.Email, "@") {
+		return "a valid email is required"
+	}
+	if len(c.Password) < minPasswordLen {
+		return fmt.Sprintf("password must be at least %d characters", minPasswordLen)
+	}
+	return ""
+}
+
+// dummyHash is a valid bcrypt hash used for constant-work comparison on unknown emails.
+var dummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
+func (s *Server) generateToken(user *store.User, expiresAt time.Time) (string, error) {
 	header := jwtHeader{Alg: "HS256", Typ: "JWT"}
 	claims := jwtClaims{
-		Sub: "owner",
-		Exp: expiresAt.Unix(),
-		Iat: time.Now().Unix(),
+		Sub:   strconv.FormatInt(user.ID, 10),
+		Email: user.Email,
+		Role:  user.Role,
+		Exp:   expiresAt.Unix(),
+		Iat:   time.Now().Unix(),
 	}
 
 	headerJSON, _ := json.Marshal(header)

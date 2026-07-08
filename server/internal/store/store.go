@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+// User is an account that can sign in.
+type User struct {
+	ID           int64
+	Email        string
+	PasswordHash string
+	Role         string // "admin" or "member"
+	CreatedAt    time.Time
+}
+
 // Reminder represents a scheduled reminder.
 type Reminder struct {
 	ID        int64
@@ -28,6 +37,7 @@ type Note struct {
 // MessageLog records a processed message for auditing.
 type MessageLog struct {
 	ID        int64
+	UserID    int64
 	Platform  string
 	Direction string // "in" or "out"
 	Sender    string
@@ -47,6 +57,7 @@ type OAuthToken struct {
 // LLMUsage records token usage for a single LLM turn.
 type LLMUsage struct {
 	ID               int64
+	UserID           int64
 	Model            string
 	PromptTokens     int
 	CompletionTokens int
@@ -107,24 +118,35 @@ type UsageStats struct {
 
 // Store defines the persistence interface.
 type Store interface {
-	// Reminders
-	CreateReminder(ctx context.Context, message string, remindAt time.Time) (*Reminder, error)
-	ListReminders(ctx context.Context, activeOnly bool) ([]Reminder, error)
-	GetDueReminders(ctx context.Context) ([]Reminder, error)
+	// Users
+	CountUsers(ctx context.Context) (int, error)
+	CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	GetUserByID(ctx context.Context, id int64) (*User, error)
+	ListUsers(ctx context.Context) ([]User, error)
+	UpdateUserRole(ctx context.Context, id int64, role string) error
+	UpdateUserPassword(ctx context.Context, id int64, passwordHash string) error
+	DeleteUser(ctx context.Context, id int64) error
+	FirstAdmin(ctx context.Context) (*User, error)
+
+	// Reminders (scoped to a user; scheduler passes the owner's id)
+	CreateReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error)
+	ListReminders(ctx context.Context, userID int64, activeOnly bool) ([]Reminder, error)
+	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)
 	MarkReminderNotified(ctx context.Context, id int64) error
-	CancelReminder(ctx context.Context, id int64) error
+	CancelReminder(ctx context.Context, userID, id int64) error
 
-	// Notes
-	CreateNote(ctx context.Context, title, content, tags string) (*Note, error)
-	GetNote(ctx context.Context, id int64) (*Note, error)
-	UpdateNote(ctx context.Context, id int64, title, content, tags string) error
-	DeleteNote(ctx context.Context, id int64) error
-	ListNotes(ctx context.Context, tag string) ([]Note, error)
-	SearchNotes(ctx context.Context, query string) ([]Note, error)
+	// Notes (scoped to a user)
+	CreateNote(ctx context.Context, userID int64, title, content, tags string) (*Note, error)
+	GetNote(ctx context.Context, userID, id int64) (*Note, error)
+	UpdateNote(ctx context.Context, userID, id int64, title, content, tags string) error
+	DeleteNote(ctx context.Context, userID, id int64) error
+	ListNotes(ctx context.Context, userID int64, tag string) ([]Note, error)
+	SearchNotes(ctx context.Context, userID int64, query string) ([]Note, error)
 
-	// Message log
+	// Message log (scoped to a user)
 	LogMessage(ctx context.Context, log *MessageLog) error
-	GetMessageHistory(ctx context.Context, platform string, limit int) ([]MessageLog, error)
+	GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error)
 
 	// OAuth tokens
 	SaveToken(ctx context.Context, service string, tokenData []byte) error
@@ -137,7 +159,7 @@ type Store interface {
 
 	// LLM usage
 	LogUsage(ctx context.Context, usage *LLMUsage) error
-	LogToolUsage(ctx context.Context, tool, platform string) error
+	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
 	UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error)
 
 	// Lifecycle
