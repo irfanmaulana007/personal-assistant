@@ -5,6 +5,7 @@ import type {
   LlmSettings,
   LlmSettingsUpdate,
   LlmTestResult,
+  UsageStats,
 } from '../types';
 
 const TOKEN_KEY = 'assistant_token';
@@ -85,4 +86,8 @@ export async function updateSettings(update: LlmSettingsUpdate): Promise<LlmSett
 
 export async function testSettings(): Promise<LlmTestResult> {
   return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
+}
+
+export async function getUsage(days: number): Promise<UsageStats> {
+  return request<UsageStats>(`/api/metrics/usage?days=${days}`);
 }
