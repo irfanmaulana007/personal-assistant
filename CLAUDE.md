@@ -27,3 +27,11 @@
 
 - Write clear, concise commit messages
 - Keep PRs focused and small
+
+## Pull requests
+
+- Always open a PR with a detailed description and merge it to `main`.
+- Every PR must have at least one label describing its type. Use one of:
+  `feature`, `fix`, `docs`, `improvement`, `refactor`, `chore`
+  (create the label with `gh label create` if it does not exist yet).
+- Apply the label with `gh pr edit <n> --add-label <type>`.
