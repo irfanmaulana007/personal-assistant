@@ -15,6 +15,17 @@ type usageSummaryResp struct {
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 	AvgLatencyMs     int     `json:"avg_latency_ms"`
 	ToolCalls        int     `json:"tool_calls"`
+	Errors           int     `json:"errors"`
+}
+
+// validPlatform normalizes the platform query param ("" = all).
+func validPlatform(p string) string {
+	switch p {
+	case "web", "whatsapp":
+		return p
+	default:
+		return ""
+	}
 }
 
 type usagePlatformResp struct {
@@ -45,8 +56,9 @@ type usageModelResp struct {
 }
 
 type usageResp struct {
-	From       string              `json:"from"` // inclusive, YYYY-MM-DD
-	To         string              `json:"to"`   // inclusive, YYYY-MM-DD
+	From       string              `json:"from"`     // inclusive, YYYY-MM-DD
+	To         string              `json:"to"`       // inclusive, YYYY-MM-DD
+	Platform   string              `json:"platform"` // "", web, whatsapp
 	Summary    usageSummaryResp    `json:"summary"`
 	ByDay      []usageDayResp      `json:"by_day"`
 	ByModel    []usageModelResp    `json:"by_model"`
@@ -90,10 +102,12 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		from = to.AddDate(0, 0, -366)
 	}
 
+	platform := validPlatform(r.URL.Query().Get("platform"))
+
 	// `to` is inclusive; query with an exclusive end at the start of the next day.
 	toExclusive := to.AddDate(0, 0, 1)
 
-	stats, err := s.store.UsageStatsBetween(r.Context(), from, toExclusive)
+	stats, err := s.store.UsageStatsBetween(r.Context(), from, toExclusive, platform)
 	if err != nil {
 		s.log.Error("failed to load usage stats", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load usage"})
@@ -103,6 +117,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	resp := usageResp{
 		From:       from.Format(dateLayout),
 		To:         to.Format(dateLayout),
+		Platform:   platform,
 		ByDay:      make([]usageDayResp, 0, len(stats.ByDay)),
 		ByModel:    make([]usageModelResp, 0, len(stats.ByModel)),
 		ByPlatform: make([]usagePlatformResp, 0, len(stats.ByPlatform)),
@@ -146,6 +161,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		EstimatedCostUSD: totalCost,
 		AvgLatencyMs:     stats.AvgLatencyMs,
 		ToolCalls:        stats.ToolCalls,
+		Errors:           stats.Errors,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

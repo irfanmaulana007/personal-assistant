@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { getUsage } from '../api/client';
-import type { UsageStats } from '../types';
+import type { UsageStats, Channel } from '../types';
 
-export function useMetrics(from: string, to: string) {
+export function useMetrics(from: string, to: string, platform: Channel) {
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
-    getUsage(from, to)
+    getUsage(from, to, platform)
       .then((s) => {
         if (active) {
           setStats(s);
@@ -25,7 +25,7 @@ export function useMetrics(from: string, to: string) {
     return () => {
       active = false;
     };
-  }, [from, to]);
+  }, [from, to, platform]);
 
   return { stats, loading, error };
 }

@@ -54,18 +54,40 @@ type OAuthToken struct {
 	UpdatedAt time.Time
 }
 
-// LLMUsage records token usage for a single LLM turn.
-type LLMUsage struct {
+// ToolInvocation is one tool call the agent made during a run.
+type ToolInvocation struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+	Result    string `json:"result"`
+}
+
+// Trace is a full record of one agent run — the source of truth for both the
+// dashboard aggregates and the logs viewer.
+type Trace struct {
 	ID               int64
 	UserID           int64
+	Platform         string
+	Input            string
+	Output           string
 	Model            string
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
 	LatencyMs        int
-	ToolCalls        int
-	Platform         string
+	ToolCount        int
+	Tools            []ToolInvocation // populated by GetTrace only
+	Status           string           // "ok" or "error"
+	Error            string
 	CreatedAt        time.Time
+}
+
+// TraceFilter narrows a trace listing.
+type TraceFilter struct {
+	Platform string // "" = all
+	From     time.Time
+	To       time.Time
+	Limit    int
+	Offset   int
 }
 
 // UsageTotals aggregates token usage over a period.
@@ -110,6 +132,7 @@ type UsageStats struct {
 	Summary      UsageTotals
 	AvgLatencyMs int
 	ToolCalls    int
+	Errors       int
 	ByDay        []UsageDay
 	ByModel      []UsageModel
 	ByPlatform   []UsagePlatform
@@ -157,10 +180,12 @@ type Store interface {
 	SetSetting(ctx context.Context, key string, value []byte) error
 	GetAllSettings(ctx context.Context) (map[string][]byte, error)
 
-	// LLM usage
-	LogUsage(ctx context.Context, usage *LLMUsage) error
+	// Traces & usage (source of truth for dashboard + logs)
+	CreateTrace(ctx context.Context, t *Trace) (int64, error)
+	ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error)
+	GetTrace(ctx context.Context, id int64) (*Trace, error)
 	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
-	UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error)
+	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
 
 	// Lifecycle
 	Close() error

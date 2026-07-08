@@ -72,11 +72,19 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.log.Error("agent run failed", "error", err)
+		_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
+			UserID:    userID,
+			Platform:  "web",
+			Input:     req.Message,
+			LatencyMs: latencyMs,
+			Status:    "error",
+			Error:     err.Error(),
+		})
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "The assistant ran into a problem talking to the LLM. Check your Settings and try again."})
 		return
 	}
 
-	// Log outgoing message
+	// Log outgoing message (chat history)
 	_ = s.store.LogMessage(r.Context(), &store.MessageLog{
 		UserID:    userID,
 		Platform:  "web",
@@ -87,22 +95,35 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Action:    res.Model,
 	})
 
-	// Record token usage + tool usage for the dashboard.
-	_ = s.store.LogUsage(r.Context(), &store.LLMUsage{
+	// Record the full trace (dashboard + logs) and per-tool usage.
+	_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
 		UserID:           userID,
+		Platform:         "web",
+		Input:            req.Message,
+		Output:           res.Reply,
 		Model:            res.Model,
 		PromptTokens:     res.Usage.PromptTokens,
 		CompletionTokens: res.Usage.CompletionTokens,
 		TotalTokens:      res.Usage.TotalTokens,
 		LatencyMs:        latencyMs,
-		ToolCalls:        len(res.Tools),
-		Platform:         "web",
+		ToolCount:        len(res.Tools),
+		Tools:            toStoreTools(res.Tools),
+		Status:           "ok",
 	})
 	for _, tool := range res.Tools {
-		_ = s.store.LogToolUsage(r.Context(), userID, tool, "web")
+		_ = s.store.LogToolUsage(r.Context(), userID, tool.Name, "web")
 	}
 
 	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply})
+}
+
+// toStoreTools converts agent tool invocations to the store representation.
+func toStoreTools(inv []agent.ToolInvocation) []store.ToolInvocation {
+	out := make([]store.ToolInvocation, len(inv))
+	for i, t := range inv {
+		out[i] = store.ToolInvocation{Name: t.Name, Arguments: t.Arguments, Result: t.Result}
+	}
+	return out
 }
 
 // recentHistory returns the last few web turns as agent context (oldest first).
