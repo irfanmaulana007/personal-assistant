@@ -3,12 +3,14 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 interface LayoutProps {
   onLogout: () => void;
+  isAdmin: boolean;
 }
 
 interface NavItem {
   to: string;
   label: string;
   icon: ReactNode;
+  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -27,6 +29,7 @@ const navItems: NavItem[] = [
   {
     to: '/integrations',
     label: 'Integrations',
+    adminOnly: true,
     icon: (
       <path
         strokeLinecap="round"
@@ -39,6 +42,7 @@ const navItems: NavItem[] = [
   {
     to: '/dashboard',
     label: 'Dashboard',
+    adminOnly: true,
     icon: (
       <path
         strokeLinecap="round"
@@ -51,6 +55,7 @@ const navItems: NavItem[] = [
   {
     to: '/account',
     label: 'Account',
+    adminOnly: true,
     icon: (
       <path
         strokeLinecap="round"
@@ -63,6 +68,7 @@ const navItems: NavItem[] = [
   {
     to: '/settings',
     label: 'Settings',
+    adminOnly: true,
     icon: (
       <>
         <path
@@ -82,7 +88,8 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Layout({ onLogout }: LayoutProps) {
+export function Layout({ onLogout, isAdmin }: LayoutProps) {
+  const items = navItems.filter((item) => isAdmin || !item.adminOnly);
   return (
     <div className="h-screen flex bg-white">
       <aside className="w-60 shrink-0 flex flex-col border-r border-gray-200 bg-gray-50">
@@ -106,7 +113,7 @@ export function Layout({ onLogout }: LayoutProps) {
         </div>
 
         <nav className="flex-1 px-3 py-2 space-y-1">
-          {navItems.map((item) => (
+          {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

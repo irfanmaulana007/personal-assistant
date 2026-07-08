@@ -5,37 +5,49 @@ import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
+import { Account } from './components/Account';
 import { ComingSoon } from './components/ComingSoon';
 
 function App() {
-  const { authenticated, login, logout, error, loading } = useAuth();
+  const { authenticated, isAdmin, needsSetup, loading, submitting, error, login, setup, logout } =
+    useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-sm text-gray-400">
+        Loading…
+      </div>
+    );
+  }
+
+  if (needsSetup) {
+    return <Login mode="setup" onSubmit={setup} error={error} loading={submitting} />;
+  }
 
   if (!authenticated) {
-    return <Login onLogin={login} error={error} loading={loading} />;
+    return <Login mode="login" onSubmit={login} error={error} loading={submitting} />;
   }
 
   return (
     <Routes>
-      <Route element={<Layout onLogout={logout} />}>
+      <Route element={<Layout onLogout={logout} isAdmin={isAdmin} />}>
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
-        <Route path="settings" element={<Settings />} />
-        <Route
-          path="integrations"
-          element={
-            <ComingSoon
-              title="Integrations"
-              description="Connect Google Calendar, Gmail, and more via Composio."
-            />
-          }
-        />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route
-          path="account"
-          element={
-            <ComingSoon title="Account" description="Manage users and roles (admin & member)." />
-          }
-        />
+        {isAdmin && [
+          <Route
+            key="integrations"
+            path="integrations"
+            element={
+              <ComingSoon
+                title="Integrations"
+                description="Connect Google Calendar, Gmail, and more via Composio."
+              />
+            }
+          />,
+          <Route key="dashboard" path="dashboard" element={<Dashboard />} />,
+          <Route key="settings" path="settings" element={<Settings />} />,
+          <Route key="account" path="account" element={<Account />} />,
+        ]}
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Route>
     </Routes>

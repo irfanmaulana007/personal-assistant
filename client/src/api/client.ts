@@ -1,5 +1,7 @@
 import type {
-  LoginResponse,
+  AuthResponse,
+  User,
+  Role,
   ChatResponse,
   HistoryEntry,
   LlmSettings,
@@ -53,13 +55,62 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
-export async function login(password: string): Promise<LoginResponse> {
-  const data = await request<LoginResponse>('/api/auth/login', {
+export async function getAuthStatus(): Promise<{ setup_required: boolean }> {
+  return request<{ setup_required: boolean }>('/api/auth/status');
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const data = await request<AuthResponse>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   });
   setToken(data.token);
   return data;
+}
+
+export async function setupAdmin(email: string, password: string): Promise<AuthResponse> {
+  const data = await request<AuthResponse>('/api/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  setToken(data.token);
+  return data;
+}
+
+export async function getMe(): Promise<User> {
+  return request<User>('/api/auth/me');
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await request('/api/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
+export async function listUsers(): Promise<User[]> {
+  return request<User[]>('/api/users');
+}
+
+export async function createUser(email: string, password: string, role: Role): Promise<User> {
+  return request<User>('/api/users', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, role }),
+  });
+}
+
+export async function updateUser(
+  id: number,
+  changes: { role?: Role; password?: string },
+): Promise<User> {
+  return request<User>(`/api/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await request(`/api/users/${id}`, { method: 'DELETE' });
 }
 
 export async function sendMessage(message: string): Promise<ChatResponse> {

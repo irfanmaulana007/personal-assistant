@@ -5,9 +5,19 @@ export interface ChatMessage {
   timestamp: string;
 }
 
-export interface LoginResponse {
+export type Role = 'admin' | 'member';
+
+export interface User {
+  id: number;
+  email: string;
+  role: Role;
+  created_at: string;
+}
+
+export interface AuthResponse {
   token: string;
   expires_at: number;
+  user: User;
 }
 
 export interface ChatResponse {
