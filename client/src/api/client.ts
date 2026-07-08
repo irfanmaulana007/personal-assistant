@@ -1,4 +1,11 @@
-import type { LoginResponse, ChatResponse, HistoryEntry } from '../types';
+import type {
+  LoginResponse,
+  ChatResponse,
+  HistoryEntry,
+  LlmSettings,
+  LlmSettingsUpdate,
+  LlmTestResult,
+} from '../types';
 
 const TOKEN_KEY = 'assistant_token';
 
@@ -63,4 +70,19 @@ export async function sendMessage(message: string): Promise<ChatResponse> {
 
 export async function getChatHistory(): Promise<HistoryEntry[]> {
   return request<HistoryEntry[]>('/api/chat/history');
+}
+
+export async function getSettings(): Promise<LlmSettings> {
+  return request<LlmSettings>('/api/settings');
+}
+
+export async function updateSettings(update: LlmSettingsUpdate): Promise<LlmSettings> {
+  return request<LlmSettings>('/api/settings', {
+    method: 'PUT',
+    body: JSON.stringify(update),
+  });
+}
+
+export async function testSettings(): Promise<LlmTestResult> {
+  return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
 }

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/api"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
@@ -17,8 +18,10 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
-	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport/whatsapp"
@@ -52,50 +55,62 @@ func main() {
 	defer db.Close()
 	log.Info("database initialized", "path", cfg.Database.Path)
 
-	// Initialize Google auth
-	googleAuth, err := googleint.NewAuth(cfg.Google.CredentialsFile, db, cfg.Security.EncryptionKey, log)
+	// Decode the encryption key once for reuse (Google tokens + settings).
+	encKey, err := crypto.DecodeKey(cfg.Security.EncryptionKey)
 	if err != nil {
-		log.Error("failed to initialize Google auth", "error", err)
+		log.Error("invalid encryption key", "error", err)
 		os.Exit(1)
 	}
 
-	// Trigger initial Google authorization if needed
-	if _, err := googleAuth.GetToken(ctx); err != nil {
-		log.Error("Google authorization failed", "error", err)
-		os.Exit(1)
-	}
-	log.Info("Google authorization ready")
+	// Runtime LLM settings (provider/API key/model/base URL) — stored in and
+	// resolved from the database (the single source of truth).
+	settingsSvc := settings.New(db, encKey)
+	llmClient := llm.NewClient()
 
-	// Initialize intent parser
-	parser := intent.NewRegexParser()
-
-	// Initialize integration clients
 	timezone := cfg.Owner.Location()
-	calendarClient := googleint.NewCalendarClient(googleAuth, timezone, log)
-	gmailClient := googleint.NewGmailClient(googleAuth, log)
-
-	// Initialize capability handlers
-	calendarHandler := calendar.New(calendarClient, timezone, cfg.Capabilities.Calendar.DefaultDuration, cfg.Capabilities.Calendar.MaxResults)
-	emailHandler := email.New(gmailClient)
-	reminderHandler := reminder.New(db, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
-	knowledgeHandler := knowledge.New(db, cfg.Capabilities.Knowledge.MaxNoteLength)
 
 	// Build capability router
 	var handlers []capability.Handler
-	if cfg.Capabilities.Calendar.Enabled {
-		handlers = append(handlers, calendarHandler)
+
+	// Google auth is only required when a capability that depends on it
+	// (calendar or email) is enabled. This lets the server run without
+	// Google credentials for local/web-only development.
+	if cfg.Capabilities.Calendar.Enabled || cfg.Capabilities.Email.Enabled {
+		googleAuth, err := googleint.NewAuth(cfg.Google.CredentialsFile, db, cfg.Security.EncryptionKey, log)
+		if err != nil {
+			log.Error("failed to initialize Google auth", "error", err)
+			os.Exit(1)
+		}
+
+		// Trigger initial Google authorization if needed
+		if _, err := googleAuth.GetToken(ctx); err != nil {
+			log.Error("Google authorization failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("Google authorization ready")
+
+		if cfg.Capabilities.Calendar.Enabled {
+			calendarClient := googleint.NewCalendarClient(googleAuth, timezone, log)
+			handlers = append(handlers, calendar.New(calendarClient, timezone, cfg.Capabilities.Calendar.DefaultDuration, cfg.Capabilities.Calendar.MaxResults))
+		}
+		if cfg.Capabilities.Email.Enabled {
+			gmailClient := googleint.NewGmailClient(googleAuth, log)
+			handlers = append(handlers, email.New(gmailClient))
+		}
 	}
-	if cfg.Capabilities.Email.Enabled {
-		handlers = append(handlers, emailHandler)
-	}
+
+	reminderHandler := reminder.New(db, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
 	if cfg.Capabilities.Reminders.Enabled {
 		handlers = append(handlers, reminderHandler)
 	}
 	if cfg.Capabilities.Knowledge.Enabled {
-		handlers = append(handlers, knowledgeHandler)
+		handlers = append(handlers, knowledge.New(db, cfg.Capabilities.Knowledge.MaxNoteLength))
 	}
 
 	router := capability.NewRouter(log, handlers...)
+
+	// LLM tool-calling agent (replaces the regex parser).
+	assistant := agent.New(llmClient, settingsSvc, router, cfg.Owner, log)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
@@ -110,11 +125,19 @@ func main() {
 				Body:      msg.Text,
 			})
 
-			// Parse intent
-			result := parser.Parse(msg.Text)
-
-			// Route to handler
-			response := router.Route(ctx, result)
+			// Run the LLM agent.
+			res, err := assistant.Run(ctx, msg.Text, nil)
+			response := ""
+			if err != nil {
+				if err == agent.ErrNotConfigured {
+					response = "The assistant isn't configured yet. Set the LLM API key in the web Settings page."
+				} else {
+					log.Error("agent run failed", "error", err)
+					response = "Sorry, I ran into a problem. Please try again."
+				}
+			} else {
+				response = res.Reply
+			}
 
 			// Send response
 			if err := wa.SendMessage(ctx, msg.From, response); err != nil {
@@ -125,15 +148,23 @@ func main() {
 				return
 			}
 
-			// Log outgoing message
+			// Log outgoing message + usage
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				Platform:  msg.Platform,
 				Direction: "out",
 				Sender:    "assistant",
 				Body:      response,
-				Intent:    string(result.Capability),
-				Action:    string(result.Action),
+				Intent:    "agent",
 			})
+			if res != nil {
+				_ = db.LogUsage(ctx, &store.LLMUsage{
+					Model:            res.Model,
+					PromptTokens:     res.Usage.PromptTokens,
+					CompletionTokens: res.Usage.CompletionTokens,
+					TotalTokens:      res.Usage.TotalTokens,
+					Platform:         msg.Platform,
+				})
+			}
 		})
 
 		// Set send function for reminders
@@ -153,8 +184,9 @@ func main() {
 		signingKey := sha256.Sum256([]byte(cfg.Web.Password))
 
 		apiServer := api.NewServer(
-			parser,
-			router,
+			assistant,
+			settingsSvc,
+			llmClient,
 			db,
 			cfg.Web.Password,
 			signingKey[:],

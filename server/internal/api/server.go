@@ -10,15 +10,17 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
-	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
 // Server is the HTTP API server for the web client.
 type Server struct {
-	parser     intent.Parser
-	router     *capability.Router
+	agent      *agent.Agent
+	settings   *settings.Service
+	llmClient  *llm.Client
 	store      store.Store
 	password   string
 	signingKey []byte
@@ -29,8 +31,9 @@ type Server struct {
 
 // NewServer creates a new API server.
 func NewServer(
-	parser intent.Parser,
-	router *capability.Router,
+	agent *agent.Agent,
+	settingsSvc *settings.Service,
+	llmClient *llm.Client,
 	store store.Store,
 	password string,
 	signingKey []byte,
@@ -39,8 +42,9 @@ func NewServer(
 	log *slog.Logger,
 ) *Server {
 	return &Server{
-		parser:     parser,
-		router:     router,
+		agent:      agent,
+		settings:   settingsSvc,
+		llmClient:  llmClient,
 		store:      store,
 		password:   password,
 		signingKey: signingKey,
@@ -62,8 +66,11 @@ func (s *Server) Start(ctx context.Context) error {
 	protected := http.NewServeMux()
 	protected.HandleFunc("/api/chat", s.handleChat)
 	protected.HandleFunc("/api/chat/history", s.handleChatHistory)
-	mux.Handle("/api/chat", s.authMiddleware(protected))
-	mux.Handle("/api/chat/history", s.authMiddleware(protected))
+	protected.HandleFunc("/api/settings", s.handleSettings)
+	protected.HandleFunc("/api/settings/test", s.handleSettingsTest)
+	for _, path := range []string{"/api/chat", "/api/chat/history", "/api/settings", "/api/settings/test"} {
+		mux.Handle(path, s.authMiddleware(protected))
+	}
 
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())

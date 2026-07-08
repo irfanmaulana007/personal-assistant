@@ -2,13 +2,8 @@ package google
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 
@@ -17,6 +12,7 @@ import (
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/gmail/v1"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -46,15 +42,9 @@ func NewAuth(credentialsFile string, s store.Store, encryptionKey string, log *s
 		return nil, fmt.Errorf("parse credentials: %w", err)
 	}
 
-	var key []byte
-	if encryptionKey != "" {
-		key, err = base64.StdEncoding.DecodeString(encryptionKey)
-		if err != nil {
-			return nil, fmt.Errorf("decode encryption key: %w", err)
-		}
-		if len(key) != 32 {
-			return nil, fmt.Errorf("encryption key must be 32 bytes (got %d)", len(key))
-		}
+	key, err := crypto.DecodeKey(encryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Auth{
@@ -74,7 +64,7 @@ func (a *Auth) GetToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	if tokenData != nil {
-		decrypted, err := a.decrypt(tokenData)
+		decrypted, err := crypto.Decrypt(a.encryptionKey, tokenData)
 		if err != nil {
 			a.log.Warn("failed to decrypt token, re-authorizing", "error", err)
 		} else {
@@ -134,7 +124,7 @@ func (a *Auth) saveToken(ctx context.Context, token *oauth2.Token) error {
 		return fmt.Errorf("marshal token: %w", err)
 	}
 
-	encrypted, err := a.encrypt(data)
+	encrypted, err := crypto.Encrypt(a.encryptionKey, data)
 	if err != nil {
 		return fmt.Errorf("encrypt token: %w", err)
 	}
@@ -149,52 +139,4 @@ func (a *Auth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 		return nil, err
 	}
 	return a.config.TokenSource(ctx, token), nil
-}
-
-func (a *Auth) encrypt(plaintext []byte) ([]byte, error) {
-	if len(a.encryptionKey) == 0 {
-		// No encryption key — store in plaintext (development mode)
-		return plaintext, nil
-	}
-
-	block, err := aes.NewCipher(a.encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-
-	return aead.Seal(nonce, nonce, plaintext, nil), nil
-}
-
-func (a *Auth) decrypt(ciphertext []byte) ([]byte, error) {
-	if len(a.encryptionKey) == 0 {
-		return ciphertext, nil
-	}
-
-	block, err := aes.NewCipher(a.encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonceSize := aead.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-
-	nonce, ct := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	return aead.Open(nil, nonce, ct, nil)
 }
