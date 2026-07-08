@@ -5,19 +5,19 @@ owner:
 
 whatsapp:
   enabled: true
-  database: "server/data/whatsmeow.db"
+  database: "data/whatsmeow.db"
 
 web:
   enabled: true
   port: 8080
   password: "" # Set via WEB_PASSWORD env var
-  static_dir: "client/dist"
+  static_dir: "../client/dist"
 
 database:
-  path: "server/data/assistant.db"
+  path: "data/assistant.db"
 
 google:
-  credentials_file: "server/config/google_credentials.json"
+  credentials_file: "config/google_credentials.json"
 
 capabilities:
   calendar:

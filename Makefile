@@ -1,38 +1,38 @@
-.PHONY: build build-server build-client run dev dev-server dev-client test lint clean tidy
-
-BINARY=personal-assistant
+.PHONY: build build-server build-client run dev-server dev-client test lint clean tidy deps
 
 # Build both server and client
 build: build-server build-client
 
 build-server:
-	go build -o $(BINARY) ./server/cmd/assistant
+	$(MAKE) -C server build
 
 build-client:
-	cd client && npm run build
+	$(MAKE) -C client build
 
 # Run the server
-run: build-server
-	./$(BINARY)
+run:
+	$(MAKE) -C server run
 
 # Development with hot reload
 dev-server:
-	cd server && air
+	$(MAKE) -C server dev
 
 dev-client:
-	cd client && npm run dev
+	$(MAKE) -C client dev
 
 test:
-	go test ./server/... -v
+	$(MAKE) -C server test
 
 lint:
-	golangci-lint run ./server/...
+	$(MAKE) -C server lint
+
+# Install dependencies
+tidy:
+	$(MAKE) -C server tidy
+
+deps:
+	$(MAKE) -C client deps
 
 clean:
-	rm -f $(BINARY)
-	rm -rf server/tmp
-	rm -rf client/dist
-	rm -f server/data/*.db server/data/*.db-wal server/data/*.db-shm
-
-tidy:
-	go mod tidy
+	$(MAKE) -C server clean
+	$(MAKE) -C client clean

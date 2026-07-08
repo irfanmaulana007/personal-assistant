@@ -52,47 +52,47 @@ func main() {
 	defer db.Close()
 	log.Info("database initialized", "path", cfg.Database.Path)
 
-	// Initialize Google auth
-	googleAuth, err := googleint.NewAuth(cfg.Google.CredentialsFile, db, cfg.Security.EncryptionKey, log)
-	if err != nil {
-		log.Error("failed to initialize Google auth", "error", err)
-		os.Exit(1)
-	}
-
-	// Trigger initial Google authorization if needed
-	if _, err := googleAuth.GetToken(ctx); err != nil {
-		log.Error("Google authorization failed", "error", err)
-		os.Exit(1)
-	}
-	log.Info("Google authorization ready")
-
 	// Initialize intent parser
 	parser := intent.NewRegexParser()
 
-	// Initialize integration clients
 	timezone := cfg.Owner.Location()
-	calendarClient := googleint.NewCalendarClient(googleAuth, timezone, log)
-	gmailClient := googleint.NewGmailClient(googleAuth, log)
-
-	// Initialize capability handlers
-	calendarHandler := calendar.New(calendarClient, timezone, cfg.Capabilities.Calendar.DefaultDuration, cfg.Capabilities.Calendar.MaxResults)
-	emailHandler := email.New(gmailClient)
-	reminderHandler := reminder.New(db, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
-	knowledgeHandler := knowledge.New(db, cfg.Capabilities.Knowledge.MaxNoteLength)
 
 	// Build capability router
 	var handlers []capability.Handler
-	if cfg.Capabilities.Calendar.Enabled {
-		handlers = append(handlers, calendarHandler)
+
+	// Google auth is only required when a capability that depends on it
+	// (calendar or email) is enabled. This lets the server run without
+	// Google credentials for local/web-only development.
+	if cfg.Capabilities.Calendar.Enabled || cfg.Capabilities.Email.Enabled {
+		googleAuth, err := googleint.NewAuth(cfg.Google.CredentialsFile, db, cfg.Security.EncryptionKey, log)
+		if err != nil {
+			log.Error("failed to initialize Google auth", "error", err)
+			os.Exit(1)
+		}
+
+		// Trigger initial Google authorization if needed
+		if _, err := googleAuth.GetToken(ctx); err != nil {
+			log.Error("Google authorization failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("Google authorization ready")
+
+		if cfg.Capabilities.Calendar.Enabled {
+			calendarClient := googleint.NewCalendarClient(googleAuth, timezone, log)
+			handlers = append(handlers, calendar.New(calendarClient, timezone, cfg.Capabilities.Calendar.DefaultDuration, cfg.Capabilities.Calendar.MaxResults))
+		}
+		if cfg.Capabilities.Email.Enabled {
+			gmailClient := googleint.NewGmailClient(googleAuth, log)
+			handlers = append(handlers, email.New(gmailClient))
+		}
 	}
-	if cfg.Capabilities.Email.Enabled {
-		handlers = append(handlers, emailHandler)
-	}
+
+	reminderHandler := reminder.New(db, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
 	if cfg.Capabilities.Reminders.Enabled {
 		handlers = append(handlers, reminderHandler)
 	}
 	if cfg.Capabilities.Knowledge.Enabled {
-		handlers = append(handlers, knowledgeHandler)
+		handlers = append(handlers, knowledge.New(db, cfg.Capabilities.Knowledge.MaxNoteLength))
 	}
 
 	router := capability.NewRouter(log, handlers...)
