@@ -98,6 +98,13 @@ func (s *SQLiteStore) migrate() error {
 			platform TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS tool_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tool TEXT NOT NULL,
+			platform TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {
@@ -105,7 +112,47 @@ func (s *SQLiteStore) migrate() error {
 			return fmt.Errorf("exec migration: %w\nSQL: %s", err, m)
 		}
 	}
+
+	// Additive column migrations for tables created by earlier versions.
+	addColumns := []struct{ table, column, ddl string }{
+		{"llm_usage", "latency_ms", "INTEGER NOT NULL DEFAULT 0"},
+		{"llm_usage", "tool_calls", "INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, c := range addColumns {
+		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
+			return fmt.Errorf("add column %s.%s: %w", c.table, c.column, err)
+		}
+	}
 	return nil
+}
+
+// addColumnIfMissing adds a column to a table only when it does not already
+// exist (SQLite has no "ADD COLUMN IF NOT EXISTS").
+func (s *SQLiteStore) addColumnIfMissing(table, column, ddl string) error {
+	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil // already present
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, ddl))
+	return err
 }
 
 // --- Reminders ---
@@ -380,11 +427,136 @@ func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string][]byte, er
 
 func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO llm_usage (model, prompt_tokens, completion_tokens, total_tokens, platform, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.Platform, time.Now().UTC(),
+		`INSERT INTO llm_usage (model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_calls, platform, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
+		usage.LatencyMs, usage.ToolCalls, usage.Platform, time.Now().UTC(),
 	)
 	return err
+}
+
+func (s *SQLiteStore) LogToolUsage(ctx context.Context, tool, platform string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO tool_usage (tool, platform, created_at) VALUES (?, ?, ?)`,
+		tool, platform, time.Now().UTC(),
+	)
+	return err
+}
+
+// UsageStatsBetween aggregates LLM token usage in the half-open interval
+// [from, to). Callers pass `to` as the exclusive end (e.g. start of the day
+// after the last day they want included).
+func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error) {
+	fromUTC := from.UTC()
+	toUTC := to.UTC()
+	stats := &UsageStats{}
+
+	// Summary (incl. average latency and total tool calls)
+	var avgLatency sql.NullFloat64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*),
+		        COALESCE(SUM(prompt_tokens), 0),
+		        COALESCE(SUM(completion_tokens), 0),
+		        COALESCE(SUM(total_tokens), 0),
+		        COALESCE(SUM(tool_calls), 0),
+		        AVG(NULLIF(latency_ms, 0))
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?`, fromUTC, toUTC,
+	).Scan(&stats.Summary.Requests, &stats.Summary.PromptTokens, &stats.Summary.CompletionTokens,
+		&stats.Summary.TotalTokens, &stats.ToolCalls, &avgLatency)
+	if err != nil {
+		return nil, fmt.Errorf("usage summary: %w", err)
+	}
+	if avgLatency.Valid {
+		stats.AvgLatencyMs = int(avgLatency.Float64)
+	}
+
+	// By day
+	dayRows, err := s.db.QueryContext(ctx,
+		`SELECT date(created_at) AS d, COUNT(*), COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY d ORDER BY d ASC`, fromUTC, toUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by day: %w", err)
+	}
+	defer dayRows.Close()
+	for dayRows.Next() {
+		var d UsageDay
+		if err := dayRows.Scan(&d.Date, &d.Requests, &d.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan usage day: %w", err)
+		}
+		stats.ByDay = append(stats.ByDay, d)
+	}
+	if err := dayRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// By model
+	modelRows, err := s.db.QueryContext(ctx,
+		`SELECT model, COUNT(*),
+		        COALESCE(SUM(prompt_tokens), 0),
+		        COALESCE(SUM(completion_tokens), 0),
+		        COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, fromUTC, toUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+	defer modelRows.Close()
+	for modelRows.Next() {
+		var m UsageModel
+		if err := modelRows.Scan(&m.Model, &m.Requests, &m.PromptTokens, &m.CompletionTokens, &m.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan usage model: %w", err)
+		}
+		stats.ByModel = append(stats.ByModel, m)
+	}
+	if err := modelRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// By platform
+	platRows, err := s.db.QueryContext(ctx,
+		`SELECT platform, COUNT(*), COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY platform ORDER BY COUNT(*) DESC`, fromUTC, toUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by platform: %w", err)
+	}
+	defer platRows.Close()
+	for platRows.Next() {
+		var p UsagePlatform
+		if err := platRows.Scan(&p.Platform, &p.Requests, &p.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan usage platform: %w", err)
+		}
+		if p.Platform == "" {
+			p.Platform = "unknown"
+		}
+		stats.ByPlatform = append(stats.ByPlatform, p)
+	}
+	if err := platRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Top tools
+	toolRows, err := s.db.QueryContext(ctx,
+		`SELECT tool, COUNT(*) AS c
+		 FROM tool_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY tool ORDER BY c DESC LIMIT 10`, fromUTC, toUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("top tools: %w", err)
+	}
+	defer toolRows.Close()
+	for toolRows.Next() {
+		var t ToolCount
+		if err := toolRows.Scan(&t.Tool, &t.Count); err != nil {
+			return nil, fmt.Errorf("scan tool count: %w", err)
+		}
+		stats.TopTools = append(stats.TopTools, t)
+	}
+	return stats, toolRows.Err()
 }
 
 func (s *SQLiteStore) Close() error {

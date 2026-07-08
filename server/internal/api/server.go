@@ -68,7 +68,8 @@ func (s *Server) Start(ctx context.Context) error {
 	protected.HandleFunc("/api/chat/history", s.handleChatHistory)
 	protected.HandleFunc("/api/settings", s.handleSettings)
 	protected.HandleFunc("/api/settings/test", s.handleSettingsTest)
-	for _, path := range []string{"/api/chat", "/api/chat/history", "/api/settings", "/api/settings/test"} {
+	protected.HandleFunc("/api/metrics/usage", s.handleMetricsUsage)
+	for _, path := range []string{"/api/chat", "/api/chat/history", "/api/settings", "/api/settings/test", "/api/metrics/usage"} {
 		mux.Handle(path, s.authMiddleware(protected))
 	}
 

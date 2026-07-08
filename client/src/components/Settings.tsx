@@ -74,7 +74,7 @@ export function Settings() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
-      <div className="mx-auto max-w-2xl">
+      <div>
         <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">Configure the LLM that powers your assistant.</p>
 

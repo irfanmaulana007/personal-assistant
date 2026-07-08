@@ -4,6 +4,7 @@ import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Settings } from './components/Settings';
+import { Dashboard } from './components/Dashboard';
 import { ComingSoon } from './components/ComingSoon';
 
 function App() {
@@ -28,15 +29,7 @@ function App() {
             />
           }
         />
-        <Route
-          path="dashboard"
-          element={
-            <ComingSoon
-              title="Dashboard"
-              description="Monitor your token usage and estimated cost over time."
-            />
-          }
-        />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route
           path="account"
           element={

@@ -28,6 +28,14 @@
 - Write clear, concise commit messages
 - Keep PRs focused and small
 
+## Frontend stack
+
+- **CSS:** Tailwind (utility classes; no CSS modules).
+- **Components:** Radix UI primitives (e.g. Popover) for interactive components.
+- **Charts:** Recharts for all data visualizations.
+- **Layout:** page content uses the full available width — do not constrain it
+  with `max-w-*` wrappers.
+
 ## Pull requests
 
 - Always open a PR with a detailed description and merge it to `main`.

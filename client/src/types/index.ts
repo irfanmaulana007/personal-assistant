@@ -48,3 +48,51 @@ export interface LlmTestResult {
   model?: string;
   error?: string;
 }
+
+export interface UsageSummary {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  avg_latency_ms: number;
+  tool_calls: number;
+}
+
+export interface UsagePlatform {
+  platform: string;
+  requests: number;
+  total_tokens: number;
+}
+
+export interface ToolCount {
+  tool: string;
+  count: number;
+}
+
+export interface UsageDay {
+  date: string;
+  requests: number;
+  total_tokens: number;
+}
+
+export interface UsageModel {
+  model: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  rate_known: boolean;
+}
+
+export interface UsageStats {
+  from: string;
+  to: string;
+  summary: UsageSummary;
+  by_day: UsageDay[];
+  by_model: UsageModel[];
+  by_platform: UsagePlatform[];
+  top_tools: ToolCount[];
+  cost_partial: boolean;
+}

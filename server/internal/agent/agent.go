@@ -52,6 +52,7 @@ type Result struct {
 	Reply string
 	Usage llm.Usage
 	Model string
+	Tools []string // names of tools invoked during the run
 }
 
 // Message is a prior conversation turn used as context.
@@ -79,6 +80,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 
 	tools := toolSchemas()
 	var total llm.Usage
+	var used []string
 
 	for i := 0; i < maxIterations; i++ {
 		res, err := a.client.Complete(ctx, cfg, messages, tools)
@@ -91,10 +93,11 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model}, nil
+			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used}, nil
 		}
 
 		for _, tc := range msg.ToolCalls {
+			used = append(used, tc.Function.Name)
 			result := a.execTool(ctx, tc)
 			messages = append(messages, llm.Message{
 				Role:       "tool",
@@ -115,7 +118,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 	if reply == "" {
 		reply = "I wasn't able to finish that request. Could you rephrase or break it into smaller steps?"
 	}
-	return &Result{Reply: reply, Usage: total, Model: cfg.Model}, nil
+	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used}, nil
 }
 
 // execTool maps a tool call onto a capability action and runs it via the router.

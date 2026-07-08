@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -53,7 +54,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Run the LLM agent.
+	start := time.Now()
 	res, err := s.agent.Run(r.Context(), req.Message, history)
+	latencyMs := int(time.Since(start).Milliseconds())
 	if err != nil {
 		if errors.Is(err, agent.ErrNotConfigured) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
@@ -76,14 +79,19 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Action:    res.Model,
 	})
 
-	// Record token usage for the dashboard.
+	// Record token usage + tool usage for the dashboard.
 	_ = s.store.LogUsage(r.Context(), &store.LLMUsage{
 		Model:            res.Model,
 		PromptTokens:     res.Usage.PromptTokens,
 		CompletionTokens: res.Usage.CompletionTokens,
 		TotalTokens:      res.Usage.TotalTokens,
+		LatencyMs:        latencyMs,
+		ToolCalls:        len(res.Tools),
 		Platform:         "web",
 	})
+	for _, tool := range res.Tools {
+		_ = s.store.LogToolUsage(r.Context(), tool, "web")
+	}
 
 	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply})
 }
