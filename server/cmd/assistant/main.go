@@ -19,6 +19,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
@@ -68,6 +69,7 @@ func main() {
 	// resolved from the database (the single source of truth).
 	settingsSvc := settings.New(db, encKey)
 	llmClient := llm.NewClient()
+	composioClient := composio.NewClient()
 
 	timezone := cfg.Owner.Location()
 
@@ -209,6 +211,7 @@ func main() {
 			assistant,
 			settingsSvc,
 			llmClient,
+			composioClient,
 			db,
 			signingKey[:],
 			cfg.Web.StaticDir,

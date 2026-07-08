@@ -14,10 +14,11 @@ import (
 
 // Setting keys persisted in the store.
 const (
-	KeyLLMProvider = "llm.provider" // plaintext
-	KeyLLMAPIKey   = "llm.api_key"  // encrypted
-	KeyLLMModel    = "llm.model"    // plaintext
-	KeyLLMBaseURL  = "llm.base_url" // plaintext
+	KeyLLMProvider    = "llm.provider"     // plaintext
+	KeyLLMAPIKey      = "llm.api_key"      // encrypted
+	KeyLLMModel       = "llm.model"        // plaintext
+	KeyLLMBaseURL     = "llm.base_url"     // plaintext
+	KeyComposioAPIKey = "composio.api_key" // encrypted
 )
 
 // Service resolves and persists settings.
@@ -153,6 +154,39 @@ func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 		}
 	}
 	return nil
+}
+
+// ComposioKey returns the decrypted Composio API key, or "" if unset.
+func (s *Service) ComposioKey(ctx context.Context) (string, error) {
+	enc, err := s.store.GetSetting(ctx, KeyComposioAPIKey)
+	if err != nil {
+		return "", err
+	}
+	if len(enc) == 0 {
+		return "", nil
+	}
+	dec, err := crypto.Decrypt(s.encKey, enc)
+	if err != nil {
+		return "", fmt.Errorf("decrypt composio key: %w", err)
+	}
+	return string(dec), nil
+}
+
+// SetComposioKey stores the Composio API key encrypted. An empty value clears it.
+func (s *Service) SetComposioKey(ctx context.Context, key string) error {
+	if key == "" {
+		return s.store.SetSetting(ctx, KeyComposioAPIKey, []byte{})
+	}
+	enc, err := crypto.Encrypt(s.encKey, []byte(key))
+	if err != nil {
+		return fmt.Errorf("encrypt composio key: %w", err)
+	}
+	return s.store.SetSetting(ctx, KeyComposioAPIKey, enc)
+}
+
+// Mask returns a masked view of a secret (e.g. "••••7890"), or "" if empty.
+func Mask(secret string) string {
+	return mask(secret)
 }
 
 func (s *Service) getString(ctx context.Context, key string) (string, error) {

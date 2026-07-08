@@ -8,6 +8,7 @@ import type {
   LlmSettingsUpdate,
   LlmTestResult,
   UsageStats,
+  Integrations,
 } from '../types';
 
 const TOKEN_KEY = 'assistant_token';
@@ -141,4 +142,23 @@ export async function testSettings(): Promise<LlmTestResult> {
 
 export async function getUsage(from: string, to: string): Promise<UsageStats> {
   return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}`);
+}
+
+export async function getIntegrations(): Promise<Integrations> {
+  return request<Integrations>('/api/integrations');
+}
+
+export async function setComposioKey(apiKey: string): Promise<Integrations> {
+  return request<Integrations>('/api/integrations/key', {
+    method: 'PUT',
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export async function connectIntegration(slug: string): Promise<{ redirect_url: string }> {
+  return request<{ redirect_url: string }>(`/api/integrations/${slug}/connect`, { method: 'POST' });
+}
+
+export async function disconnectIntegration(slug: string): Promise<Integrations> {
+  return request<Integrations>(`/api/integrations/${slug}`, { method: 'DELETE' });
 }

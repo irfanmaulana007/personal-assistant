@@ -96,6 +96,21 @@ export interface UsageModel {
   rate_known: boolean;
 }
 
+export type IntegrationStatus = 'connected' | 'pending' | 'error' | 'disconnected';
+
+export interface IntegrationToolkit {
+  slug: string;
+  name: string;
+  status: IntegrationStatus;
+  connection_id?: string;
+}
+
+export interface Integrations {
+  configured: boolean;
+  api_key_mask: string;
+  toolkits: IntegrationToolkit[];
+}
+
 export interface UsageStats {
   from: string;
   to: string;

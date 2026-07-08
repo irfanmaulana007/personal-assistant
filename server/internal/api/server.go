@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -21,6 +22,7 @@ type Server struct {
 	agent      *agent.Agent
 	settings   *settings.Service
 	llmClient  *llm.Client
+	composio   *composio.Client
 	store      store.Store
 	signingKey []byte
 	staticDir  string
@@ -33,6 +35,7 @@ func NewServer(
 	agent *agent.Agent,
 	settingsSvc *settings.Service,
 	llmClient *llm.Client,
+	composioClient *composio.Client,
 	store store.Store,
 	signingKey []byte,
 	staticDir string,
@@ -43,6 +46,7 @@ func NewServer(
 		agent:      agent,
 		settings:   settingsSvc,
 		llmClient:  llmClient,
+		composio:   composioClient,
 		store:      store,
 		signingKey: signingKey,
 		staticDir:  staticDir,
@@ -80,6 +84,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("POST /api/users", admin(s.handleCreateUser))
 	mux.Handle("PATCH /api/users/{id}", admin(s.handleUpdateUser))
 	mux.Handle("DELETE /api/users/{id}", admin(s.handleDeleteUser))
+	mux.Handle("GET /api/integrations", admin(s.handleListIntegrations))
+	mux.Handle("PUT /api/integrations/key", admin(s.handleSetComposioKey))
+	mux.Handle("POST /api/integrations/{toolkit}/connect", admin(s.handleConnectIntegration))
+	mux.Handle("DELETE /api/integrations/{toolkit}", admin(s.handleDisconnectIntegration))
 
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())
