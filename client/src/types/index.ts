@@ -111,6 +111,14 @@ export interface Integrations {
   toolkits: IntegrationToolkit[];
 }
 
+export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';
+
+export interface WhatsAppStatus {
+  enabled: boolean;
+  status: WhatsAppState;
+  qr: string; // data:image/png;base64,... while pairing
+}
+
 export interface UsageStats {
   from: string;
   to: string;

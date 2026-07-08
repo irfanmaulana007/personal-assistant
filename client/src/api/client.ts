@@ -9,6 +9,7 @@ import type {
   LlmTestResult,
   UsageStats,
   Integrations,
+  WhatsAppStatus,
 } from '../types';
 
 const TOKEN_KEY = 'assistant_token';
@@ -161,4 +162,16 @@ export async function connectIntegration(slug: string): Promise<{ redirect_url: 
 
 export async function disconnectIntegration(slug: string): Promise<Integrations> {
   return request<Integrations>(`/api/integrations/${slug}`, { method: 'DELETE' });
+}
+
+export async function getWhatsApp(): Promise<WhatsAppStatus> {
+  return request<WhatsAppStatus>('/api/whatsapp');
+}
+
+export async function connectWhatsApp(): Promise<WhatsAppStatus> {
+  return request<WhatsAppStatus>('/api/whatsapp/connect', { method: 'POST' });
+}
+
+export async function disconnectWhatsApp(): Promise<WhatsAppStatus> {
+  return request<WhatsAppStatus>('/api/whatsapp/disconnect', { method: 'POST' });
 }
