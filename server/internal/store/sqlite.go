@@ -387,9 +387,12 @@ func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
 	return err
 }
 
-// UsageStatsSince aggregates LLM token usage recorded at or after `since`.
-func (s *SQLiteStore) UsageStatsSince(ctx context.Context, since time.Time) (*UsageStats, error) {
-	sinceUTC := since.UTC()
+// UsageStatsBetween aggregates LLM token usage in the half-open interval
+// [from, to). Callers pass `to` as the exclusive end (e.g. start of the day
+// after the last day they want included).
+func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error) {
+	fromUTC := from.UTC()
+	toUTC := to.UTC()
 	stats := &UsageStats{}
 
 	// Summary
@@ -398,7 +401,7 @@ func (s *SQLiteStore) UsageStatsSince(ctx context.Context, since time.Time) (*Us
 		        COALESCE(SUM(prompt_tokens), 0),
 		        COALESCE(SUM(completion_tokens), 0),
 		        COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ?`, sinceUTC,
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?`, fromUTC, toUTC,
 	).Scan(&stats.Summary.Requests, &stats.Summary.PromptTokens, &stats.Summary.CompletionTokens, &stats.Summary.TotalTokens)
 	if err != nil {
 		return nil, fmt.Errorf("usage summary: %w", err)
@@ -407,8 +410,8 @@ func (s *SQLiteStore) UsageStatsSince(ctx context.Context, since time.Time) (*Us
 	// By day
 	dayRows, err := s.db.QueryContext(ctx,
 		`SELECT date(created_at) AS d, COUNT(*), COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ?
-		 GROUP BY d ORDER BY d ASC`, sinceUTC,
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY d ORDER BY d ASC`, fromUTC, toUTC,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("usage by day: %w", err)
@@ -431,8 +434,8 @@ func (s *SQLiteStore) UsageStatsSince(ctx context.Context, since time.Time) (*Us
 		        COALESCE(SUM(prompt_tokens), 0),
 		        COALESCE(SUM(completion_tokens), 0),
 		        COALESCE(SUM(total_tokens), 0)
-		 FROM llm_usage WHERE created_at >= ?
-		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, sinceUTC,
+		 FROM llm_usage WHERE created_at >= ? AND created_at < ?
+		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, fromUTC, toUTC,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("usage by model: %w", err)

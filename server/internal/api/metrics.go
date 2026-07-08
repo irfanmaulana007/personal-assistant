@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
@@ -33,37 +32,53 @@ type usageModelResp struct {
 }
 
 type usageResp struct {
-	RangeDays int              `json:"range_days"`
-	Summary   usageSummaryResp `json:"summary"`
-	ByDay     []usageDayResp   `json:"by_day"`
-	ByModel   []usageModelResp `json:"by_model"`
-	// CostEstimated is true when at least one model's cost could not be priced.
+	From    string           `json:"from"` // inclusive, YYYY-MM-DD
+	To      string           `json:"to"`   // inclusive, YYYY-MM-DD
+	Summary usageSummaryResp `json:"summary"`
+	ByDay   []usageDayResp   `json:"by_day"`
+	ByModel []usageModelResp `json:"by_model"`
+	// CostPartial is true when at least one model's cost could not be priced.
 	CostPartial bool `json:"cost_partial"`
 }
 
-// handleMetricsUsage returns aggregated LLM usage and estimated cost.
-// Query param: days (default 30, clamped 1..365).
+const dateLayout = "2006-01-02"
+
+// handleMetricsUsage returns aggregated LLM usage and estimated cost for an
+// inclusive date range. Query params: from, to (YYYY-MM-DD, UTC). Defaults to
+// the last 30 days. The range is clamped to 366 days.
 func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	days := 30
-	if v := r.URL.Query().Get("days"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			days = n
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
+	to := today
+	if v := r.URL.Query().Get("to"); v != "" {
+		if t, err := time.Parse(dateLayout, v); err == nil {
+			to = t
 		}
 	}
-	if days < 1 {
-		days = 1
-	}
-	if days > 365 {
-		days = 365
+	from := to.AddDate(0, 0, -29)
+	if v := r.URL.Query().Get("from"); v != "" {
+		if t, err := time.Parse(dateLayout, v); err == nil {
+			from = t
+		}
 	}
 
-	since := time.Now().UTC().AddDate(0, 0, -days)
-	stats, err := s.store.UsageStatsSince(r.Context(), since)
+	if from.After(to) {
+		from, to = to, from
+	}
+	// Clamp the range to 366 days.
+	if to.Sub(from) > 366*24*time.Hour {
+		from = to.AddDate(0, 0, -366)
+	}
+
+	// `to` is inclusive; query with an exclusive end at the start of the next day.
+	toExclusive := to.AddDate(0, 0, 1)
+
+	stats, err := s.store.UsageStatsBetween(r.Context(), from, toExclusive)
 	if err != nil {
 		s.log.Error("failed to load usage stats", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load usage"})
@@ -71,9 +86,10 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := usageResp{
-		RangeDays: days,
-		ByDay:     make([]usageDayResp, 0, len(stats.ByDay)),
-		ByModel:   make([]usageModelResp, 0, len(stats.ByModel)),
+		From:    from.Format(dateLayout),
+		To:      to.Format(dateLayout),
+		ByDay:   make([]usageDayResp, 0, len(stats.ByDay)),
+		ByModel: make([]usageModelResp, 0, len(stats.ByModel)),
 	}
 
 	for _, d := range stats.ByDay {

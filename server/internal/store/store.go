@@ -118,7 +118,7 @@ type Store interface {
 
 	// LLM usage
 	LogUsage(ctx context.Context, usage *LLMUsage) error
-	UsageStatsSince(ctx context.Context, since time.Time) (*UsageStats, error)
+	UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error)
 
 	// Lifecycle
 	Close() error
