@@ -20,6 +20,10 @@ type Config struct {
 	Logging      LoggingConfig      `yaml:"logging"`
 }
 
+// LLM provider settings (API key, model, base URL, provider) are NOT configured
+// here — they are managed at runtime via the Settings page and stored in the
+// database, which is their single source of truth.
+
 type OwnerConfig struct {
 	WhatsAppJID string `yaml:"whatsapp_jid"`
 	Name        string `yaml:"name"`
@@ -40,10 +44,10 @@ type WhatsAppConfig struct {
 }
 
 type WebConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	Port       int    `yaml:"port"`
-	Password   string `yaml:"password"`
-	StaticDir  string `yaml:"static_dir"`
+	Enabled   bool   `yaml:"enabled"`
+	Port      int    `yaml:"port"`
+	Password  string `yaml:"password"`
+	StaticDir string `yaml:"static_dir"`
 }
 
 type DatabaseConfig struct {

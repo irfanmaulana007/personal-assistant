@@ -44,6 +44,17 @@ type OAuthToken struct {
 	UpdatedAt time.Time
 }
 
+// LLMUsage records token usage for a single LLM turn.
+type LLMUsage struct {
+	ID               int64
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	Platform         string
+	CreatedAt        time.Time
+}
+
 // Store defines the persistence interface.
 type Store interface {
 	// Reminders
@@ -68,6 +79,14 @@ type Store interface {
 	// OAuth tokens
 	SaveToken(ctx context.Context, service string, tokenData []byte) error
 	GetToken(ctx context.Context, service string) ([]byte, error)
+
+	// Settings (key/value; values may be encrypted by the caller)
+	GetSetting(ctx context.Context, key string) ([]byte, error)
+	SetSetting(ctx context.Context, key string, value []byte) error
+	GetAllSettings(ctx context.Context) (map[string][]byte, error)
+
+	// LLM usage
+	LogUsage(ctx context.Context, usage *LLMUsage) error
 
 	// Lifecycle
 	Close() error

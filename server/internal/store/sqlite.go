@@ -82,6 +82,22 @@ func (s *SQLiteStore) migrate() error {
 			token_data BLOB NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value BLOB NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS llm_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			model TEXT NOT NULL,
+			prompt_tokens INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0,
+			total_tokens INTEGER NOT NULL DEFAULT 0,
+			platform TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {
@@ -317,6 +333,58 @@ func (s *SQLiteStore) GetToken(ctx context.Context, service string) ([]byte, err
 		return nil, nil
 	}
 	return data, err
+}
+
+// --- Settings ---
+
+func (s *SQLiteStore) GetSetting(ctx context.Context, key string) ([]byte, error) {
+	var value []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT value FROM settings WHERE key = ?`, key,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return value, err
+}
+
+func (s *SQLiteStore) SetSetting(ctx context.Context, key string, value []byte) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		key, value, time.Now().UTC(),
+	)
+	return err
+}
+
+func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string][]byte, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM settings`)
+	if err != nil {
+		return nil, fmt.Errorf("get all settings: %w", err)
+	}
+	defer rows.Close()
+
+	settings := make(map[string][]byte)
+	for rows.Next() {
+		var key string
+		var value []byte
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, fmt.Errorf("scan setting: %w", err)
+		}
+		settings[key] = value
+	}
+	return settings, rows.Err()
+}
+
+// --- LLM Usage ---
+
+func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO llm_usage (model, prompt_tokens, completion_tokens, total_tokens, platform, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.Platform, time.Now().UTC(),
+	)
+	return err
 }
 
 func (s *SQLiteStore) Close() error {

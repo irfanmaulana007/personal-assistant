@@ -19,6 +19,10 @@ database:
 google:
   credentials_file: "config/google_credentials.json"
 
+# NOTE: The LLM provider, API key, model, and base URL are NOT configured here.
+# They are managed at runtime from the Settings page and stored (encrypted) in
+# the database, which is their single source of truth.
+
 capabilities:
   calendar:
     enabled: true
