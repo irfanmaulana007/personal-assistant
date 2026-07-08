@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/api"
@@ -126,7 +127,9 @@ func main() {
 			})
 
 			// Run the LLM agent.
+			start := time.Now()
 			res, err := assistant.Run(ctx, msg.Text, nil)
+			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
 				if err == agent.ErrNotConfigured {
@@ -162,8 +165,13 @@ func main() {
 					PromptTokens:     res.Usage.PromptTokens,
 					CompletionTokens: res.Usage.CompletionTokens,
 					TotalTokens:      res.Usage.TotalTokens,
+					LatencyMs:        latencyMs,
+					ToolCalls:        len(res.Tools),
 					Platform:         msg.Platform,
 				})
+				for _, tool := range res.Tools {
+					_ = db.LogToolUsage(ctx, tool, msg.Platform)
+				}
 			}
 		})
 

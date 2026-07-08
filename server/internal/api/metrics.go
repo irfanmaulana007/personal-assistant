@@ -13,6 +13,19 @@ type usageSummaryResp struct {
 	CompletionTokens int     `json:"completion_tokens"`
 	TotalTokens      int     `json:"total_tokens"`
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
+	AvgLatencyMs     int     `json:"avg_latency_ms"`
+	ToolCalls        int     `json:"tool_calls"`
+}
+
+type usagePlatformResp struct {
+	Platform    string `json:"platform"`
+	Requests    int    `json:"requests"`
+	TotalTokens int    `json:"total_tokens"`
+}
+
+type toolCountResp struct {
+	Tool  string `json:"tool"`
+	Count int    `json:"count"`
 }
 
 type usageDayResp struct {
@@ -32,11 +45,13 @@ type usageModelResp struct {
 }
 
 type usageResp struct {
-	From    string           `json:"from"` // inclusive, YYYY-MM-DD
-	To      string           `json:"to"`   // inclusive, YYYY-MM-DD
-	Summary usageSummaryResp `json:"summary"`
-	ByDay   []usageDayResp   `json:"by_day"`
-	ByModel []usageModelResp `json:"by_model"`
+	From       string              `json:"from"` // inclusive, YYYY-MM-DD
+	To         string              `json:"to"`   // inclusive, YYYY-MM-DD
+	Summary    usageSummaryResp    `json:"summary"`
+	ByDay      []usageDayResp      `json:"by_day"`
+	ByModel    []usageModelResp    `json:"by_model"`
+	ByPlatform []usagePlatformResp `json:"by_platform"`
+	TopTools   []toolCountResp     `json:"top_tools"`
 	// CostPartial is true when at least one model's cost could not be priced.
 	CostPartial bool `json:"cost_partial"`
 }
@@ -86,14 +101,22 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := usageResp{
-		From:    from.Format(dateLayout),
-		To:      to.Format(dateLayout),
-		ByDay:   make([]usageDayResp, 0, len(stats.ByDay)),
-		ByModel: make([]usageModelResp, 0, len(stats.ByModel)),
+		From:       from.Format(dateLayout),
+		To:         to.Format(dateLayout),
+		ByDay:      make([]usageDayResp, 0, len(stats.ByDay)),
+		ByModel:    make([]usageModelResp, 0, len(stats.ByModel)),
+		ByPlatform: make([]usagePlatformResp, 0, len(stats.ByPlatform)),
+		TopTools:   make([]toolCountResp, 0, len(stats.TopTools)),
 	}
 
 	for _, d := range stats.ByDay {
 		resp.ByDay = append(resp.ByDay, usageDayResp{Date: d.Date, Requests: d.Requests, TotalTokens: d.TotalTokens})
+	}
+	for _, p := range stats.ByPlatform {
+		resp.ByPlatform = append(resp.ByPlatform, usagePlatformResp{Platform: p.Platform, Requests: p.Requests, TotalTokens: p.TotalTokens})
+	}
+	for _, t := range stats.TopTools {
+		resp.TopTools = append(resp.TopTools, toolCountResp{Tool: t.Tool, Count: t.Count})
 	}
 
 	var totalCost float64
@@ -121,6 +144,8 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		CompletionTokens: stats.Summary.CompletionTokens,
 		TotalTokens:      stats.Summary.TotalTokens,
 		EstimatedCostUSD: totalCost,
+		AvgLatencyMs:     stats.AvgLatencyMs,
+		ToolCalls:        stats.ToolCalls,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

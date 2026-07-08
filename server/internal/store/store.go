@@ -51,6 +51,8 @@ type LLMUsage struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
+	LatencyMs        int
+	ToolCalls        int
 	Platform         string
 	CreatedAt        time.Time
 }
@@ -79,11 +81,28 @@ type UsageModel struct {
 	TotalTokens      int
 }
 
+// UsagePlatform is per-platform usage (web, whatsapp).
+type UsagePlatform struct {
+	Platform    string
+	Requests    int
+	TotalTokens int
+}
+
+// ToolCount is how many times a tool was invoked.
+type ToolCount struct {
+	Tool  string
+	Count int
+}
+
 // UsageStats is the combined usage report over a period.
 type UsageStats struct {
-	Summary UsageTotals
-	ByDay   []UsageDay
-	ByModel []UsageModel
+	Summary      UsageTotals
+	AvgLatencyMs int
+	ToolCalls    int
+	ByDay        []UsageDay
+	ByModel      []UsageModel
+	ByPlatform   []UsagePlatform
+	TopTools     []ToolCount
 }
 
 // Store defines the persistence interface.
@@ -118,6 +137,7 @@ type Store interface {
 
 	// LLM usage
 	LogUsage(ctx context.Context, usage *LLMUsage) error
+	LogToolUsage(ctx context.Context, tool, platform string) error
 	UsageStatsBetween(ctx context.Context, from, to time.Time) (*UsageStats, error)
 
 	// Lifecycle
