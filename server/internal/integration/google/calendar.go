@@ -29,12 +29,12 @@ func NewCalendarClient(auth *Auth, timezone *time.Location, log *slog.Logger) *C
 
 // CalendarEvent represents a simplified calendar event.
 type CalendarEvent struct {
-	ID        string
-	Title     string
-	Start     time.Time
-	End       time.Time
-	Location  string
-	AllDay    bool
+	ID       string
+	Title    string
+	Start    time.Time
+	End      time.Time
+	Location string
+	AllDay   bool
 }
 
 func (c *CalendarClient) service(ctx context.Context) (*calendar.Service, error) {

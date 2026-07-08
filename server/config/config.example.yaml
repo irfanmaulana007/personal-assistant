@@ -1,10 +1,10 @@
 owner:
-  whatsapp_jid: "6281234567890@s.whatsapp.net"
+  whatsapp_jid: "6281234567890@s.whatsapp.net" # optional — derived from pairing
   name: "Your Name"
   timezone: "Asia/Jakarta"
 
 whatsapp:
-  enabled: true
+  enabled: true # then link your phone from the Integrations page (QR)
   database: "data/whatsmeow.db"
 
 web:

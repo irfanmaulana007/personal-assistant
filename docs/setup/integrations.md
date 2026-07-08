@@ -30,6 +30,24 @@ Composio on your behalf. Apps you haven't connected contribute no tools.
 Connections are **per user** (the signed-in admin), keyed by the app's user id
 in Composio. **Disconnect** removes the connection.
 
+## WhatsApp (personal number)
+
+Separately from Composio, you can link your **personal WhatsApp** so you can chat
+with the assistant from WhatsApp (via whatsmeow — a WhatsApp Web linked device):
+
+1. Set `whatsapp.enabled: true` in `server/config/config.yaml` and start the
+   server (it no longer blocks on WhatsApp — the web app comes up immediately).
+2. Open **Integrations** as an admin → the **WhatsApp** card → **Connect**.
+3. A QR code appears in the browser. On your phone: **WhatsApp → Settings →
+   Linked Devices → Link a Device**, and scan it. The card flips to
+   **Connected** automatically.
+
+The owner number is derived from the paired device (no `whatsapp_jid` config
+needed), and reminders are delivered to that account. **Disconnect** unlinks it.
+
+> whatsmeow is an unofficial client — it links your real number like WhatsApp
+> Web. There's a small, non-zero risk of a WhatsApp ban for automated use.
+
 ## Notes & caveats
 
 - Some toolkits need an **auth config** in your Composio project. The app tries
