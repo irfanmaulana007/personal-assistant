@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -75,7 +76,7 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 		return fmt.Sprintf("I couldn't understand %q as a time. Try: _in 30 minutes_, _at 5pm_, _tomorrow at 9am_", timeStr), nil
 	}
 
-	reminder, err := h.store.CreateReminder(ctx, message, remindAt)
+	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), message, remindAt)
 	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
 	}
@@ -88,7 +89,7 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 }
 
 func (h *Handler) list(ctx context.Context) (string, error) {
-	reminders, err := h.store.ListReminders(ctx, true)
+	reminders, err := h.store.ListReminders(ctx, authctx.UserID(ctx), true)
 	if err != nil {
 		return "", fmt.Errorf("list reminders: %w", err)
 	}
@@ -120,7 +121,7 @@ func (h *Handler) cancel(ctx context.Context, result *intent.ParseResult) (strin
 		return "Please provide a valid reminder number.", nil
 	}
 
-	if err := h.store.CancelReminder(ctx, id); err != nil {
+	if err := h.store.CancelReminder(ctx, authctx.UserID(ctx), id); err != nil {
 		return "", fmt.Errorf("cancel reminder: %w", err)
 	}
 
@@ -146,7 +147,19 @@ func (h *Handler) StartScheduler(ctx context.Context) {
 }
 
 func (h *Handler) checkDueReminders(ctx context.Context) {
-	reminders, err := h.store.GetDueReminders(ctx)
+	// Reminders are per-user, but WhatsApp delivery only reaches the owner
+	// (the first admin, mapped to the configured owner JID). Other users' due
+	// reminders remain listable in chat but are not pushed.
+	owner, err := h.store.FirstAdmin(ctx)
+	if err != nil {
+		h.log.Error("failed to resolve owner for reminders", "error", err)
+		return
+	}
+	if owner == nil {
+		return // no admin yet (setup not completed)
+	}
+
+	reminders, err := h.store.GetDueReminders(ctx, owner.ID)
 	if err != nil {
 		h.log.Error("failed to get due reminders", "error", err)
 		return

@@ -33,6 +33,14 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 
 func (s *SQLiteStore) migrate() error {
 	migrations := []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'member',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS reminders (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			message TEXT NOT NULL,
@@ -117,6 +125,11 @@ func (s *SQLiteStore) migrate() error {
 	addColumns := []struct{ table, column, ddl string }{
 		{"llm_usage", "latency_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"llm_usage", "tool_calls", "INTEGER NOT NULL DEFAULT 0"},
+		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"llm_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range addColumns {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
@@ -155,33 +168,111 @@ func (s *SQLiteStore) addColumnIfMissing(table, column, ddl string) error {
 	return err
 }
 
+// --- Users ---
+
+func (s *SQLiteStore) CountUsers(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	return n, err
+}
+
+func (s *SQLiteStore) CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error) {
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
+		email, passwordHash, role, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert user: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return &User{ID: id, Email: email, PasswordHash: passwordHash, Role: role, CreatedAt: now}, nil
+}
+
+func (s *SQLiteStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	return s.scanUser(s.db.QueryRowContext(ctx,
+		`SELECT id, email, password_hash, role, created_at FROM users WHERE email = ?`, email))
+}
+
+func (s *SQLiteStore) GetUserByID(ctx context.Context, id int64) (*User, error) {
+	return s.scanUser(s.db.QueryRowContext(ctx,
+		`SELECT id, email, password_hash, role, created_at FROM users WHERE id = ?`, id))
+}
+
+func (s *SQLiteStore) FirstAdmin(ctx context.Context) (*User, error) {
+	return s.scanUser(s.db.QueryRowContext(ctx,
+		`SELECT id, email, password_hash, role, created_at FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`))
+}
+
+func (s *SQLiteStore) scanUser(row *sql.Row) (*User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan user: %w", err)
+	}
+	return &u, nil
+}
+
+func (s *SQLiteStore) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, email, password_hash, role, created_at FROM users ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *SQLiteStore) UpdateUserRole(ctx context.Context, id int64, role string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET role = ? WHERE id = ?`, role, id)
+	return err
+}
+
+func (s *SQLiteStore) UpdateUserPassword(ctx context.Context, id int64, passwordHash string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
+	return err
+}
+
+func (s *SQLiteStore) DeleteUser(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	return err
+}
+
 // --- Reminders ---
 
-func (s *SQLiteStore) CreateReminder(ctx context.Context, message string, remindAt time.Time) (*Reminder, error) {
+func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error) {
+	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO reminders (message, remind_at, created_at) VALUES (?, ?, ?)`,
-		message, remindAt.UTC(), time.Now().UTC(),
+		`INSERT INTO reminders (user_id, message, remind_at, created_at) VALUES (?, ?, ?, ?)`,
+		userID, message, remindAt.UTC(), now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert reminder: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return &Reminder{
-		ID:        id,
-		Message:   message,
-		RemindAt:  remindAt,
-		CreatedAt: time.Now().UTC(),
-	}, nil
+	return &Reminder{ID: id, Message: message, RemindAt: remindAt, CreatedAt: now}, nil
 }
 
-func (s *SQLiteStore) ListReminders(ctx context.Context, activeOnly bool) ([]Reminder, error) {
-	query := `SELECT id, message, remind_at, created_at, notified, cancelled FROM reminders`
+func (s *SQLiteStore) ListReminders(ctx context.Context, userID int64, activeOnly bool) ([]Reminder, error) {
+	query := `SELECT id, message, remind_at, created_at, notified, cancelled FROM reminders WHERE user_id = ?`
 	if activeOnly {
-		query += ` WHERE notified = 0 AND cancelled = 0`
+		query += ` AND notified = 0 AND cancelled = 0`
 	}
 	query += ` ORDER BY remind_at ASC`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list reminders: %w", err)
 	}
@@ -190,13 +281,13 @@ func (s *SQLiteStore) ListReminders(ctx context.Context, activeOnly bool) ([]Rem
 	return scanReminders(rows)
 }
 
-func (s *SQLiteStore) GetDueReminders(ctx context.Context) ([]Reminder, error) {
+func (s *SQLiteStore) GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, message, remind_at, created_at, notified, cancelled
 		 FROM reminders
-		 WHERE remind_at <= ? AND notified = 0 AND cancelled = 0
+		 WHERE user_id = ? AND remind_at <= ? AND notified = 0 AND cancelled = 0
 		 ORDER BY remind_at ASC`,
-		time.Now().UTC(),
+		userID, time.Now().UTC(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get due reminders: %w", err)
@@ -211,8 +302,8 @@ func (s *SQLiteStore) MarkReminderNotified(ctx context.Context, id int64) error 
 	return err
 }
 
-func (s *SQLiteStore) CancelReminder(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET cancelled = 1 WHERE id = ?`, id)
+func (s *SQLiteStore) CancelReminder(ctx context.Context, userID, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET cancelled = 1 WHERE id = ? AND user_id = ?`, id, userID)
 	return err
 }
 
@@ -230,11 +321,11 @@ func scanReminders(rows *sql.Rows) ([]Reminder, error) {
 
 // --- Notes ---
 
-func (s *SQLiteStore) CreateNote(ctx context.Context, title, content, tags string) (*Note, error) {
+func (s *SQLiteStore) CreateNote(ctx context.Context, userID int64, title, content, tags string) (*Note, error) {
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO notes (title, content, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		title, content, tags, now, now,
+		`INSERT INTO notes (user_id, title, content, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		userID, title, content, tags, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert note: %w", err)
@@ -250,10 +341,10 @@ func (s *SQLiteStore) CreateNote(ctx context.Context, title, content, tags strin
 	}, nil
 }
 
-func (s *SQLiteStore) GetNote(ctx context.Context, id int64) (*Note, error) {
+func (s *SQLiteStore) GetNote(ctx context.Context, userID, id int64) (*Note, error) {
 	var n Note
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE id = ?`, id,
+		`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE id = ? AND user_id = ?`, id, userID,
 	).Scan(&n.ID, &n.Title, &n.Content, &n.Tags, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get note: %w", err)
@@ -261,32 +352,33 @@ func (s *SQLiteStore) GetNote(ctx context.Context, id int64) (*Note, error) {
 	return &n, nil
 }
 
-func (s *SQLiteStore) UpdateNote(ctx context.Context, id int64, title, content, tags string) error {
+func (s *SQLiteStore) UpdateNote(ctx context.Context, userID, id int64, title, content, tags string) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ?`,
-		title, content, tags, time.Now().UTC(), id,
+		`UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		title, content, tags, time.Now().UTC(), id, userID,
 	)
 	return err
 }
 
-func (s *SQLiteStore) DeleteNote(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
+func (s *SQLiteStore) DeleteNote(ctx context.Context, userID, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = ? AND user_id = ?`, id, userID)
 	return err
 }
 
-func (s *SQLiteStore) ListNotes(ctx context.Context, tag string) ([]Note, error) {
+func (s *SQLiteStore) ListNotes(ctx context.Context, userID int64, tag string) ([]Note, error) {
 	var rows *sql.Rows
 	var err error
 
 	if tag != "" {
 		rows, err = s.db.QueryContext(ctx,
 			`SELECT id, title, content, tags, created_at, updated_at FROM notes
-			 WHERE ',' || tags || ',' LIKE '%,' || ? || ',%'
-			 ORDER BY updated_at DESC`, tag,
+			 WHERE user_id = ? AND ',' || tags || ',' LIKE '%,' || ? || ',%'
+			 ORDER BY updated_at DESC`, userID, tag,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, title, content, tags, created_at, updated_at FROM notes ORDER BY updated_at DESC`,
+			`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC`,
+			userID,
 		)
 	}
 	if err != nil {
@@ -297,13 +389,13 @@ func (s *SQLiteStore) ListNotes(ctx context.Context, tag string) ([]Note, error)
 	return scanNotes(rows)
 }
 
-func (s *SQLiteStore) SearchNotes(ctx context.Context, query string) ([]Note, error) {
+func (s *SQLiteStore) SearchNotes(ctx context.Context, userID int64, query string) ([]Note, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT n.id, n.title, n.content, n.tags, n.created_at, n.updated_at
 		 FROM notes n
 		 JOIN notes_fts f ON n.id = f.rowid
-		 WHERE notes_fts MATCH ?
-		 ORDER BY rank`, query,
+		 WHERE notes_fts MATCH ? AND n.user_id = ?
+		 ORDER BY rank`, query, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search notes: %w", err)
@@ -329,20 +421,20 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 
 func (s *SQLiteStore) LogMessage(ctx context.Context, log *MessageLog) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO message_log (platform, direction, sender, body, intent, action, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		log.Platform, log.Direction, log.Sender, log.Body, log.Intent, log.Action, time.Now().UTC(),
+		`INSERT INTO message_log (user_id, platform, direction, sender, body, intent, action, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		log.UserID, log.Platform, log.Direction, log.Sender, log.Body, log.Intent, log.Action, time.Now().UTC(),
 	)
 	return err
 }
 
-func (s *SQLiteStore) GetMessageHistory(ctx context.Context, platform string, limit int) ([]MessageLog, error) {
+func (s *SQLiteStore) GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, platform, direction, sender, body, intent, action, created_at
+		`SELECT id, user_id, platform, direction, sender, body, intent, action, created_at
 		 FROM message_log
-		 WHERE platform = ?
+		 WHERE user_id = ? AND platform = ?
 		 ORDER BY created_at ASC
 		 LIMIT ?`,
-		platform, limit,
+		userID, platform, limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get message history: %w", err)
@@ -352,7 +444,7 @@ func (s *SQLiteStore) GetMessageHistory(ctx context.Context, platform string, li
 	var logs []MessageLog
 	for rows.Next() {
 		var l MessageLog
-		if err := rows.Scan(&l.ID, &l.Platform, &l.Direction, &l.Sender, &l.Body, &l.Intent, &l.Action, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.UserID, &l.Platform, &l.Direction, &l.Sender, &l.Body, &l.Intent, &l.Action, &l.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan message log: %w", err)
 		}
 		logs = append(logs, l)
@@ -427,18 +519,18 @@ func (s *SQLiteStore) GetAllSettings(ctx context.Context) (map[string][]byte, er
 
 func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO llm_usage (model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_calls, platform, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
+		`INSERT INTO llm_usage (user_id, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_calls, platform, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		usage.UserID, usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
 		usage.LatencyMs, usage.ToolCalls, usage.Platform, time.Now().UTC(),
 	)
 	return err
 }
 
-func (s *SQLiteStore) LogToolUsage(ctx context.Context, tool, platform string) error {
+func (s *SQLiteStore) LogToolUsage(ctx context.Context, userID int64, tool, platform string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tool_usage (tool, platform, created_at) VALUES (?, ?, ?)`,
-		tool, platform, time.Now().UTC(),
+		`INSERT INTO tool_usage (user_id, tool, platform, created_at) VALUES (?, ?, ?, ?)`,
+		userID, tool, platform, time.Now().UTC(),
 	)
 	return err
 }

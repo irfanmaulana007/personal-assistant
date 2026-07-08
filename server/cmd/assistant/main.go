@@ -13,6 +13,7 @@ import (
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/api"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
@@ -118,8 +119,19 @@ func main() {
 	if cfg.WhatsApp.Enabled {
 		wa = whatsapp.New(cfg.WhatsApp.Database, cfg.Owner.WhatsAppJID, log)
 		wa.SetMessageHandler(func(msg *transport.Message) {
+			// WhatsApp acts as the owner (first admin). Its data is scoped to
+			// that user; if setup hasn't happened yet, ask the user to set up.
+			owner, err := db.FirstAdmin(ctx)
+			if err != nil || owner == nil {
+				_ = wa.SendMessage(ctx, msg.From, "The assistant isn't set up yet. Open the web app to create an admin account first.")
+				return
+			}
+			userID := owner.ID
+			uctx := authctx.WithUserID(ctx, userID)
+
 			// Log incoming message
 			_ = db.LogMessage(ctx, &store.MessageLog{
+				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
 				Sender:    msg.From,
@@ -128,7 +140,7 @@ func main() {
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(ctx, msg.Text, nil)
+			res, err := assistant.Run(uctx, msg.Text, nil)
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
@@ -153,6 +165,7 @@ func main() {
 
 			// Log outgoing message + usage
 			_ = db.LogMessage(ctx, &store.MessageLog{
+				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "out",
 				Sender:    "assistant",
@@ -161,6 +174,7 @@ func main() {
 			})
 			if res != nil {
 				_ = db.LogUsage(ctx, &store.LLMUsage{
+					UserID:           userID,
 					Model:            res.Model,
 					PromptTokens:     res.Usage.PromptTokens,
 					CompletionTokens: res.Usage.CompletionTokens,
@@ -170,7 +184,7 @@ func main() {
 					Platform:         msg.Platform,
 				})
 				for _, tool := range res.Tools {
-					_ = db.LogToolUsage(ctx, tool, msg.Platform)
+					_ = db.LogToolUsage(ctx, userID, tool, msg.Platform)
 				}
 			}
 		})
@@ -196,7 +210,6 @@ func main() {
 			settingsSvc,
 			llmClient,
 			db,
-			cfg.Web.Password,
 			signingKey[:],
 			cfg.Web.StaticDir,
 			cfg.Web.Port,

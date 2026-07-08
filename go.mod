@@ -5,6 +5,7 @@ go 1.25.8
 require (
 	github.com/mattn/go-sqlite3 v1.14.47
 	go.mau.fi/whatsmeow v0.0.0-20260630180629-b572e5bcb92b
+	golang.org/x/crypto v0.53.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/text v0.38.0
 	google.golang.org/api v0.287.0
@@ -40,7 +41,6 @@ require (
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect

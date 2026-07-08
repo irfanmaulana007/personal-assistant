@@ -22,7 +22,6 @@ type Server struct {
 	settings   *settings.Service
 	llmClient  *llm.Client
 	store      store.Store
-	password   string
 	signingKey []byte
 	staticDir  string
 	port       int
@@ -35,7 +34,6 @@ func NewServer(
 	settingsSvc *settings.Service,
 	llmClient *llm.Client,
 	store store.Store,
-	password string,
 	signingKey []byte,
 	staticDir string,
 	port int,
@@ -46,7 +44,6 @@ func NewServer(
 		settings:   settingsSvc,
 		llmClient:  llmClient,
 		store:      store,
-		password:   password,
 		signingKey: signingKey,
 		staticDir:  staticDir,
 		port:       port,
@@ -58,20 +55,31 @@ func NewServer(
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	// Public routes
-	mux.HandleFunc("/api/auth/login", s.handleLogin)
-	mux.HandleFunc("/api/health", s.handleHealth)
+	// protect wraps a handler so it requires any authenticated user;
+	// admin also requires the admin role.
+	protect := func(h http.HandlerFunc) http.Handler { return s.authMiddleware(h) }
+	admin := func(h http.HandlerFunc) http.Handler { return s.authMiddleware(s.requireAdmin(h)) }
 
-	// Protected routes
-	protected := http.NewServeMux()
-	protected.HandleFunc("/api/chat", s.handleChat)
-	protected.HandleFunc("/api/chat/history", s.handleChatHistory)
-	protected.HandleFunc("/api/settings", s.handleSettings)
-	protected.HandleFunc("/api/settings/test", s.handleSettingsTest)
-	protected.HandleFunc("/api/metrics/usage", s.handleMetricsUsage)
-	for _, path := range []string{"/api/chat", "/api/chat/history", "/api/settings", "/api/settings/test", "/api/metrics/usage"} {
-		mux.Handle(path, s.authMiddleware(protected))
-	}
+	// Public routes
+	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("POST /api/auth/setup", s.handleSetup)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+
+	// Authenticated (any role)
+	mux.Handle("GET /api/auth/me", protect(s.handleMe))
+	mux.Handle("POST /api/auth/password", protect(s.handleChangePassword))
+	mux.Handle("/api/chat", protect(s.handleChat))
+	mux.Handle("/api/chat/history", protect(s.handleChatHistory))
+
+	// Admin only
+	mux.Handle("/api/settings", admin(s.handleSettings))
+	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
+	mux.Handle("/api/metrics/usage", admin(s.handleMetricsUsage))
+	mux.Handle("GET /api/users", admin(s.handleListUsers))
+	mux.Handle("POST /api/users", admin(s.handleCreateUser))
+	mux.Handle("PATCH /api/users/{id}", admin(s.handleUpdateUser))
+	mux.Handle("DELETE /api/users/{id}", admin(s.handleDeleteUser))
 
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())

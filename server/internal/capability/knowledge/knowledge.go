@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
@@ -71,7 +72,7 @@ func (h *Handler) save(ctx context.Context, result *intent.ParseResult) (string,
 		return fmt.Sprintf("Note content is too long (max %d characters).", h.maxNoteLength), nil
 	}
 
-	note, err := h.store.CreateNote(ctx, title, content, tags)
+	note, err := h.store.CreateNote(ctx, authctx.UserID(ctx), title, content, tags)
 	if err != nil {
 		return "", fmt.Errorf("create note: %w", err)
 	}
@@ -97,7 +98,7 @@ func (h *Handler) search(ctx context.Context, result *intent.ParseResult) (strin
 		return "What should I search for? Example: _search notes about roadmap_", nil
 	}
 
-	notes, err := h.store.SearchNotes(ctx, query)
+	notes, err := h.store.SearchNotes(ctx, authctx.UserID(ctx), query)
 	if err != nil {
 		return "", fmt.Errorf("search notes: %w", err)
 	}
@@ -130,7 +131,7 @@ func (h *Handler) search(ctx context.Context, result *intent.ParseResult) (strin
 func (h *Handler) list(ctx context.Context, result *intent.ParseResult) (string, error) {
 	tag := result.Entities["tag"]
 
-	notes, err := h.store.ListNotes(ctx, tag)
+	notes, err := h.store.ListNotes(ctx, authctx.UserID(ctx), tag)
 	if err != nil {
 		return "", fmt.Errorf("list notes: %w", err)
 	}
@@ -172,12 +173,13 @@ func (h *Handler) delete(ctx context.Context, result *intent.ParseResult) (strin
 	}
 
 	// Verify note exists
-	note, err := h.store.GetNote(ctx, id)
+	userID := authctx.UserID(ctx)
+	note, err := h.store.GetNote(ctx, userID, id)
 	if err != nil {
 		return fmt.Sprintf("Note #%d not found.", id), nil
 	}
 
-	if err := h.store.DeleteNote(ctx, id); err != nil {
+	if err := h.store.DeleteNote(ctx, userID, id); err != nil {
 		return "", fmt.Errorf("delete note: %w", err)
 	}
 
