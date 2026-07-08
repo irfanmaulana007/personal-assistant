@@ -7,3 +7,14 @@
   font-weight: inherit !important;
   font-size: inherit !important;
 }
+
+/* Recharts adds a focusable wrapper that shows a browser outline when the
+   chart is clicked — suppress that "active" border. */
+.recharts-responsive-container:focus,
+.recharts-responsive-container:focus-visible,
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible {
+  outline: none;
+}
