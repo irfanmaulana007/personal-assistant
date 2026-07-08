@@ -88,6 +88,6 @@ export async function testSettings(): Promise<LlmTestResult> {
   return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
 }
 
-export async function getUsage(days: number): Promise<UsageStats> {
-  return request<UsageStats>(`/api/metrics/usage?days=${days}`);
+export async function getUsage(from: string, to: string): Promise<UsageStats> {
+  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}`);
 }
