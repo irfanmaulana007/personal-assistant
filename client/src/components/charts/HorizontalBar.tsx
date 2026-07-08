@@ -52,7 +52,13 @@ export function HorizontalBar({ data, format = (n) => String(n) }: HorizontalBar
           tickLine={false}
         />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f3f4f6' }} />
-        <Bar dataKey="value" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={16} />
+        <Bar
+          dataKey="value"
+          fill="#4f46e5"
+          radius={[0, 4, 4, 0]}
+          barSize={16}
+          isAnimationActive={false}
+        />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -69,6 +69,7 @@ export function UsageAreaChart({ data }: { data: Point[] }) {
           stroke="#4f46e5"
           strokeWidth={2}
           fill="url(#tokFill)"
+          isAnimationActive={false}
           activeDot={{ r: 4, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2 }}
         />
       </AreaChart>

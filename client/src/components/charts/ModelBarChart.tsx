@@ -49,7 +49,13 @@ export function ModelBarChart({ data }: { data: ModelDatum[] }) {
           tickLine={false}
         />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f3f4f6' }} />
-        <Bar dataKey="tokens" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={18} />
+        <Bar
+          dataKey="tokens"
+          fill="#4f46e5"
+          radius={[0, 4, 4, 0]}
+          barSize={18}
+          isAnimationActive={false}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
