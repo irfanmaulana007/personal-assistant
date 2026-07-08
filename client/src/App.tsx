@@ -6,7 +6,7 @@ import { Chat } from './components/Chat';
 import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
 import { Account } from './components/Account';
-import { ComingSoon } from './components/ComingSoon';
+import { Integrations } from './components/Integrations';
 
 function App() {
   const { authenticated, isAdmin, needsSetup, loading, submitting, error, login, setup, logout } =
@@ -34,16 +34,7 @@ function App() {
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
         {isAdmin && [
-          <Route
-            key="integrations"
-            path="integrations"
-            element={
-              <ComingSoon
-                title="Integrations"
-                description="Connect Google Calendar, Gmail, and more via Composio."
-              />
-            }
-          />,
+          <Route key="integrations" path="integrations" element={<Integrations />} />,
           <Route key="dashboard" path="dashboard" element={<Dashboard />} />,
           <Route key="settings" path="settings" element={<Settings />} />,
           <Route key="account" path="account" element={<Account />} />,
