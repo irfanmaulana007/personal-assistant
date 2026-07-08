@@ -4,7 +4,9 @@ import { UsageAreaChart } from './charts/UsageAreaChart';
 import { ModelBarChart } from './charts/ModelBarChart';
 import { HorizontalBar } from './charts/HorizontalBar';
 import { DateRangePicker } from './DateRangePicker';
+import { ChannelFilter } from './ChannelFilter';
 import { formatTokens, formatCost } from '../lib/format';
+import type { Channel } from '../types';
 
 function defaultRange(): { from: string; to: string } {
   const today = new Date();
@@ -63,7 +65,8 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export function Dashboard() {
   const [range, setRange] = useState(defaultRange);
-  const { stats, loading, error } = useMetrics(range.from, range.to);
+  const [channel, setChannel] = useState<Channel>('');
+  const { stats, loading, error } = useMetrics(range.from, range.to, channel);
 
   const isEmpty = stats && stats.summary.requests === 0;
 
@@ -74,11 +77,14 @@ export function Dashboard() {
           <h1 className="text-xl font-semibold tracking-tight text-gray-900">Dashboard</h1>
           <p className="mt-0.5 text-sm text-gray-500">Your LLM usage and estimated cost.</p>
         </div>
-        <DateRangePicker
-          from={range.from}
-          to={range.to}
-          onChange={(from, to) => setRange({ from, to })}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <ChannelFilter value={channel} onChange={setChannel} />
+          <DateRangePicker
+            from={range.from}
+            to={range.to}
+            onChange={(from, to) => setRange({ from, to })}
+          />
+        </div>
       </div>
 
       {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
@@ -87,8 +93,17 @@ export function Dashboard() {
         <p className="mt-6 text-sm text-gray-500">Loading…</p>
       ) : stats ? (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
             <StatTile label="Requests" value={stats.summary.requests.toLocaleString()} />
+            <StatTile
+              label="Errors"
+              value={stats.summary.errors.toLocaleString()}
+              sub={
+                stats.summary.requests > 0
+                  ? `${((stats.summary.errors / stats.summary.requests) * 100).toFixed(1)}% rate`
+                  : undefined
+              }
+            />
             <StatTile
               label="Total tokens"
               value={formatTokens(stats.summary.total_tokens)}

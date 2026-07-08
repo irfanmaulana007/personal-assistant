@@ -67,6 +67,7 @@ export interface UsageSummary {
   estimated_cost_usd: number;
   avg_latency_ms: number;
   tool_calls: number;
+  errors: number;
 }
 
 export interface UsagePlatform {
@@ -122,10 +123,41 @@ export interface WhatsAppStatus {
 export interface UsageStats {
   from: string;
   to: string;
+  platform: string;
   summary: UsageSummary;
   by_day: UsageDay[];
   by_model: UsageModel[];
   by_platform: UsagePlatform[];
   top_tools: ToolCount[];
   cost_partial: boolean;
+}
+
+export type Channel = '' | 'web' | 'whatsapp';
+
+export interface ToolInvocation {
+  name: string;
+  arguments: string;
+  result: string;
+}
+
+export interface Trace {
+  id: number;
+  platform: string;
+  input: string;
+  output: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  tool_count: number;
+  tools?: ToolInvocation[];
+  status: string;
+  error?: string;
+  estimated_cost_usd: number;
+  created_at: string;
+}
+
+export interface LogsResponse {
+  traces: Trace[];
 }

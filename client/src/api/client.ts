@@ -10,6 +10,9 @@ import type {
   UsageStats,
   Integrations,
   WhatsAppStatus,
+  Channel,
+  LogsResponse,
+  Trace,
 } from '../types';
 
 const TOKEN_KEY = 'assistant_token';
@@ -141,8 +144,27 @@ export async function testSettings(): Promise<LlmTestResult> {
   return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
 }
 
-export async function getUsage(from: string, to: string): Promise<UsageStats> {
-  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}`);
+export async function getUsage(
+  from: string,
+  to: string,
+  platform: Channel = '',
+): Promise<UsageStats> {
+  const p = platform ? `&platform=${platform}` : '';
+  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
+}
+
+export async function getLogs(
+  from: string,
+  to: string,
+  platform: Channel = '',
+  limit = 100,
+): Promise<LogsResponse> {
+  const p = platform ? `&platform=${platform}` : '';
+  return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}`);
+}
+
+export async function getLog(id: number): Promise<Trace> {
+  return request<Trace>(`/api/logs/${id}`);
 }
 
 export async function getIntegrations(): Promise<Integrations> {
