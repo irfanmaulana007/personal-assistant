@@ -55,6 +55,37 @@ type LLMUsage struct {
 	CreatedAt        time.Time
 }
 
+// UsageTotals aggregates token usage over a period.
+type UsageTotals struct {
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// UsageDay is per-day usage for a time series.
+type UsageDay struct {
+	Date        string // YYYY-MM-DD (UTC)
+	Requests    int
+	TotalTokens int
+}
+
+// UsageModel is per-model usage for a breakdown.
+type UsageModel struct {
+	Model            string
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// UsageStats is the combined usage report over a period.
+type UsageStats struct {
+	Summary UsageTotals
+	ByDay   []UsageDay
+	ByModel []UsageModel
+}
+
 // Store defines the persistence interface.
 type Store interface {
 	// Reminders
@@ -87,6 +118,7 @@ type Store interface {
 
 	// LLM usage
 	LogUsage(ctx context.Context, usage *LLMUsage) error
+	UsageStatsSince(ctx context.Context, since time.Time) (*UsageStats, error)
 
 	// Lifecycle
 	Close() error

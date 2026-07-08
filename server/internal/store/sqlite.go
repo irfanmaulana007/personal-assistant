@@ -387,6 +387,67 @@ func (s *SQLiteStore) LogUsage(ctx context.Context, usage *LLMUsage) error {
 	return err
 }
 
+// UsageStatsSince aggregates LLM token usage recorded at or after `since`.
+func (s *SQLiteStore) UsageStatsSince(ctx context.Context, since time.Time) (*UsageStats, error) {
+	sinceUTC := since.UTC()
+	stats := &UsageStats{}
+
+	// Summary
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*),
+		        COALESCE(SUM(prompt_tokens), 0),
+		        COALESCE(SUM(completion_tokens), 0),
+		        COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ?`, sinceUTC,
+	).Scan(&stats.Summary.Requests, &stats.Summary.PromptTokens, &stats.Summary.CompletionTokens, &stats.Summary.TotalTokens)
+	if err != nil {
+		return nil, fmt.Errorf("usage summary: %w", err)
+	}
+
+	// By day
+	dayRows, err := s.db.QueryContext(ctx,
+		`SELECT date(created_at) AS d, COUNT(*), COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ?
+		 GROUP BY d ORDER BY d ASC`, sinceUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by day: %w", err)
+	}
+	defer dayRows.Close()
+	for dayRows.Next() {
+		var d UsageDay
+		if err := dayRows.Scan(&d.Date, &d.Requests, &d.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan usage day: %w", err)
+		}
+		stats.ByDay = append(stats.ByDay, d)
+	}
+	if err := dayRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// By model
+	modelRows, err := s.db.QueryContext(ctx,
+		`SELECT model, COUNT(*),
+		        COALESCE(SUM(prompt_tokens), 0),
+		        COALESCE(SUM(completion_tokens), 0),
+		        COALESCE(SUM(total_tokens), 0)
+		 FROM llm_usage WHERE created_at >= ?
+		 GROUP BY model ORDER BY SUM(total_tokens) DESC`, sinceUTC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+	defer modelRows.Close()
+	for modelRows.Next() {
+		var m UsageModel
+		if err := modelRows.Scan(&m.Model, &m.Requests, &m.PromptTokens, &m.CompletionTokens, &m.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan usage model: %w", err)
+		}
+		stats.ByModel = append(stats.ByModel, m)
+	}
+	return stats, modelRows.Err()
+}
+
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
