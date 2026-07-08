@@ -20,6 +20,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/composiotools"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
@@ -113,8 +114,11 @@ func main() {
 
 	router := capability.NewRouter(log, handlers...)
 
+	// Composio-backed tools for the user's connected apps (optional).
+	composioTools := composiotools.New(composioClient, settingsSvc, log)
+
 	// LLM tool-calling agent (replaces the regex parser).
-	assistant := agent.New(llmClient, settingsSvc, router, cfg.Owner, log)
+	assistant := agent.New(llmClient, settingsSvc, router, cfg.Owner, composioTools, log)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport

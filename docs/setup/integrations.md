@@ -4,9 +4,11 @@ The **Integrations** page (admin only) connects third-party apps —
 **Gmail, Google Calendar, GitHub, Sentry** — through
 [Composio](https://composio.dev), which manages the OAuth flows for you.
 
-This phase covers **connection management** only: you can connect and disconnect
-apps per user. Wiring the connected apps into the assistant's tool-calling agent
-is a later step.
+Once an app is **connected**, the assistant can use it in Chat: a curated set of
+each connected app's actions is exposed to the LLM agent as tools (e.g. Gmail:
+send / fetch / draft; Calendar: create / find / list; GitHub: create issue /
+list / search; Sentry: list issues / projects). The agent calls them through
+Composio on your behalf. Apps you haven't connected contribute no tools.
 
 ## 1. Get a Composio API key
 

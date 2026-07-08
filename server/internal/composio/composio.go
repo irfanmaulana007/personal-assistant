@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -173,6 +174,97 @@ func (c *Client) InitiateConnection(ctx context.Context, apiKey, authConfigID, u
 // DeleteConnection removes a connection.
 func (c *Client) DeleteConnection(ctx context.Context, apiKey, id string) error {
 	return c.do(ctx, apiKey, http.MethodDelete, "/connected_accounts/"+url.PathEscape(id), nil, nil)
+}
+
+// ToolDef is a Composio tool definition (its slug and JSON-Schema parameters).
+type ToolDef struct {
+	Slug        string
+	Name        string
+	Description string
+	// Parameters is the tool's input JSON Schema (OpenAI-compatible).
+	Parameters json.RawMessage
+}
+
+type toolItem struct {
+	Slug            string          `json:"slug"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	InputParameters json.RawMessage `json:"input_parameters"`
+	Parameters      json.RawMessage `json:"parameters"`
+}
+
+func (t toolItem) toDef() ToolDef {
+	params := t.InputParameters
+	if len(params) == 0 {
+		params = t.Parameters
+	}
+	return ToolDef{Slug: t.Slug, Name: t.Name, Description: t.Description, Parameters: params}
+}
+
+// GetTools fetches tool definitions by their exact slugs.
+func (c *Client) GetTools(ctx context.Context, apiKey string, slugs []string) ([]ToolDef, error) {
+	if len(slugs) == 0 {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("tool_slugs", strings.Join(slugs, ","))
+	return c.fetchTools(ctx, apiKey, q)
+}
+
+// GetToolsByToolkit fetches up to limit tools for a toolkit (fallback when
+// specific slugs aren't known).
+func (c *Client) GetToolsByToolkit(ctx context.Context, apiKey, toolkitSlug string, limit int) ([]ToolDef, error) {
+	q := url.Values{}
+	q.Set("toolkit_slug", toolkitSlug)
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	return c.fetchTools(ctx, apiKey, q)
+}
+
+func (c *Client) fetchTools(ctx context.Context, apiKey string, q url.Values) ([]ToolDef, error) {
+	var resp struct {
+		Items []toolItem `json:"items"`
+	}
+	if err := c.do(ctx, apiKey, http.MethodGet, "/tools?"+q.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	defs := make([]ToolDef, 0, len(resp.Items))
+	for _, it := range resp.Items {
+		if it.Slug != "" {
+			defs = append(defs, it.toDef())
+		}
+	}
+	return defs, nil
+}
+
+// ExecuteTool runs a tool for a user and returns a compact result string.
+func (c *Client) ExecuteTool(ctx context.Context, apiKey, toolSlug, argumentsJSON, userID string) (string, error) {
+	var args map[string]any
+	if strings.TrimSpace(argumentsJSON) != "" {
+		if err := json.Unmarshal([]byte(argumentsJSON), &args); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+	body := map[string]any{"arguments": args, "user_id": userID}
+
+	var resp struct {
+		Data       json.RawMessage `json:"data"`
+		Successful *bool           `json:"successful"`
+		Success    *bool           `json:"success"`
+		Error      string          `json:"error"`
+	}
+	if err := c.do(ctx, apiKey, http.MethodPost, "/tools/execute/"+url.PathEscape(toolSlug), body, &resp); err != nil {
+		return "", err
+	}
+	ok := (resp.Successful != nil && *resp.Successful) || (resp.Success != nil && *resp.Success)
+	if !ok && resp.Error != "" {
+		return "", fmt.Errorf("%s", resp.Error)
+	}
+	if len(resp.Data) > 0 {
+		return string(resp.Data), nil
+	}
+	return "Done.", nil
 }
 
 func firstNonEmpty(vals ...string) string {
