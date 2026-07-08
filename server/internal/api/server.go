@@ -17,12 +17,21 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
+// WhatsAppController controls the WhatsApp transport from the API (nil when the
+// WhatsApp feature is disabled).
+type WhatsAppController interface {
+	Status() (status, qr string)
+	BeginPairing() error
+	Logout(ctx context.Context) error
+}
+
 // Server is the HTTP API server for the web client.
 type Server struct {
 	agent      *agent.Agent
 	settings   *settings.Service
 	llmClient  *llm.Client
 	composio   *composio.Client
+	whatsapp   WhatsAppController
 	store      store.Store
 	signingKey []byte
 	staticDir  string
@@ -30,12 +39,13 @@ type Server struct {
 	log        *slog.Logger
 }
 
-// NewServer creates a new API server.
+// NewServer creates a new API server. whatsapp may be nil.
 func NewServer(
 	agent *agent.Agent,
 	settingsSvc *settings.Service,
 	llmClient *llm.Client,
 	composioClient *composio.Client,
+	whatsapp WhatsAppController,
 	store store.Store,
 	signingKey []byte,
 	staticDir string,
@@ -47,6 +57,7 @@ func NewServer(
 		settings:   settingsSvc,
 		llmClient:  llmClient,
 		composio:   composioClient,
+		whatsapp:   whatsapp,
 		store:      store,
 		signingKey: signingKey,
 		staticDir:  staticDir,
@@ -88,6 +99,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/integrations/key", admin(s.handleSetComposioKey))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", admin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", admin(s.handleDisconnectIntegration))
+	mux.Handle("GET /api/whatsapp", admin(s.handleWhatsAppStatus))
+	mux.Handle("POST /api/whatsapp/connect", admin(s.handleWhatsAppConnect))
+	mux.Handle("POST /api/whatsapp/disconnect", admin(s.handleWhatsAppDisconnect))
 
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())

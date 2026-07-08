@@ -123,7 +123,7 @@ func main() {
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
-		wa = whatsapp.New(cfg.WhatsApp.Database, cfg.Owner.WhatsAppJID, log)
+		wa = whatsapp.New(cfg.WhatsApp.Database, log)
 		wa.SetMessageHandler(func(msg *transport.Message) {
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.
@@ -195,15 +195,29 @@ func main() {
 			}
 		})
 
-		// Set send function for reminders
-		reminderHandler.SetSendFunc(wa.SendMessage)
+		// Reminders are delivered to the paired WhatsApp account (derived from
+		// pairing), regardless of the reminder's stored recipient.
+		reminderHandler.SetSendFunc(func(ctx context.Context, _ string, text string) error {
+			owner := wa.OwnerJID()
+			if owner == "" {
+				return fmt.Errorf("whatsapp not connected")
+			}
+			return wa.SendMessage(ctx, owner, text)
+		})
 
-		if err := wa.Start(ctx); err != nil {
-			log.Error("failed to start WhatsApp", "error", err)
+		if err := wa.Init(ctx); err != nil {
+			log.Error("failed to initialize WhatsApp", "error", err)
 			os.Exit(1)
 		}
+		// Reconnect an existing session in the background so startup never
+		// blocks on WhatsApp. Pairing is driven from the UI.
+		go func() {
+			if err := wa.Connect(ctx); err != nil {
+				log.Error("WhatsApp reconnect failed", "error", err)
+			}
+		}()
 		defer wa.Stop()
-		log.Info("WhatsApp transport started")
+		log.Info("WhatsApp transport ready")
 	}
 
 	// Start HTTP API server for web client
@@ -211,11 +225,17 @@ func main() {
 		// Derive signing key from password for JWT
 		signingKey := sha256.Sum256([]byte(cfg.Web.Password))
 
+		var waCtl api.WhatsAppController
+		if wa != nil {
+			waCtl = wa
+		}
+
 		apiServer := api.NewServer(
 			assistant,
 			settingsSvc,
 			llmClient,
 			composioClient,
+			waCtl,
 			db,
 			signingKey[:],
 			cfg.Web.StaticDir,
