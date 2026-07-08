@@ -1,1 +1,9 @@
 @import 'tailwindcss';
+
+/* react-day-picker: selection is already conveyed by the cell background, so
+   keep selected days at the same font weight and size as the rest (its default
+   makes them bold + larger, which looks inconsistent). */
+.rdp-selected {
+  font-weight: inherit !important;
+  font-size: inherit !important;
+}
