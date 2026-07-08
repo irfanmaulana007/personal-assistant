@@ -27,22 +27,36 @@ var ErrNotConfigured = errors.New("llm api key not configured")
 // maxIterations bounds the tool-calling loop to avoid runaway LLM/tool cycles.
 const maxIterations = 5
 
+// ToolProvider supplies extra, dynamically-resolved tools (e.g. connected
+// Composio apps) and executes them. Implementations read the current user from
+// the context (via authctx). All methods must tolerate a nil/empty result.
+type ToolProvider interface {
+	// Tools returns the extra tools available to the current user.
+	Tools(ctx context.Context) []llm.Tool
+	// Handles reports whether a tool call name belongs to this provider.
+	Handles(name string) bool
+	// Execute runs the tool and returns a result string for the model.
+	Execute(ctx context.Context, name, argsJSON string) string
+}
+
 // Agent orchestrates the LLM tool-calling loop.
 type Agent struct {
 	client   *llm.Client
 	settings *settings.Service
 	router   *capability.Router
 	owner    config.OwnerConfig
+	provider ToolProvider // optional; extra tools (may be nil)
 	log      *slog.Logger
 }
 
-// New creates an agent.
-func New(client *llm.Client, settingsSvc *settings.Service, router *capability.Router, owner config.OwnerConfig, log *slog.Logger) *Agent {
+// New creates an agent. provider may be nil (no extra tools).
+func New(client *llm.Client, settingsSvc *settings.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
 	return &Agent{
 		client:   client,
 		settings: settingsSvc,
 		router:   router,
 		owner:    owner,
+		provider: provider,
 		log:      log.With("component", "agent"),
 	}
 }
@@ -79,6 +93,9 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 	messages = append(messages, llm.Message{Role: "user", Content: userMessage})
 
 	tools := toolSchemas()
+	if a.provider != nil {
+		tools = append(tools, a.provider.Tools(ctx)...)
+	}
 	var total llm.Usage
 	var used []string
 
@@ -98,7 +115,12 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 
 		for _, tc := range msg.ToolCalls {
 			used = append(used, tc.Function.Name)
-			result := a.execTool(ctx, tc)
+			var result string
+			if a.provider != nil && a.provider.Handles(tc.Function.Name) {
+				result = a.provider.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
+			} else {
+				result = a.execTool(ctx, tc)
+			}
 			messages = append(messages, llm.Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,
