@@ -2,10 +2,10 @@ import { usePreferences } from '../contexts/preferences';
 import type { ChatMessage } from '../types';
 
 export function Message({ message }: { message: ChatMessage }) {
-  const { formatDate } = usePreferences();
+  const { formatChatTime } = usePreferences();
   const isUser = message.direction === 'out';
   const name = isUser ? 'You' : 'Assistant';
-  const time = message.timestamp ? formatDate(message.timestamp, { time: true }) : '';
+  const time = message.timestamp ? formatChatTime(message.timestamp) : '';
 
   return (
     <div className={`mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>

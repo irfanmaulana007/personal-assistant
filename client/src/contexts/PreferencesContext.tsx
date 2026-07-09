@@ -47,9 +47,61 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     return `$${usd.toFixed(2)}`;
   };
 
+  // Calendar date (YYYY-MM-DD) of a moment in the selected timezone.
+  const tzDate = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+
+  const formatChatTime: PreferencesValue['formatChatTime'] = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+
+    const dayMs = 86400000;
+    const msgCal = new Date(`${tzDate(d)}T00:00:00Z`);
+    const todayCal = new Date(`${tzDate(new Date())}T00:00:00Z`);
+    const diffDays = Math.round((todayCal.getTime() - msgCal.getTime()) / dayMs);
+
+    if (diffDays <= 0) {
+      // Today → time only.
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      }).format(d);
+    }
+    if (diffDays === 1) return 'Yesterday';
+
+    // Monday of the current week (Mon = 0).
+    const daysSinceMonday = (todayCal.getUTCDay() + 6) % 7;
+    const mondayCal = new Date(todayCal.getTime() - daysSinceMonday * dayMs);
+    if (msgCal.getTime() >= mondayCal.getTime()) {
+      // Earlier this week → weekday name.
+      return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d);
+    }
+    // Older → date.
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(d);
+  };
+
   return (
     <PreferencesCtx.Provider
-      value={{ prefs, reload: () => setTick((t) => t + 1), formatDate, formatMoney }}
+      value={{
+        prefs,
+        reload: () => setTick((t) => t + 1),
+        formatDate,
+        formatMoney,
+        formatChatTime,
+      }}
     >
       {children}
     </PreferencesCtx.Provider>
