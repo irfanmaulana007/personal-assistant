@@ -76,27 +76,6 @@ var toolSpecs = []toolSpec{
 		parameters:  `{"type":"object","properties":{"to":{"type":"string","description":"Recipient email address."},"body":{"type":"string","description":"Message body."}},"required":["to","body"]}`,
 	},
 	{
-		name:        "reminder_set",
-		description: "Set a reminder for the user.",
-		capability:  intent.CapabilityReminder,
-		action:      intent.ActionReminderSet,
-		parameters:  `{"type":"object","properties":{"message":{"type":"string","description":"What to be reminded about."},"time":{"type":"string","description":"When to remind, e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'."}},"required":["message","time"]}`,
-	},
-	{
-		name:        "reminder_list",
-		description: "List the user's active reminders.",
-		capability:  intent.CapabilityReminder,
-		action:      intent.ActionReminderList,
-		parameters:  `{"type":"object","properties":{}}`,
-	},
-	{
-		name:        "reminder_cancel",
-		description: "Cancel a reminder by its number.",
-		capability:  intent.CapabilityReminder,
-		action:      intent.ActionReminderCancel,
-		parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
-	},
-	{
 		name:        "note_save",
 		description: "Save a note to the knowledge base.",
 		capability:  intent.CapabilityKnowledge,
@@ -127,9 +106,32 @@ var toolSpecs = []toolSpec{
 }
 
 // skillTools maps a skill key to the extra tools that skill provides. These are
-// only exposed to the LLM when the user has the skill enabled. Populated as each
-// skill is implemented (contacts, activity, travel, …).
-var skillTools = map[string][]toolSpec{}
+// only exposed to the LLM when the user has the skill enabled.
+var skillTools = map[string][]toolSpec{
+	"scheduled_reminder": {
+		{
+			name:        "reminder_set",
+			description: "Set a reminder for the user (delivered to their WhatsApp when due).",
+			capability:  intent.CapabilityReminder,
+			action:      intent.ActionReminderSet,
+			parameters:  `{"type":"object","properties":{"message":{"type":"string","description":"What to be reminded about."},"time":{"type":"string","description":"When to remind, e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am', 'on the 5th at 9am'."}},"required":["message","time"]}`,
+		},
+		{
+			name:        "reminder_list",
+			description: "List the user's active reminders.",
+			capability:  intent.CapabilityReminder,
+			action:      intent.ActionReminderList,
+			parameters:  `{"type":"object","properties":{}}`,
+		},
+		{
+			name:        "reminder_cancel",
+			description: "Cancel a reminder by its number.",
+			capability:  intent.CapabilityReminder,
+			action:      intent.ActionReminderCancel,
+			parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
+		},
+	},
+}
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a
 // tool call to its capability action regardless of which skill exposed it.
