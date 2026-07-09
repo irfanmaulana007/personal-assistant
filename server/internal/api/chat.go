@@ -13,6 +13,9 @@ import (
 
 type chatRequest struct {
 	Message string `json:"message"`
+	// Image is an optional data: URL (base64) attached to the message, used by
+	// vision skills such as Food Calories.
+	Image string `json:"image"`
 }
 
 type chatResponse struct {
@@ -37,7 +40,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Message == "" {
+	if req.Message == "" && req.Image == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
 		return
 	}
@@ -46,6 +49,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	userID := int64(0)
 	if claims != nil {
 		userID = claims.UserID()
+	}
+
+	// A short text label for logs/history (the image itself is not stored).
+	inputBody := req.Message
+	if req.Image != "" {
+		if inputBody == "" {
+			inputBody = "[image]"
+		} else {
+			inputBody += " [image]"
+		}
 	}
 
 	// Load recent conversation history for context (before logging the new message).
@@ -57,12 +70,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Platform:  "web",
 		Direction: "in",
 		Sender:    "owner",
-		Body:      req.Message,
+		Body:      inputBody,
 	})
 
 	// Run the LLM agent.
 	start := time.Now()
-	res, err := s.agent.Run(r.Context(), req.Message, history)
+	res, err := s.agent.Run(r.Context(), req.Message, history, req.Image)
 	latencyMs := int(time.Since(start).Milliseconds())
 	if err != nil {
 		if errors.Is(err, agent.ErrNotConfigured) {
@@ -75,7 +88,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
 			UserID:    userID,
 			Platform:  "web",
-			Input:     req.Message,
+			Input:     inputBody,
 			LatencyMs: latencyMs,
 			Status:    "error",
 			Error:     err.Error(),
@@ -99,7 +112,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
 		UserID:           userID,
 		Platform:         "web",
-		Input:            req.Message,
+		Input:            inputBody,
 		Output:           res.Reply,
 		Model:            res.Model,
 		PromptTokens:     res.Usage.PromptTokens,
