@@ -298,6 +298,28 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
         ))}
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+        <span>
+          <span className="text-gray-400">User:</span> {trace.user || `#${trace.user_id}`}
+        </span>
+        <span>
+          <span className="text-gray-400">Channel:</span> {trace.platform}
+        </span>
+        {trace.skills && trace.skills.length > 0 && (
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="text-gray-400">Skills:</span>
+            {trace.skills.map((sk) => (
+              <span
+                key={sk}
+                className="rounded bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700"
+              >
+                {sk}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+
       <Section title="Input">
         <p className="whitespace-pre-wrap text-sm text-gray-800">{trace.input || '(none)'}</p>
       </Section>
@@ -319,8 +341,13 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
             <div className="space-y-3">
               {trace.tools.map((t, i) => (
                 <div key={i} className="rounded-lg border border-gray-100">
-                  <div className="border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700">
-                    {t.name}
+                  <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700">
+                    <span>{t.name}</span>
+                    {t.latency_ms != null && (
+                      <span className="text-xs font-normal text-gray-400 tabular-nums">
+                        {fmtLatency(t.latency_ms)}
+                      </span>
+                    )}
                   </div>
                   <div className="space-y-2 p-3">
                     <div>
@@ -345,6 +372,47 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
             </div>
           </Section>
         )
+      )}
+
+      {trace.steps && trace.steps.length > 0 && (
+        <Section title={`LLM calls (${trace.steps.length})`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100 text-left uppercase tracking-wide text-gray-400">
+                  <th className="py-1.5 pr-2 font-medium">#</th>
+                  <th className="py-1.5 pr-2 font-medium">Model</th>
+                  <th className="py-1.5 pr-2 text-right font-medium">Tokens (in/out)</th>
+                  <th className="py-1.5 pr-2 text-right font-medium">Latency</th>
+                  <th className="py-1.5 pr-2 text-right font-medium">Cost</th>
+                  <th className="py-1.5 font-medium">Finish / tools</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trace.steps.map((st) => (
+                  <tr key={st.step} className="border-b border-gray-50 last:border-0">
+                    <td className="py-1.5 pr-2 tabular-nums text-gray-500">{st.step}</td>
+                    <td className="py-1.5 pr-2 text-gray-700">{st.model}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">
+                      {formatTokens(st.total_tokens)} ({st.prompt_tokens}/{st.completion_tokens})
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">
+                      {fmtLatency(st.latency_ms)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">
+                      {formatMoney(st.estimated_cost_usd)}
+                    </td>
+                    <td className="py-1.5 text-gray-500">
+                      {st.tool_calls && st.tool_calls.length > 0
+                        ? st.tool_calls.join(', ')
+                        : st.finish_reason || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
       )}
 
       <Section title="Output">

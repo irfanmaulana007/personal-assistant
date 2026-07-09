@@ -121,6 +121,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		LatencyMs:        latencyMs,
 		ToolCount:        len(res.Tools),
 		Tools:            toStoreTools(res.Tools),
+		Steps:            toStoreSteps(res.Steps),
+		Skills:           res.Skills,
 		Status:           "ok",
 	})
 	for _, tool := range res.Tools {
@@ -134,7 +136,20 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 func toStoreTools(inv []agent.ToolInvocation) []store.ToolInvocation {
 	out := make([]store.ToolInvocation, len(inv))
 	for i, t := range inv {
-		out[i] = store.ToolInvocation{Name: t.Name, Arguments: t.Arguments, Result: t.Result}
+		out[i] = store.ToolInvocation{Name: t.Name, Arguments: t.Arguments, Result: t.Result, LatencyMs: t.LatencyMs}
+	}
+	return out
+}
+
+// toStoreSteps converts agent LLM-call records to the store representation.
+func toStoreSteps(steps []agent.LLMCall) []store.LLMCall {
+	out := make([]store.LLMCall, len(steps))
+	for i, s := range steps {
+		out[i] = store.LLMCall{
+			Step: s.Step, Model: s.Model, PromptTokens: s.PromptTokens,
+			CompletionTokens: s.CompletionTokens, TotalTokens: s.TotalTokens,
+			LatencyMs: s.LatencyMs, FinishReason: s.FinishReason, ToolCalls: s.ToolCalls,
+		}
 	}
 	return out
 }

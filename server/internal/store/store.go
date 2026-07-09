@@ -169,6 +169,19 @@ type ToolInvocation struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 	Result    string `json:"result"`
+	LatencyMs int    `json:"latency_ms,omitempty"`
+}
+
+// LLMCall records one LLM round-trip within a trace.
+type LLMCall struct {
+	Step             int      `json:"step"`
+	Model            string   `json:"model"`
+	PromptTokens     int      `json:"prompt_tokens"`
+	CompletionTokens int      `json:"completion_tokens"`
+	TotalTokens      int      `json:"total_tokens"`
+	LatencyMs        int      `json:"latency_ms"`
+	FinishReason     string   `json:"finish_reason,omitempty"`
+	ToolCalls        []string `json:"tool_calls,omitempty"`
 }
 
 // Trace is a full record of one agent run — the source of truth for both the
@@ -186,6 +199,8 @@ type Trace struct {
 	LatencyMs        int
 	ToolCount        int
 	Tools            []ToolInvocation // populated by GetTrace only
+	Steps            []LLMCall        // per-LLM-call detail; populated by GetTrace only
+	Skills           []string         // skill keys active for this run
 	Status           string           // "ok" or "error"
 	Error            string
 	CreatedAt        time.Time

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,10 +13,25 @@ type toolInvocationResp struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 	Result    string `json:"result"`
+	LatencyMs int    `json:"latency_ms,omitempty"`
+}
+
+type llmCallResp struct {
+	Step             int      `json:"step"`
+	Model            string   `json:"model"`
+	PromptTokens     int      `json:"prompt_tokens"`
+	CompletionTokens int      `json:"completion_tokens"`
+	TotalTokens      int      `json:"total_tokens"`
+	LatencyMs        int      `json:"latency_ms"`
+	FinishReason     string   `json:"finish_reason,omitempty"`
+	ToolCalls        []string `json:"tool_calls,omitempty"`
+	EstimatedCostUSD float64  `json:"estimated_cost_usd"`
 }
 
 type traceResp struct {
 	ID               int64                `json:"id"`
+	UserID           int64                `json:"user_id"`
+	User             string               `json:"user,omitempty"`
 	Platform         string               `json:"platform"`
 	Input            string               `json:"input"`
 	Output           string               `json:"output"`
@@ -26,16 +42,19 @@ type traceResp struct {
 	LatencyMs        int                  `json:"latency_ms"`
 	ToolCount        int                  `json:"tool_count"`
 	Tools            []toolInvocationResp `json:"tools,omitempty"`
+	Steps            []llmCallResp        `json:"steps,omitempty"`
+	Skills           []string             `json:"skills,omitempty"`
 	Status           string               `json:"status"`
 	Error            string               `json:"error,omitempty"`
 	EstimatedCostUSD float64              `json:"estimated_cost_usd"`
 	CreatedAt        string               `json:"created_at"`
 }
 
-func (s *Server) traceToResp(t *store.Trace, includeTools bool) traceResp {
+func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools bool) traceResp {
 	cost, _ := s.pricing.Estimate(t.Model, t.PromptTokens, t.CompletionTokens)
 	r := traceResp{
 		ID:               t.ID,
+		UserID:           t.UserID,
 		Platform:         t.Platform,
 		Input:            t.Input,
 		Output:           t.Output,
@@ -45,6 +64,7 @@ func (s *Server) traceToResp(t *store.Trace, includeTools bool) traceResp {
 		TotalTokens:      t.TotalTokens,
 		LatencyMs:        t.LatencyMs,
 		ToolCount:        t.ToolCount,
+		Skills:           t.Skills,
 		Status:           t.Status,
 		Error:            t.Error,
 		EstimatedCostUSD: cost,
@@ -52,7 +72,19 @@ func (s *Server) traceToResp(t *store.Trace, includeTools bool) traceResp {
 	}
 	if includeTools {
 		for _, tv := range t.Tools {
-			r.Tools = append(r.Tools, toolInvocationResp{Name: tv.Name, Arguments: tv.Arguments, Result: tv.Result})
+			r.Tools = append(r.Tools, toolInvocationResp{Name: tv.Name, Arguments: tv.Arguments, Result: tv.Result, LatencyMs: tv.LatencyMs})
+		}
+		for _, st := range t.Steps {
+			c, _ := s.pricing.Estimate(st.Model, st.PromptTokens, st.CompletionTokens)
+			r.Steps = append(r.Steps, llmCallResp{
+				Step: st.Step, Model: st.Model, PromptTokens: st.PromptTokens,
+				CompletionTokens: st.CompletionTokens, TotalTokens: st.TotalTokens,
+				LatencyMs: st.LatencyMs, FinishReason: st.FinishReason, ToolCalls: st.ToolCalls,
+				EstimatedCostUSD: c,
+			})
+		}
+		if u, err := s.store.GetUserByID(ctx, t.UserID); err == nil && u != nil {
+			r.User = u.Email
 		}
 	}
 	return r
@@ -113,7 +145,7 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 		traces = traces[:limit]
 	}
 	for i := range traces {
-		out.Traces = append(out.Traces, s.traceToResp(&traces[i], false))
+		out.Traces = append(out.Traces, s.traceToResp(r.Context(), &traces[i], false))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -134,5 +166,5 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.traceToResp(t, true))
+	writeJSON(w, http.StatusOK, s.traceToResp(r.Context(), t, true))
 }
