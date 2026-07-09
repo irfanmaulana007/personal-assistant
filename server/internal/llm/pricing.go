@@ -13,8 +13,13 @@ type ModelPrice struct {
 // providers change pricing over time, so treat the dashboard's cost figures as
 // approximate and edit this table to match your plan.
 var prices = map[string]ModelPrice{
-	"deepseek-chat":           {InputPer1M: 0.27, OutputPer1M: 1.10},
-	"deepseek-reasoner":       {InputPer1M: 0.55, OutputPer1M: 2.19},
+	// DeepSeek rates per https://api-docs.deepseek.com/quick_start/pricing
+	// (USD per 1M tokens, cache-miss input). deepseek-chat/reasoner are the
+	// non-thinking/thinking aliases of v4-flash and deprecate 2026-07-24.
+	"deepseek-v4-flash":       {InputPer1M: 0.14, OutputPer1M: 0.28},
+	"deepseek-v4-pro":         {InputPer1M: 0.435, OutputPer1M: 0.87},
+	"deepseek-chat":           {InputPer1M: 0.14, OutputPer1M: 0.28},
+	"deepseek-reasoner":       {InputPer1M: 0.14, OutputPer1M: 0.28},
 	"gpt-4o-mini":             {InputPer1M: 0.15, OutputPer1M: 0.60},
 	"gpt-4o":                  {InputPer1M: 2.50, OutputPer1M: 10.00},
 	"openai/gpt-4o-mini":      {InputPer1M: 0.15, OutputPer1M: 0.60},

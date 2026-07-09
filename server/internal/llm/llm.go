@@ -17,7 +17,7 @@ import (
 // Default provider settings (DeepSeek, OpenAI-compatible).
 const (
 	DefaultBaseURL = "https://api.deepseek.com"
-	DefaultModel   = "deepseek-chat"
+	DefaultModel   = "deepseek-v4-flash"
 )
 
 // Config holds the runtime configuration for the LLM provider. It is resolved
