@@ -40,11 +40,13 @@ type Reminder struct {
 	ID          int64
 	UserID      int64
 	Title       string
-	RepeatMode  string   // once | daily | weekly | monthly
+	RepeatMode  string   // once | daily | weekly | monthly | specific
 	Times       []string // local "HH:MM", sorted ascending
 	Weekdays    []int    // 0-6 (0=Sun), weekly only
 	DayOfMonth  int      // 1-31, monthly only
 	OnceDate    string   // local "YYYY-MM-DD", once only
+	EventAt     string   // local "YYYY-MM-DDTHH:MM", the actual event (specific mode; optional otherwise)
+	Offsets     []int    // minutes before EventAt to remind, ascending; specific mode only
 	Enabled     bool
 	LastFiredAt *time.Time // UTC instant of the most-recent slot fired; nil = never
 
@@ -64,6 +66,8 @@ type ReminderInput struct {
 	Weekdays   []int
 	DayOfMonth int
 	OnceDate   string
+	EventAt    string
+	Offsets    []int
 	Enabled    bool
 }
 

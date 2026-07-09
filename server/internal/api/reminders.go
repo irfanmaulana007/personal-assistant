@@ -20,6 +20,8 @@ type reminderResp struct {
 	Weekdays   []int    `json:"weekdays"`
 	DayOfMonth int      `json:"day_of_month"`
 	OnceDate   string   `json:"once_date"`
+	EventAt    string   `json:"event_at"`
+	Offsets    []int    `json:"offsets"`
 	Enabled    bool     `json:"enabled"`
 }
 
@@ -30,6 +32,8 @@ type reminderReq struct {
 	Weekdays   []int    `json:"weekdays"`
 	DayOfMonth int      `json:"day_of_month"`
 	OnceDate   string   `json:"once_date"`
+	EventAt    string   `json:"event_at"`
+	Offsets    []int    `json:"offsets"`
 	Enabled    bool     `json:"enabled"`
 }
 
@@ -42,6 +46,8 @@ func toReminderResp(r store.Reminder) reminderResp {
 		Weekdays:   emptyToIntSlice(r.Weekdays),
 		DayOfMonth: r.DayOfMonth,
 		OnceDate:   r.OnceDate,
+		EventAt:    r.EventAt,
+		Offsets:    emptyToIntSlice(r.Offsets),
 		Enabled:    r.Enabled,
 	}
 }
@@ -70,22 +76,44 @@ func validateReminder(req reminderReq, tz *time.Location) (store.ReminderInput, 
 
 	mode := req.RepeatMode
 	switch mode {
-	case "once", "daily", "weekly", "monthly":
+	case "once", "daily", "weekly", "monthly", "specific":
 	default:
-		return store.ReminderInput{}, fmt.Errorf("repeat_mode must be once, daily, weekly, or monthly")
+		return store.ReminderInput{}, fmt.Errorf("repeat_mode must be once, daily, weekly, monthly, or specific")
+	}
+
+	in := store.ReminderInput{
+		Title:      title,
+		RepeatMode: mode,
+		Enabled:    req.Enabled,
+	}
+
+	// The "specific" (event) mode is driven by an event time and lead-time
+	// offsets rather than times-of-day.
+	if mode == "specific" {
+		event, normalized, err := parseEventAt(req.EventAt, tz)
+		if err != nil {
+			return store.ReminderInput{}, err
+		}
+		offsets, err := normalizeOffsets(req.Offsets)
+		if err != nil {
+			return store.ReminderInput{}, err
+		}
+		// The latest reminder point is event − the smallest offset. If even that
+		// is already past, the reminder can never fire.
+		latest := event.Add(-time.Duration(offsets[0]) * time.Minute)
+		if latest.Before(time.Now().In(tz)) {
+			return store.ReminderInput{}, fmt.Errorf("the event and all its reminders are in the past")
+		}
+		in.EventAt = normalized
+		in.Offsets = offsets
+		return in, nil
 	}
 
 	times, err := normalizeTimes(req.Times)
 	if err != nil {
 		return store.ReminderInput{}, err
 	}
-
-	in := store.ReminderInput{
-		Title:      title,
-		RepeatMode: mode,
-		Times:      times,
-		Enabled:    req.Enabled,
-	}
+	in.Times = times
 
 	switch mode {
 	case "weekly":
@@ -113,7 +141,49 @@ func validateReminder(req reminderReq, tz *time.Location) (store.ReminderInput, 
 		in.OnceDate = req.OnceDate
 	}
 
+	// An optional event date/time may accompany any recurring reminder (stored
+	// for reference/display; it does not drive firing outside "specific").
+	if strings.TrimSpace(req.EventAt) != "" {
+		_, normalized, err := parseEventAt(req.EventAt, tz)
+		if err != nil {
+			return store.ReminderInput{}, err
+		}
+		in.EventAt = normalized
+	}
+
 	return in, nil
+}
+
+// parseEventAt parses a local "YYYY-MM-DDTHH:MM" datetime, returning the resolved
+// instant and the normalized string.
+func parseEventAt(s string, tz *time.Location) (time.Time, string, error) {
+	s = strings.TrimSpace(s)
+	t, err := time.ParseInLocation("2006-01-02T15:04", s, tz)
+	if err != nil {
+		return time.Time{}, "", fmt.Errorf("event date & time must be valid (YYYY-MM-DDTHH:MM)")
+	}
+	return t, t.Format("2006-01-02T15:04"), nil
+}
+
+// normalizeOffsets validates lead-time offsets (minutes before the event),
+// dedupes, and sorts ascending (smallest = closest to the event).
+func normalizeOffsets(offsets []int) ([]int, error) {
+	if len(offsets) == 0 {
+		return nil, fmt.Errorf("add at least one reminder time before the event")
+	}
+	seen := map[int]bool{}
+	out := make([]int, 0, len(offsets))
+	for _, o := range offsets {
+		if o < 0 {
+			return nil, fmt.Errorf("reminder offsets must not be negative")
+		}
+		if !seen[o] {
+			seen[o] = true
+			out = append(out, o)
+		}
+	}
+	sort.Ints(out)
+	return out, nil
 }
 
 // normalizeTimes validates HH:MM entries, zero-pads, dedupes, and sorts ascending.
@@ -196,8 +266,10 @@ func (s *Server) handleListReminders(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]reminderResp, 0, len(reminders))
 	for _, rm := range reminders {
-		if len(rm.Times) == 0 {
-			continue // hide legacy chat one-shots from the management UI
+		// Hide legacy chat one-shots (empty times, not an event reminder) from
+		// the management UI; recurring and specific reminders are shown.
+		if len(rm.Times) == 0 && rm.RepeatMode != "specific" {
+			continue
 		}
 		out = append(out, toReminderResp(rm))
 	}

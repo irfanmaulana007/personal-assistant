@@ -66,3 +66,39 @@ func TestValidateReminder(t *testing.T) {
 		t.Errorf("future once should be valid: %v", err)
 	}
 }
+
+func TestValidateReminder_Specific(t *testing.T) {
+	tz := time.UTC
+	futureEvent := time.Now().In(tz).AddDate(0, 0, 3).Format("2006-01-02T15:04")
+
+	in, err := validateReminder(reminderReq{
+		Title: "Flight", RepeatMode: "specific", EventAt: futureEvent, Offsets: []int{60, 1440, 60},
+	}, tz)
+	if err != nil {
+		t.Fatalf("specific valid: %v", err)
+	}
+	if in.EventAt != futureEvent {
+		t.Errorf("event_at not preserved: %q", in.EventAt)
+	}
+	if len(in.Offsets) != 2 || in.Offsets[0] != 60 || in.Offsets[1] != 1440 {
+		t.Errorf("offsets not deduped/sorted: %v", in.Offsets)
+	}
+
+	// Missing offsets.
+	if _, err := validateReminder(reminderReq{Title: "x", RepeatMode: "specific", EventAt: futureEvent}, tz); err == nil {
+		t.Error("expected error for specific without offsets")
+	}
+	// Bad event.
+	if _, err := validateReminder(reminderReq{Title: "x", RepeatMode: "specific", EventAt: "nope", Offsets: []int{60}}, tz); err == nil {
+		t.Error("expected error for invalid event_at")
+	}
+	// Event fully in the past.
+	if _, err := validateReminder(reminderReq{Title: "x", RepeatMode: "specific", EventAt: "2000-01-01T09:00", Offsets: []int{60}}, tz); err == nil {
+		t.Error("expected error for past event")
+	}
+	// Optional event on a daily reminder is accepted and normalized.
+	in, err = validateReminder(reminderReq{Title: "x", RepeatMode: "daily", Times: []string{"08:00"}, EventAt: futureEvent}, tz)
+	if err != nil || in.EventAt != futureEvent {
+		t.Errorf("optional event on daily should be kept: err=%v event=%q", err, in.EventAt)
+	}
+}

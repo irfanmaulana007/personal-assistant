@@ -183,11 +183,14 @@ func (h *Handler) checkDueReminders(ctx context.Context) {
 	}
 
 	for _, r := range reminders {
-		if len(r.Times) == 0 {
+		switch {
+		case r.RepeatMode == "specific":
+			h.fireSpecific(ctx, r, now) // event + offset-derived reminder points
+		case len(r.Times) == 0:
 			h.fireLegacy(ctx, r) // one-shot chat reminder (remind_at based)
-			continue
+		default:
+			h.fireReminder(ctx, r, now)
 		}
-		h.fireReminder(ctx, r, now)
 	}
 }
 
@@ -245,6 +248,91 @@ func (h *Handler) fireReminder(ctx context.Context, r store.Reminder, now time.T
 		h.log.Error("failed to mark reminder fired", "id", r.ID, "error", err)
 	}
 	h.log.Info("reminder sent", "id", r.ID, "slot", slot)
+}
+
+// fireSpecific evaluates an event reminder whose fire points are derived from
+// the event time minus each configured offset. It fires at most one point per
+// tick (the most-recent past-due one) and disables itself after the final point.
+func (h *Handler) fireSpecific(ctx context.Context, r store.Reminder, now time.Time) {
+	event, err := time.ParseInLocation("2006-01-02T15:04", r.EventAt, h.timezone)
+	if err != nil || len(r.Offsets) == 0 {
+		return
+	}
+
+	// Points = event - offset. Track the most-recent past-due point and the
+	// latest point overall (which, once fired, means the reminder is done).
+	var mostRecent, latest time.Time
+	foundDue, foundLatest := false, false
+	for _, off := range r.Offsets {
+		p := event.Add(-time.Duration(off) * time.Minute)
+		if !foundLatest || p.After(latest) {
+			latest, foundLatest = p, true
+		}
+		if p.After(now) {
+			continue
+		}
+		if !foundDue || p.After(mostRecent) {
+			mostRecent, foundDue = p, true
+		}
+	}
+	if !foundDue {
+		return
+	}
+	if r.LastFiredAt != nil && !mostRecent.After(*r.LastFiredAt) {
+		return
+	}
+	disable := !mostRecent.Before(latest) // fired the final point
+
+	if now.Sub(mostRecent) > graceWindow {
+		if err := h.store.MarkReminderFired(ctx, r.ID, mostRecent, disable); err != nil {
+			h.log.Error("failed to advance stale event reminder", "id", r.ID, "error", err)
+		}
+		h.log.Info("skipped stale event reminder point", "id", r.ID, "point", mostRecent)
+		return
+	}
+
+	msg := formatEventReminder(reminderBody(r), event, event.Sub(mostRecent), h.timezone)
+	if h.sendFunc != nil {
+		if err := h.sendFunc(ctx, h.ownerJID, msg); err != nil {
+			h.log.Error("failed to send reminder", "id", r.ID, "error", err)
+			return
+		}
+	}
+	if err := h.store.MarkReminderFired(ctx, r.ID, mostRecent, disable); err != nil {
+		h.log.Error("failed to mark reminder fired", "id", r.ID, "error", err)
+	}
+	h.log.Info("event reminder sent", "id", r.ID, "point", mostRecent)
+}
+
+// formatEventReminder builds the notification body for an event reminder,
+// naming the event time and how far away it is.
+func formatEventReminder(title string, event time.Time, lead time.Duration, tz *time.Location) string {
+	when := event.In(tz).Format("Mon, Jan 2 at 3:04 PM")
+	if lead <= time.Minute {
+		return fmt.Sprintf("⏰ *Reminder*: %s\n_Happening now — %s_", title, when)
+	}
+	return fmt.Sprintf("⏰ *Reminder*: %s\n_In %s — %s_", title, humanizeLead(lead), when)
+}
+
+// humanizeLead renders a positive duration as a short human string (e.g. "1 day",
+// "2 hours", "30 minutes").
+func humanizeLead(d time.Duration) string {
+	mins := int(d.Round(time.Minute) / time.Minute)
+	switch {
+	case mins%1440 == 0 && mins >= 1440:
+		return plural(mins/1440, "day")
+	case mins%60 == 0 && mins >= 60:
+		return plural(mins/60, "hour")
+	default:
+		return plural(mins, "minute")
+	}
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", unit)
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
 }
 
 // mostRecentSlot returns the latest scheduled instant (in the app timezone) that

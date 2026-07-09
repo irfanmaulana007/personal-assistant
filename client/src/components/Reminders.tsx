@@ -15,6 +15,7 @@ const inputClass =
   'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
 
 const MODES: { value: RepeatMode; label: string }[] = [
+  { value: 'specific', label: 'Event' },
   { value: 'once', label: 'Once' },
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
@@ -23,9 +24,30 @@ const MODES: { value: RepeatMode; label: string }[] = [
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Lead-time presets (minutes before the event) for the Event mode.
+const OFFSET_PRESETS = [0, 15, 30, 60, 120, 1440, 2880, 10080];
+
+function plural(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? '' : 's'}`;
+}
+
+function formatOffset(min: number): string {
+  if (min === 0) return 'At event time';
+  if (min % 10080 === 0) return `${plural(min / 10080, 'week')} before`;
+  if (min % 1440 === 0) return `${plural(min / 1440, 'day')} before`;
+  if (min % 60 === 0) return `${plural(min / 60, 'hour')} before`;
+  return `${min} min before`;
+}
+
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function defaultEventAt(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T09:00`;
 }
 
 function emptyForm(): ReminderPayload {
@@ -36,6 +58,8 @@ function emptyForm(): ReminderPayload {
     weekdays: [],
     day_of_month: 1,
     once_date: todayISO(),
+    event_at: '',
+    offsets: [],
     enabled: true,
   };
 }
@@ -46,20 +70,45 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function summarize(r: Reminder): string {
+  if (r.repeat_mode === 'specific') {
+    const offs = [...r.offsets]
+      .sort((a, b) => a - b)
+      .map(formatOffset)
+      .join(', ');
+    return `Event · ${formatDateTime(r.event_at)} · ${offs}`;
+  }
   const times = r.times.join(', ');
+  let base: string;
   switch (r.repeat_mode) {
     case 'daily':
-      return `Every day · ${times}`;
+      base = `Every day · ${times}`;
+      break;
     case 'weekly': {
       const days = [...r.weekdays].sort((a, b) => a - b).map((d) => WEEKDAYS[d]);
-      return `Weekly · ${days.join(', ')} · ${times}`;
+      base = `Weekly · ${days.join(', ')} · ${times}`;
+      break;
     }
     case 'monthly':
-      return `Monthly · day ${r.day_of_month} · ${times}`;
+      base = `Monthly · day ${r.day_of_month} · ${times}`;
+      break;
     default:
-      return `Once · ${formatDate(r.once_date)} · ${times}`;
+      base = `Once · ${formatDate(r.once_date)} · ${times}`;
   }
+  if (r.event_at) base += ` · event ${formatDateTime(r.event_at)}`;
+  return base;
 }
 
 export function Reminders({ isAdmin }: { isAdmin: boolean }) {
@@ -226,6 +275,8 @@ function toPayload(r: Reminder): ReminderPayload {
     weekdays: r.weekdays,
     day_of_month: r.day_of_month,
     once_date: r.once_date,
+    event_at: r.event_at,
+    offsets: r.offsets,
     enabled: r.enabled,
   };
 }
@@ -255,6 +306,8 @@ function ReminderForm({
       weekdays: mode === 'weekly' && f.weekdays.length === 0 ? [1] : f.weekdays,
       day_of_month: mode === 'monthly' && !f.day_of_month ? 1 : f.day_of_month,
       once_date: mode === 'once' && !f.once_date ? todayISO() : f.once_date,
+      event_at: mode === 'specific' && !f.event_at ? defaultEventAt() : f.event_at,
+      offsets: mode === 'specific' && f.offsets.length === 0 ? [60] : f.offsets,
     }));
   };
 
@@ -262,6 +315,12 @@ function ReminderForm({
     setForm((f) => ({
       ...f,
       weekdays: f.weekdays.includes(d) ? f.weekdays.filter((x) => x !== d) : [...f.weekdays, d],
+    }));
+
+  const toggleOffset = (min: number) =>
+    setForm((f) => ({
+      ...f,
+      offsets: f.offsets.includes(min) ? f.offsets.filter((x) => x !== min) : [...f.offsets, min],
     }));
 
   const setTime = (i: number, v: string) =>
@@ -371,38 +430,98 @@ function ReminderForm({
           </div>
         )}
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Times</label>
-          <div className="space-y-2">
-            {form.times.map((t, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={t}
-                  onChange={(e) => setTime(i, e.target.value)}
-                  className={`${inputClass} max-w-[10rem]`}
-                />
-                {form.times.length > 1 && (
+        {form.repeat_mode === 'specific' && (
+          <>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Event date &amp; time
+              </label>
+              <input
+                type="datetime-local"
+                value={form.event_at}
+                onChange={(e) => set('event_at', e.target.value)}
+                className={`${inputClass} max-w-[16rem]`}
+              />
+              <p className="mt-1 text-xs text-gray-400">When the actual event happens.</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Remind me before the event
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {OFFSET_PRESETS.map((o) => (
                   <button
+                    key={o}
                     type="button"
-                    onClick={() => removeTime(i)}
-                    className="text-sm font-medium text-gray-400 hover:text-red-600"
-                    aria-label="Remove time"
+                    onClick={() => toggleOffset(o)}
+                    className={`rounded-xl border px-3 py-1.5 text-sm transition ${
+                      form.offsets.includes(o)
+                        ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
                   >
-                    Remove
+                    {formatOffset(o)}
                   </button>
-                )}
+                ))}
               </div>
-            ))}
+              <p className="mt-1 text-xs text-gray-400">
+                Pick one or more — each becomes a reminder computed from the event time.
+              </p>
+            </div>
+          </>
+        )}
+
+        {form.repeat_mode !== 'specific' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Times</label>
+            <div className="space-y-2">
+              {form.times.map((t, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={t}
+                    onChange={(e) => setTime(i, e.target.value)}
+                    className={`${inputClass} max-w-[10rem]`}
+                  />
+                  {form.times.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeTime(i)}
+                      className="text-sm font-medium text-gray-400 hover:text-red-600"
+                      aria-label="Remove time"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addTime}
+              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+            >
+              + Add time
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={addTime}
-            className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
-          >
-            + Add time
-          </button>
-        </div>
+        )}
+
+        {form.repeat_mode !== 'specific' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Event date &amp; time <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={form.event_at}
+              onChange={(e) => set('event_at', e.target.value)}
+              className={`${inputClass} max-w-[16rem]`}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              The actual event this reminder is about. Shown for reference.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Toggle on={form.enabled} onClick={() => set('enabled', !form.enabled)} />
