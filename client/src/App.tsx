@@ -7,6 +7,7 @@ import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
 import { Logs } from './components/Logs';
 import { Account } from './components/Account';
+import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
       <Route element={<Layout onLogout={logout} isAdmin={isAdmin} />}>
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="profile" element={<Profile />} />
         {isAdmin && [
           <Route key="integrations" path="integrations" element={<Integrations />} />,
           <Route key="dashboard" path="dashboard" element={<Dashboard />} />,
