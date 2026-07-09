@@ -63,9 +63,15 @@ const components: Components = {
   td: ({ children }) => <td className="border border-gray-200 px-2 py-1 align-top">{children}</td>,
 };
 
-export function Markdown({ children }: { children: string }) {
+export function Markdown({
+  children,
+  className = 'text-sm text-gray-900',
+}: {
+  children: string;
+  className?: string;
+}) {
   return (
-    <div className="text-sm text-gray-900">
+    <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>
