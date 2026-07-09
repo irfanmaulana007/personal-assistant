@@ -232,11 +232,11 @@ export function Logs() {
       {selected && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/30"
+            className="animate-fade-in fixed inset-0 z-40 bg-black/30"
             onClick={() => setSelected(null)}
             aria-hidden
           />
-          <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white p-6 shadow-xl">
+          <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">Run detail</h2>
               <button

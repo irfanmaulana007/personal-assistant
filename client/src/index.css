@@ -1,5 +1,29 @@
 @import 'tailwindcss';
 
+/* Drawer/overlay entrance animations (e.g. the Logs run-detail panel). */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
 /* react-day-picker: selection is already conveyed by the cell background, so
    keep selected days at the same font weight and size as the rest (its default
    makes them bold + larger, which looks inconsistent). */
