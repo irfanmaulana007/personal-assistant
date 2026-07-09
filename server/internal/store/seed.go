@@ -7,16 +7,12 @@ import (
 )
 
 // skillSeed is the master list of skills, owned by code and upserted on boot.
+// prunedSkillKeys are skills removed from the product; their rows (and any
+// per-user toggles) are deleted on boot. Reminders became a core, always-on
+// capability, so its skill toggle is gone.
+var prunedSkillKeys = []string{"scheduled_reminder"}
+
 var skillSeed = []Skill{
-	{
-		Key:            "scheduled_reminder",
-		Name:           "Scheduled Reminder",
-		Category:       "Productivity",
-		DefaultEnabled: true,
-		SortOrder:      1,
-		Description:    "Set reminders that reach you on WhatsApp — from one-off nudges to bills and appointments. Tell the assistant what to remember and when, and it pings your WhatsApp when it's due.",
-		Prompt:         "You can set, list, and cancel reminders for the user; due reminders are delivered to their WhatsApp. The user's reminders ARE their schedule/calendar/agenda — when they ask what's on their schedule or calendar, what's coming up, or what they have planned today/tomorrow/this week, call reminder_list and answer from it (do not say you lack calendar access). When an item shows an event time, present that actual event time as when it happens — not the earlier reminder/notification time. To create reminders: use reminder_schedule for anything that repeats or has a specific date (e.g. 'every month on the 5th' → repeat=monthly, day_of_month=5; 'every weekday at 8am' → repeat=weekly with those weekdays), and reminder_set only for a simple one-off natural-language time like 'in 30 minutes'. Convert phrases into concrete times (e.g. '9 pagi' → 09:00). If the user does NOT mention a time, omit the time entirely — do not invent one — and their configured default reminder time is applied automatically. Always confirm the exact schedule you created.",
-	},
 	{
 		Key:            "ask_about_contact",
 		Name:           "Ask About Contact",
@@ -74,6 +70,23 @@ var skillSeed = []Skill{
 }
 
 func (s *SQLiteStore) seedSkills() error {
+	// Remove skills that were retired from the product (and their per-user toggles).
+	for _, key := range prunedSkillKeys {
+		var id int64
+		err := s.db.QueryRow(`SELECT id FROM skills WHERE key = ?`, key).Scan(&id)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("prune lookup %s: %w", key, err)
+		}
+		if _, err := s.db.Exec(`DELETE FROM user_skills WHERE skill_id = ?`, id); err != nil {
+			return fmt.Errorf("prune user_skills %s: %w", key, err)
+		}
+		if _, err := s.db.Exec(`DELETE FROM skills WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("prune skill %s: %w", key, err)
+		}
+	}
 	for _, sk := range skillSeed {
 		if _, err := s.db.Exec(
 			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order)

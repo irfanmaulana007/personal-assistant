@@ -117,41 +117,41 @@ var toolSpecs = []toolSpec{
 		action:      intent.ActionMemoryRecall,
 		parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"What to look up in memory."}},"required":["query"]}`,
 	},
+	// Reminders are a core capability (they back the Reminders page and the
+	// user's schedule/calendar), so these tools are always available.
+	{
+		name:        "reminder_set",
+		description: "Set a one-off reminder at a single natural-language time (e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'). For anything that repeats, use reminder_schedule instead.",
+		capability:  intent.CapabilityReminder,
+		action:      intent.ActionReminderSet,
+		parameters:  `{"type":"object","properties":{"message":{"type":"string","description":"What to be reminded about."},"time":{"type":"string","description":"When to remind, e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'."}},"required":["message","time"]}`,
+	},
+	{
+		name:        "reminder_schedule",
+		description: "Create a recurring or specific-date reminder with one or more times. Use this for anything that repeats — 'every month on the 5th', 'every weekday at 8am', 'every Monday and Wednesday', 'daily at 8pm' — or a specific future date. Prefer this over reminder_set whenever there is a repeat.",
+		capability:  intent.CapabilityReminder,
+		action:      intent.ActionReminderSchedule,
+		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["once","daily","weekly","monthly"],"description":"How often to repeat."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."},"date":{"type":"string","description":"For once: the date as YYYY-MM-DD."}},"required":["title","repeat"]}`,
+	},
+	{
+		name:        "reminder_list",
+		description: "List the user's active reminders — their schedule, calendar, and agenda. Call this whenever the user asks what's on their schedule or calendar, what they have coming up, what's planned today/tomorrow/this week, or to see their reminders.",
+		capability:  intent.CapabilityReminder,
+		action:      intent.ActionReminderList,
+		parameters:  `{"type":"object","properties":{}}`,
+	},
+	{
+		name:        "reminder_cancel",
+		description: "Cancel a reminder by its number.",
+		capability:  intent.CapabilityReminder,
+		action:      intent.ActionReminderCancel,
+		parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
+	},
 }
 
 // skillTools maps a skill key to the extra tools that skill provides. These are
 // only exposed to the LLM when the user has the skill enabled.
 var skillTools = map[string][]toolSpec{
-	"scheduled_reminder": {
-		{
-			name:        "reminder_set",
-			description: "Set a one-off reminder at a single natural-language time (e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'). For anything that repeats, use reminder_schedule instead.",
-			capability:  intent.CapabilityReminder,
-			action:      intent.ActionReminderSet,
-			parameters:  `{"type":"object","properties":{"message":{"type":"string","description":"What to be reminded about."},"time":{"type":"string","description":"When to remind, e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'."}},"required":["message","time"]}`,
-		},
-		{
-			name:        "reminder_schedule",
-			description: "Create a recurring or specific-date reminder with one or more times. Use this for anything that repeats — 'every month on the 5th', 'every weekday at 8am', 'every Monday and Wednesday', 'daily at 8pm' — or a specific future date. Prefer this over reminder_set whenever there is a repeat.",
-			capability:  intent.CapabilityReminder,
-			action:      intent.ActionReminderSchedule,
-			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["once","daily","weekly","monthly"],"description":"How often to repeat."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."},"date":{"type":"string","description":"For once: the date as YYYY-MM-DD."}},"required":["title","repeat"]}`,
-		},
-		{
-			name:        "reminder_list",
-			description: "List the user's active reminders — their schedule, calendar, and agenda. Call this whenever the user asks what's on their schedule or calendar, what they have coming up, what's planned today/tomorrow/this week, or to see their reminders.",
-			capability:  intent.CapabilityReminder,
-			action:      intent.ActionReminderList,
-			parameters:  `{"type":"object","properties":{}}`,
-		},
-		{
-			name:        "reminder_cancel",
-			description: "Cancel a reminder by its number.",
-			capability:  intent.CapabilityReminder,
-			action:      intent.ActionReminderCancel,
-			parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
-		},
-	},
 	"ask_about_contact": {
 		{
 			name:        "contact_add",

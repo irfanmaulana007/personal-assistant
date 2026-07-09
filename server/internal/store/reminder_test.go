@@ -121,6 +121,33 @@ func TestSpecificReminderRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSeedSkillsPrunesRetiredSkill(t *testing.T) {
+	s := newTestStore(t)
+	// Simulate a legacy DB: the retired skill plus a user's toggle for it.
+	res, err := s.db.Exec(`INSERT INTO skills (key, name) VALUES ('scheduled_reminder', 'Scheduled Reminder')`)
+	if err != nil {
+		t.Fatalf("insert legacy skill: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	if _, err := s.db.Exec(`INSERT INTO user_skills (user_id, skill_id, enabled) VALUES (1, ?, 1)`, id); err != nil {
+		t.Fatalf("insert user_skill: %v", err)
+	}
+
+	if err := s.seedSkills(); err != nil {
+		t.Fatalf("seedSkills: %v", err)
+	}
+
+	var skills, toggles int
+	s.db.QueryRow(`SELECT COUNT(*) FROM skills WHERE key = 'scheduled_reminder'`).Scan(&skills)
+	s.db.QueryRow(`SELECT COUNT(*) FROM user_skills WHERE skill_id = ?`, id).Scan(&toggles)
+	if skills != 0 {
+		t.Error("retired skill row should be pruned")
+	}
+	if toggles != 0 {
+		t.Error("retired skill's user toggles should be pruned")
+	}
+}
+
 func TestMarkReminderFiredDisables(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
