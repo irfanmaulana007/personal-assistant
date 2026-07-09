@@ -4,10 +4,13 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -269,6 +272,63 @@ func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
 	}
 	if got := buildDigest(reminders, now, testTZ); got != "" {
 		t.Errorf("expected empty digest, got: %q", got)
+	}
+}
+
+func TestScheduleCreatesVisibleRecurring(t *testing.T) {
+	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	h := &Handler{store: st, timezone: testTZ, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx := authctx.WithUserID(context.Background(), 1)
+
+	msg, err := h.schedule(ctx, &intent.ParseResult{
+		Action: intent.ActionReminderSchedule,
+		Entities: map[string]string{
+			"title": "Pay internet", "repeat": "monthly", "day_of_month": "5", "times": "09:00",
+		},
+	})
+	if err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	if !strings.Contains(msg, "Monthly on day 5") {
+		t.Errorf("unexpected confirmation: %q", msg)
+	}
+
+	// It must be a real, visible reminder (has times → not hidden by the API list).
+	rs, err := st.ListReminders(ctx, 1, true)
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("expected 1 reminder, got %d (err=%v)", len(rs), err)
+	}
+	r := rs[0]
+	if r.RepeatMode != "monthly" || r.DayOfMonth != 5 || len(r.Times) != 1 || r.Times[0] != "09:00" {
+		t.Errorf("unexpected reminder stored: %+v", r)
+	}
+}
+
+func TestParseTimesCSV(t *testing.T) {
+	got := parseTimesCSV("9:00, 8:5 ,08:05,25:00,bad")
+	// zero-padded, deduped, sorted; invalid dropped.
+	if len(got) != 2 || got[0] != "08:05" || got[1] != "09:00" {
+		t.Fatalf("parseTimesCSV = %v", got)
+	}
+	if len(parseTimesCSV("")) != 0 {
+		t.Error("empty should yield no times")
+	}
+}
+
+func TestParseWeekdaysCSV(t *testing.T) {
+	got := parseWeekdaysCSV("Mon, wednesday, jumat, 0, 0, nope")
+	// Mon=1, Wed=3, Fri(jumat)=5, Sun=0; deduped + sorted.
+	want := []int{0, 1, 3, 5}
+	if len(got) != len(want) {
+		t.Fatalf("parseWeekdaysCSV = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("parseWeekdaysCSV = %v, want %v", got, want)
+		}
 	}
 }
 
