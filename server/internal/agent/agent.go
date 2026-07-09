@@ -296,10 +296,6 @@ Memory:
 	var b strings.Builder
 	b.WriteString(base)
 
-	if personaPrompt != "" {
-		b.WriteString("\n\n" + personaPrompt)
-	}
-
 	if len(memories) > 0 {
 		b.WriteString("\n\nRelevant things you remember about the user:")
 		for _, m := range memories {
@@ -314,6 +310,12 @@ Memory:
 				b.WriteString(fmt.Sprintf("\n\n## %s\n%s", sk.Name, sk.Prompt))
 			}
 		}
+	}
+
+	// Persona goes last so it has recency and stays authoritative over the
+	// default tone and any skill prompts above — every reply must respect it.
+	if personaPrompt != "" {
+		b.WriteString("\n\n" + personaPrompt)
 	}
 	return b.String()
 }

@@ -68,5 +68,7 @@ func (s *Service) Prompt(ctx context.Context, userID int64) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "Persona and style (follow these):\n- " + strings.Join(parts, "\n- ")
+	return "Persona and style — the user's personal preferences for how you communicate. " +
+		"Apply them in every reply and let them override the default tone and phrasing described above:\n- " +
+		strings.Join(parts, "\n- ")
 }

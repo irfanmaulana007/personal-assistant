@@ -75,11 +75,27 @@ export function AgentSettings() {
 
   if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
 
-  const fields: { k: keyof Persona; label: string; hint?: string }[] = [
-    { k: 'tone', label: 'Tone', hint: 'Affects formality (incl. Anda vs kamu in Indonesian).' },
-    { k: 'emoji', label: 'Emoji usage' },
-    { k: 'length', label: 'Response length' },
-    { k: 'personality', label: 'Personality' },
+  const fields: { k: keyof Persona; label: string; hint: string }[] = [
+    {
+      k: 'tone',
+      label: 'Tone',
+      hint: 'How formal the assistant sounds. Formal is polite and professional (uses “Anda” in Indonesian); Casual is relaxed and friendly (“kamu”).',
+    },
+    {
+      k: 'emoji',
+      label: 'Emoji usage',
+      hint: 'How often the assistant adds emoji to its replies — none, occasionally, or a lot.',
+    },
+    {
+      k: 'length',
+      label: 'Response length',
+      hint: 'How much detail you get. Concise keeps answers short and to the point; Detailed gives thorough explanations.',
+    },
+    {
+      k: 'personality',
+      label: 'Personality',
+      hint: 'The assistant’s character — e.g. professional and neutral, friendly, witty, direct (no filler), or warm and encouraging.',
+    },
   ];
 
   return (
@@ -89,7 +105,7 @@ export function AgentSettings() {
         Shape how the assistant talks to you. These apply to your account only.
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-4">
         {fields.map((f) => (
           <div key={f.k}>
             <label className="mb-1 block text-sm font-medium text-gray-700">{f.label}</label>
@@ -104,30 +120,39 @@ export function AgentSettings() {
                 </option>
               ))}
             </select>
-            {f.hint && <p className="mt-1 text-xs text-gray-400">{f.hint}</p>}
+            <p className="mt-1 text-xs text-gray-400">{f.hint}</p>
           </div>
         ))}
-      </div>
 
-      <div className="mt-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">Assistant name</label>
-        <input
-          value={persona.name}
-          onChange={(e) => set('name', e.target.value)}
-          placeholder="e.g. Bella (optional)"
-          className={inputClass}
-        />
-      </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Assistant name</label>
+          <input
+            value={persona.name}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="e.g. My Assistant"
+            className={inputClass}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            What the assistant calls itself when it refers to itself. Leave blank to keep the
+            default.
+          </p>
+        </div>
 
-      <div className="mt-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">Custom instructions</label>
-        <textarea
-          value={persona.custom}
-          onChange={(e) => set('custom', e.target.value)}
-          rows={3}
-          placeholder="Anything else about how the assistant should behave…"
-          className={`${inputClass} resize-none`}
-        />
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Custom instructions
+          </label>
+          <textarea
+            value={persona.custom}
+            onChange={(e) => set('custom', e.target.value)}
+            rows={3}
+            placeholder="e.g. Always answer in bullet points; call me by my first name…"
+            className={`${inputClass} resize-none`}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Any other guidance, in your own words, for how the assistant should behave.
+          </p>
+        </div>
       </div>
 
       {msg && (
