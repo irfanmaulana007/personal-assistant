@@ -9,9 +9,15 @@ interface MessageListProps {
 
 export function MessageList({ messages, loading }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const didInitialScroll = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Jump to the bottom instantly on first load (visiting the page); animate
+    // only for messages that arrive afterwards.
+    bottomRef.current?.scrollIntoView({
+      behavior: didInitialScroll.current ? 'smooth' : 'auto',
+    });
+    if (messages.length > 0) didInitialScroll.current = true;
   }, [messages, loading]);
 
   if (messages.length === 0 && !loading) {
