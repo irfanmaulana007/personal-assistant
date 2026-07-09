@@ -93,6 +93,51 @@ func (s *SQLiteStore) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_trip_expenses ON trip_expenses(user_id, trip_id)`,
 
+		`CREATE TABLE IF NOT EXISTS hike_mountains (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hike_mountains_user ON hike_mountains(user_id)`,
+
+		`CREATE TABLE IF NOT EXISTS hike_tracks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			mountain_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hike_tracks_user ON hike_tracks(user_id, mountain_id)`,
+
+		`CREATE TABLE IF NOT EXISTS hike_participants (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hike_participants_user ON hike_participants(user_id)`,
+
+		`CREATE TABLE IF NOT EXISTS hikes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			mountain_id INTEGER NOT NULL,
+			camped INTEGER NOT NULL DEFAULT 0,
+			up_track_id INTEGER NOT NULL DEFAULT 0,
+			down_track_id INTEGER NOT NULL DEFAULT 0,
+			days INTEGER NOT NULL DEFAULT 0,
+			nights INTEGER NOT NULL DEFAULT 0,
+			hiked_on DATETIME NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hikes_user ON hikes(user_id, hiked_on)`,
+
+		`CREATE TABLE IF NOT EXISTS hike_hikers (
+			hike_id INTEGER NOT NULL,
+			participant_id INTEGER NOT NULL,
+			PRIMARY KEY (hike_id, participant_id)
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS skills (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,

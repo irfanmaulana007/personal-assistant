@@ -45,6 +45,15 @@ var skillSeed = []Skill{
 		Prompt:         "You track the user's sports and workouts. Use activity_log to record an activity they mention (type, a short description, and when it happened), and activity_summarize to report their recent activity over a period (sessions by type, totals, and trends). You may also surface workout-related reminders. If the period is unclear, ask. Keep summaries concise and encouraging.",
 	},
 	{
+		Key:            "hiking_tracker",
+		Name:           "Hiking Tracker",
+		Category:       "Outdoors",
+		DefaultEnabled: false,
+		SortOrder:      6,
+		Description:    "Log your hikes in detail — the mountain, the trails you took up and down, whether you camped, how many days and nights, the date, and who came along. The assistant reuses your existing mountain, trail, and friend names so a small typo never creates a duplicate.",
+		Prompt:         "You keep a detailed log of the user's hiking trips. Use hike_log to record a hike, capturing: the mountain/destination, the trail used going up, the trail used going down, whether they camped (yes/no), how many days and how many nights, the hiking date, and the participants (as a comma-separated list). Use hike_summary to review past hikes. The system automatically matches similar existing mountain, trail, and participant names to prevent duplicates from typos, so pass names as the user says them and mention when it reused an existing name. If the mountain or date is missing, ask one short question before logging.",
+	},
+	{
 		Key:            "food_calories",
 		Name:           "Food Calories",
 		Category:       "Health",

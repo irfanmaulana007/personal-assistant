@@ -186,6 +186,22 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"trip":{"type":"string","description":"Trip name; defaults to the active trip."}}}`,
 		},
 	},
+	"hiking_tracker": {
+		{
+			name:        "hike_log",
+			description: "Log a hiking trip. Similar existing mountain, trail, and participant names are reused automatically to prevent duplicates.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeLog,
+			parameters:  `{"type":"object","properties":{"mountain":{"type":"string","description":"Mountain / hiking destination."},"up_track":{"type":"string","description":"Trail used going up."},"down_track":{"type":"string","description":"Trail used going down."},"camped":{"type":"boolean","description":"Whether the user camped overnight."},"days":{"type":"integer","description":"Number of days spent."},"nights":{"type":"integer","description":"Number of nights spent."},"date":{"type":"string","description":"Hiking date, e.g. 'last Saturday', 'Aug 2'."},"participants":{"type":"string","description":"Comma-separated participant names."}},"required":["mountain"]}`,
+		},
+		{
+			name:        "hike_summary",
+			description: "List and summarize the user's logged hikes.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeSummary,
+			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
+		},
+	},
 }
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a
