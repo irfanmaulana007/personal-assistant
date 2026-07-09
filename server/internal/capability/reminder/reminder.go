@@ -60,6 +60,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	switch result.Action {
 	case intent.ActionReminderSet:
 		return h.set(ctx, result)
+	case intent.ActionReminderSchedule:
+		return h.schedule(ctx, result)
 	case intent.ActionReminderList:
 		return h.list(ctx)
 	case intent.ActionReminderCancel:
@@ -85,7 +87,17 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 		return fmt.Sprintf("I couldn't understand %q as a time. Try: _in 30 minutes_, _at 5pm_, _tomorrow at 9am_", timeStr), nil
 	}
 
-	reminder, err := h.store.CreateLegacyReminder(ctx, authctx.UserID(ctx), message, remindAt)
+	// Store as a proper one-off reminder (a dated "once" with a time) so it shows
+	// up alongside reminders created in the app, not just the legacy chat list.
+	local := remindAt.In(h.timezone)
+	in := store.ReminderInput{
+		Title:      message,
+		RepeatMode: "once",
+		OnceDate:   local.Format("2006-01-02"),
+		Times:      []string{local.Format("15:04")},
+		Enabled:    true,
+	}
+	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), in)
 	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
 	}
@@ -93,8 +105,120 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 	return fmt.Sprintf("Reminder set (#%d): _%s_\nI'll remind you %s",
 		reminder.ID,
 		message,
-		remindAt.In(h.timezone).Format("Mon, Jan 2 at 3:04 PM"),
+		local.Format("Mon, Jan 2 at 3:04 PM"),
 	), nil
+}
+
+// schedule creates a recurring or dated reminder from structured arguments.
+func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (string, error) {
+	title := strings.TrimSpace(firstNonEmpty(result.Entities["title"], result.Entities["message"]))
+	if title == "" {
+		return "What should I remind you about?", nil
+	}
+
+	repeat := strings.ToLower(strings.TrimSpace(result.Entities["repeat"]))
+	switch repeat {
+	case "once", "daily", "weekly", "monthly":
+	default:
+		return "How often should it repeat — once, daily, weekly, or monthly?", nil
+	}
+
+	times := parseTimesCSV(result.Entities["times"])
+	if len(times) == 0 {
+		return "What time should I remind you? For example, _9am_ or _08:00_.", nil
+	}
+
+	in := store.ReminderInput{Title: title, RepeatMode: repeat, Times: times, Enabled: true}
+
+	switch repeat {
+	case "weekly":
+		days := parseWeekdaysCSV(result.Entities["weekdays"])
+		if len(days) == 0 {
+			return "Which days of the week? For example, _Monday and Wednesday_.", nil
+		}
+		in.Weekdays = days
+	case "monthly":
+		dom, _ := strconv.Atoi(strings.TrimSpace(result.Entities["day_of_month"]))
+		if dom < 1 || dom > 31 {
+			return "Which day of the month (1-31)?", nil
+		}
+		in.DayOfMonth = dom
+	case "once":
+		date := strings.TrimSpace(result.Entities["date"])
+		if _, err := time.ParseInLocation("2006-01-02", date, h.timezone); err != nil {
+			return "What date should I remind you (e.g. 2026-08-05)?", nil
+		}
+		in.OnceDate = date
+	}
+
+	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), in)
+	if err != nil {
+		return "", fmt.Errorf("create reminder: %w", err)
+	}
+	return fmt.Sprintf("Reminder scheduled (#%d): _%s_\n%s", reminder.ID, title, describeSchedule(*reminder, h.timezone)), nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// parseTimesCSV parses a comma-separated list of HH:MM times, normalizing and
+// sorting them; invalid entries are skipped.
+func parseTimesCSV(s string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(s, ",") {
+		hh, mm, ok := parseHM(strings.TrimSpace(part))
+		if !ok {
+			continue
+		}
+		hm := fmt.Sprintf("%02d:%02d", hh, mm)
+		if !seen[hm] {
+			seen[hm] = true
+			out = append(out, hm)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+var weekdayAliases = map[string]int{
+	"sun": 0, "sunday": 0, "min": 0, "minggu": 0,
+	"mon": 1, "monday": 1, "sen": 1, "senin": 1,
+	"tue": 2, "tuesday": 2, "sel": 2, "selasa": 2,
+	"wed": 3, "wednesday": 3, "rab": 3, "rabu": 3,
+	"thu": 4, "thursday": 4, "kam": 4, "kamis": 4,
+	"fri": 5, "friday": 5, "jum": 5, "jumat": 5,
+	"sat": 6, "saturday": 6, "sab": 6, "sabtu": 6,
+}
+
+// parseWeekdaysCSV parses comma-separated weekday names/numbers into 0-6 ints.
+func parseWeekdaysCSV(s string) []int {
+	var out []int
+	seen := map[int]bool{}
+	for _, part := range strings.Split(s, ",") {
+		p := strings.ToLower(strings.TrimSpace(part))
+		if p == "" {
+			continue
+		}
+		d := -1
+		if n, err := strconv.Atoi(p); err == nil && n >= 0 && n <= 6 {
+			d = n
+		} else if v, ok := weekdayAliases[p]; ok {
+			d = v
+		}
+		if d >= 0 && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	sort.Ints(out)
+	return out
 }
 
 func (h *Handler) list(ctx context.Context) (string, error) {

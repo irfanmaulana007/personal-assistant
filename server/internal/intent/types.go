@@ -38,9 +38,10 @@ const (
 
 // Reminder actions
 const (
-	ActionReminderSet    Action = "reminder.set"
-	ActionReminderList   Action = "reminder.list"
-	ActionReminderCancel Action = "reminder.cancel"
+	ActionReminderSet      Action = "reminder.set"
+	ActionReminderSchedule Action = "reminder.schedule"
+	ActionReminderList     Action = "reminder.list"
+	ActionReminderCancel   Action = "reminder.cancel"
 )
 
 // Knowledge actions
