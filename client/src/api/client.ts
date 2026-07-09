@@ -3,6 +3,7 @@ import type {
   User,
   MyStats,
   Preferences,
+  ModelPrice,
   Skill,
   Role,
   ChatResponse,
@@ -106,6 +107,25 @@ export async function getPreferences(): Promise<Preferences> {
 
 export async function updatePreferences(p: Preferences): Promise<Preferences> {
   return request<Preferences>('/api/preferences', { method: 'PUT', body: JSON.stringify(p) });
+}
+
+export async function getPricing(): Promise<ModelPrice[]> {
+  return request<ModelPrice[]>('/api/pricing');
+}
+
+export async function setPricing(
+  model: string,
+  inputPer1M: number,
+  outputPer1M: number,
+): Promise<ModelPrice[]> {
+  return request<ModelPrice[]>('/api/pricing', {
+    method: 'PUT',
+    body: JSON.stringify({ model, input_per_1m: inputPer1M, output_per_1m: outputPer1M }),
+  });
+}
+
+export async function deletePricing(model: string): Promise<ModelPrice[]> {
+  return request<ModelPrice[]>(`/api/pricing/${encodeURIComponent(model)}`, { method: 'DELETE' });
 }
 
 export async function listSkills(): Promise<Skill[]> {
