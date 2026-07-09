@@ -1,14 +1,26 @@
 import { formatTokens } from '../../lib/format';
 import { HorizontalBar } from '../charts/HorizontalBar';
-import { Card } from './parts';
-import { useDashboard } from './util';
+import { StatTile, Card } from './parts';
+import { useDashboard, formatLatency } from './util';
 
 export function Activity() {
   const { stats } = useDashboard();
+  const s = stats.summary;
   const maxReq = Math.max(...stats.by_platform.map((x) => x.requests), 1);
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="Requests" value={s.requests.toLocaleString()} />
+        <StatTile
+          label="Errors"
+          value={s.errors.toLocaleString()}
+          sub={s.requests > 0 ? `${((s.errors / s.requests) * 100).toFixed(1)}% rate` : undefined}
+        />
+        <StatTile label="Tool calls" value={s.tool_calls.toLocaleString()} />
+        <StatTile label="Avg latency" value={formatLatency(s.avg_latency_ms)} />
+      </div>
+
       <Card title="Top tools">
         {stats.top_tools.length === 0 ? (
           <p className="text-sm text-gray-400">No tool calls yet.</p>
