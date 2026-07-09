@@ -1,19 +1,23 @@
+import { usePreferences } from '../contexts/preferences';
 import type { ChatMessage } from '../types';
 
-interface MessageProps {
-  message: ChatMessage;
-}
-
-export function Message({ message }: MessageProps) {
+export function Message({ message }: { message: ChatMessage }) {
+  const { formatDate } = usePreferences();
   const isUser = message.direction === 'out';
+  const name = isUser ? 'You' : 'Assistant';
+  const time = message.timestamp ? formatDate(message.timestamp, { time: true }) : '';
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+    <div className={`mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`mb-1 flex items-baseline gap-2 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
+        <span className="text-sm font-semibold text-gray-700">{name}</span>
+        {time && <span className="text-xs text-gray-400">{time}</span>}
+      </div>
       <div
-        className={`max-w-[75%] px-4 py-2.5 rounded-2xl whitespace-pre-wrap break-words text-sm leading-relaxed ${
+        className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? 'bg-indigo-600 text-white rounded-br-md'
-            : 'bg-gray-100 text-gray-900 rounded-bl-md'
+            ? 'rounded-tr-sm bg-indigo-100 text-gray-900'
+            : 'rounded-tl-sm bg-gray-100 text-gray-900'
         }`}
       >
         {message.image && (
