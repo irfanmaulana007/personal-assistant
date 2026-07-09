@@ -11,6 +11,8 @@ import { Dashboard } from './components/Dashboard';
 import { Overview } from './components/dashboard/Overview';
 import { Usage } from './components/dashboard/Usage';
 import { Activity } from './components/dashboard/Activity';
+import { Performance } from './components/dashboard/Performance';
+import { Users } from './components/dashboard/Users';
 import { Logs } from './components/Logs';
 import { Account } from './components/Account';
 import { Profile } from './components/Profile';
@@ -61,6 +63,8 @@ function App() {
               <Route index element={<Overview />} />
               <Route path="usage" element={<Usage />} />
               <Route path="activity" element={<Activity />} />
+              <Route path="performance" element={<Performance />} />
+              <Route path="users" element={<Users />} />
             </Route>,
             <Route key="logs" path="logs" element={<Logs />} />,
             <Route key="settings" path="settings" element={<Settings />}>
