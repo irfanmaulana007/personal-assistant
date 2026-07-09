@@ -119,12 +119,12 @@ const navItems: NavItem[] = [
 export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
   const items = navItems.filter((item) => isAdmin || !item.adminOnly);
   return (
-    <div className="h-screen flex bg-white">
-      <aside className="w-60 shrink-0 flex flex-col border-r border-gray-200 bg-gray-50">
+    <div className="flex h-screen bg-gray-50">
+      <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300">
         <div className="flex items-center gap-3 px-5 py-4">
-          <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15">
             <svg
-              className="w-5 h-5 text-indigo-600"
+              className="h-5 w-5 text-indigo-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -137,23 +137,23 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
               />
             </svg>
           </div>
-          <h1 className="text-base font-semibold text-gray-900">Assistant</h1>
+          <h1 className="text-base font-semibold text-white">Assistant</h1>
         </div>
 
-        <nav className="flex-1 px-3 py-2 space-y-1">
+        <nav className="flex-1 space-y-0.5 px-3 py-2">
           {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                   isActive
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? 'bg-white/10 font-medium text-white'
+                    : 'font-normal text-slate-400 hover:bg-white/5 hover:text-slate-100'
                 }`
               }
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {item.icon}
               </svg>
               {item.label}
@@ -161,12 +161,12 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
           ))}
         </nav>
 
-        <div className="border-t border-gray-200 p-2">
+        <div className="border-t border-white/10 p-2">
           <UserMenu user={user} onLogout={onLogout} />
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
     </div>
