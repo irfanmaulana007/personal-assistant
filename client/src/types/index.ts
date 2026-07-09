@@ -94,6 +94,7 @@ export interface UsageDay {
   date: string;
   requests: number;
   total_tokens: number;
+  estimated_cost_usd: number;
 }
 
 export interface UsageModel {

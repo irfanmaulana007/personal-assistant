@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMetrics } from '../hooks/useMetrics';
-import { UsageAreaChart } from './charts/UsageAreaChart';
+import { UsageLineChart } from './charts/UsageLineChart';
 import { ModelBarChart } from './charts/ModelBarChart';
 import { HorizontalBar } from './charts/HorizontalBar';
 import { DateRangePicker } from './DateRangePicker';
@@ -64,9 +64,20 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export function Dashboard() {
-  const [range, setRange] = useState(defaultRange);
-  const [channel, setChannel] = useState<Channel>('');
-  const { stats, loading, error } = useMetrics(range.from, range.to, channel);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const def = defaultRange();
+  const from = searchParams.get('from') || def.from;
+  const to = searchParams.get('to') || def.to;
+  const channel = (searchParams.get('channel') as Channel) || '';
+
+  // Persist filters to the URL so the view is restorable and shareable.
+  const patchParams = (patch: Record<string, string>) => {
+    const sp = new URLSearchParams(searchParams);
+    Object.entries(patch).forEach(([k, v]) => (v ? sp.set(k, v) : sp.delete(k)));
+    setSearchParams(sp);
+  };
+
+  const { stats, loading, error } = useMetrics(from, to, channel);
 
   const isEmpty = stats && stats.summary.requests === 0;
 
@@ -78,11 +89,11 @@ export function Dashboard() {
           <p className="mt-0.5 text-sm text-gray-500">Your LLM usage and estimated cost.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ChannelFilter value={channel} onChange={setChannel} />
+          <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
           <DateRangePicker
-            from={range.from}
-            to={range.to}
-            onChange={(from, to) => setRange({ from, to })}
+            from={from}
+            to={to}
+            onChange={(f, t) => patchParams({ from: f, to: t })}
           />
         </div>
       </div>
@@ -137,13 +148,26 @@ export function Dashboard() {
             </div>
           ) : (
             <>
-              <div className="mt-6">
-                <Card title="Tokens per day">
-                  <UsageAreaChart
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <Card title="Tokens over time">
+                  <UsageLineChart
                     data={stats.by_day.map((d) => ({
                       label: formatDayLabel(d.date),
                       value: d.total_tokens,
                     }))}
+                    color="#4f46e5"
+                    format={formatTokens}
+                    unit=" tokens"
+                  />
+                </Card>
+                <Card title="Estimated cost over time">
+                  <UsageLineChart
+                    data={stats.by_day.map((d) => ({
+                      label: formatDayLabel(d.date),
+                      value: d.estimated_cost_usd,
+                    }))}
+                    color="#059669"
+                    format={formatCost}
                   />
                 </Card>
               </div>

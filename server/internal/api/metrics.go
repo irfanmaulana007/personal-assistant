@@ -40,9 +40,10 @@ type toolCountResp struct {
 }
 
 type usageDayResp struct {
-	Date        string `json:"date"`
-	Requests    int    `json:"requests"`
-	TotalTokens int    `json:"total_tokens"`
+	Date             string  `json:"date"`
+	Requests         int     `json:"requests"`
+	TotalTokens      int     `json:"total_tokens"`
+	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 }
 
 type usageModelResp struct {
@@ -124,8 +125,20 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		TopTools:   make([]toolCountResp, 0, len(stats.TopTools)),
 	}
 
+	// Per-day cost from per-day, per-model token sums.
+	costByDay := map[string]float64{}
+	if dayModels, err := s.store.UsageByDayModel(r.Context(), from, toExclusive, platform); err == nil {
+		for _, dm := range dayModels {
+			if c, known := llm.EstimateCost(dm.Model, dm.PromptTokens, dm.CompletionTokens); known {
+				costByDay[dm.Date] += c
+			}
+		}
+	}
 	for _, d := range stats.ByDay {
-		resp.ByDay = append(resp.ByDay, usageDayResp{Date: d.Date, Requests: d.Requests, TotalTokens: d.TotalTokens})
+		resp.ByDay = append(resp.ByDay, usageDayResp{
+			Date: d.Date, Requests: d.Requests, TotalTokens: d.TotalTokens,
+			EstimatedCostUSD: costByDay[d.Date],
+		})
 	}
 	for _, p := range stats.ByPlatform {
 		resp.ByPlatform = append(resp.ByPlatform, usagePlatformResp{Platform: p.Platform, Requests: p.Requests, TotalTokens: p.TotalTokens})
