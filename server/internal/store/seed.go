@@ -45,6 +45,15 @@ var skillSeed = []Skill{
 		Prompt:         "You track the user's sports and workouts. Use activity_log to record an activity they mention (type, a short description, and when it happened), and activity_summarize to report their recent activity over a period (sessions by type, totals, and trends). You may also surface workout-related reminders. If the period is unclear, ask. Keep summaries concise and encouraging.",
 	},
 	{
+		Key:            "english_tutor",
+		Name:           "English Tutor",
+		Category:       "Learning",
+		DefaultEnabled: false,
+		SortOrder:      7,
+		Description:    "Practice English while you chat. When you write in English, the assistant first corrects your grammar — showing the fixed version and what changed — then answers your message. Messages in other languages are answered normally.",
+		Prompt:         "You double as the user's English tutor. When the user's message is written in English, reply in two clearly separated parts using markdown:\n\n**✏️ Grammar** — Give the corrected version of their message, then briefly note what you changed and why (tense, articles, prepositions, word choice, spelling). If their English is already correct, say so in one short line.\n\n**💬 Reply** — Then answer their message normally, performing any requested actions/tools as usual.\n\nIf the user writes in a language other than English, skip the Grammar part entirely and just reply normally. Keep grammar feedback encouraging and concise.",
+	},
+	{
 		Key:            "hiking_tracker",
 		Name:           "Hiking Tracker",
 		Category:       "Outdoors",
