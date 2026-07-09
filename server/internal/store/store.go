@@ -85,6 +85,47 @@ type TripExpense struct {
 	SpentAt  time.Time
 }
 
+// Mountain is a canonical hiking destination, scoped to a user.
+type Mountain struct {
+	ID   int64
+	Name string
+}
+
+// HikeTrack is a canonical trail on a mountain, scoped to a user.
+type HikeTrack struct {
+	ID         int64
+	MountainID int64
+	Name       string
+}
+
+// Hiker is a canonical hiking participant, scoped to a user.
+type Hiker struct {
+	ID   int64
+	Name string
+}
+
+// Hike is a logged hiking trip.
+type Hike struct {
+	ID          int64
+	MountainID  int64
+	Camped      bool
+	UpTrackID   int64 // 0 = none
+	DownTrackID int64 // 0 = none
+	Days        int
+	Nights      int
+	HikedOn     time.Time
+	CreatedAt   time.Time
+}
+
+// HikeDetail is a hike joined with the names it references.
+type HikeDetail struct {
+	Hike
+	Mountain     string
+	UpTrack      string
+	DownTrack    string
+	Participants []string
+}
+
 // Note represents a saved note.
 type Note struct {
 	ID        int64
@@ -243,6 +284,17 @@ type Store interface {
 	// Activities (scoped to a user)
 	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
 	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
+
+	// Hiking (scoped to a user; names are canonical for typo-free reuse)
+	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)
+	CreateMountain(ctx context.Context, userID int64, name string) (*Mountain, error)
+	ListTracks(ctx context.Context, userID, mountainID int64) ([]HikeTrack, error)
+	CreateTrack(ctx context.Context, userID, mountainID int64, name string) (*HikeTrack, error)
+	ListHikers(ctx context.Context, userID int64) ([]Hiker, error)
+	CreateHiker(ctx context.Context, userID int64, name string) (*Hiker, error)
+	CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error)
+	AddHikeParticipant(ctx context.Context, hikeID, hikerID int64) error
+	ListHikes(ctx context.Context, userID int64, limit int) ([]HikeDetail, error)
 
 	// Travel (scoped to a user)
 	CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error)

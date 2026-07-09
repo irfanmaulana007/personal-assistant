@@ -19,6 +19,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/contacts"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
@@ -122,6 +123,7 @@ func main() {
 	handlers = append(handlers, contacts.New(db, log))
 	handlers = append(handlers, activity.New(db, timezone, log))
 	handlers = append(handlers, travel.New(db, timezone, log))
+	handlers = append(handlers, hiking.New(db, timezone, log))
 
 	router := capability.NewRouter(log, handlers...)
 

@@ -11,6 +11,7 @@ const (
 	CapabilityContact   Capability = "contact"
 	CapabilityActivity  Capability = "activity"
 	CapabilityTravel    Capability = "travel"
+	CapabilityHiking    Capability = "hiking"
 	CapabilityHelp      Capability = "help"
 	CapabilityUnknown   Capability = "unknown"
 )
@@ -66,6 +67,12 @@ const (
 	ActionTripCreate  Action = "trip.create"
 	ActionExpenseAdd  Action = "trip.expense_add"
 	ActionTripSummary Action = "trip.summary"
+)
+
+// Hiking actions
+const (
+	ActionHikeLog     Action = "hike.log"
+	ActionHikeSummary Action = "hike.summary"
 )
 
 const (
