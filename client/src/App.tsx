@@ -7,11 +7,22 @@ import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
 import { Logs } from './components/Logs';
 import { Account } from './components/Account';
+import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 
 function App() {
-  const { authenticated, isAdmin, needsSetup, loading, submitting, error, login, setup, logout } =
-    useAuth();
+  const {
+    user,
+    authenticated,
+    isAdmin,
+    needsSetup,
+    loading,
+    submitting,
+    error,
+    login,
+    setup,
+    logout,
+  } = useAuth();
 
   if (loading) {
     return (
@@ -31,9 +42,10 @@ function App() {
 
   return (
     <Routes>
-      <Route element={<Layout onLogout={logout} isAdmin={isAdmin} />}>
+      <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="profile" element={<Profile />} />
         {isAdmin && [
           <Route key="integrations" path="integrations" element={<Integrations />} />,
           <Route key="dashboard" path="dashboard" element={<Dashboard />} />,

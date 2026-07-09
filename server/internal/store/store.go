@@ -9,6 +9,7 @@ import (
 type User struct {
 	ID           int64
 	Email        string
+	Name         string
 	PasswordHash string
 	Role         string // "admin" or "member"
 	CreatedAt    time.Time
@@ -149,6 +150,7 @@ type Store interface {
 	ListUsers(ctx context.Context) ([]User, error)
 	UpdateUserRole(ctx context.Context, id int64, role string) error
 	UpdateUserPassword(ctx context.Context, id int64, passwordHash string) error
+	UpdateUserProfile(ctx context.Context, id int64, name, email string) error
 	DeleteUser(ctx context.Context, id int64) error
 	FirstAdmin(ctx context.Context) (*User, error)
 

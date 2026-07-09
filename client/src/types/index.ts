@@ -10,6 +10,7 @@ export type Role = 'admin' | 'member';
 export interface User {
   id: number;
   email: string;
+  name: string;
   role: Role;
   created_at: string;
 }

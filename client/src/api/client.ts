@@ -86,6 +86,13 @@ export async function getMe(): Promise<User> {
   return request<User>('/api/auth/me');
 }
 
+export async function updateProfile(name: string, email: string): Promise<User> {
+  return request<User>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ name, email }),
+  });
+}
+
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await request('/api/auth/password', {
     method: 'POST',
