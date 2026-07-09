@@ -7,6 +7,7 @@ import { Skills } from './components/Skills';
 import { Settings } from './components/Settings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
+import { PricingSettings } from './components/settings/PricingSettings';
 import { Dashboard } from './components/Dashboard';
 import { Overview } from './components/dashboard/Overview';
 import { Usage } from './components/dashboard/Usage';
@@ -70,6 +71,7 @@ function App() {
             <Route key="settings" path="settings" element={<Settings />}>
               <Route index element={<ModelSettings />} />
               <Route path="display" element={<DisplaySettings />} />
+              <Route path="pricing" element={<PricingSettings />} />
             </Route>,
             <Route key="account" path="account" element={<Account />} />,
           ]}

@@ -266,6 +266,14 @@ type UsageUser struct {
 	EstimatedCostUSD float64
 }
 
+// ModelPrice is a per-model rate (USD per 1M tokens), overriding the built-in
+// pricing table for cost estimation.
+type ModelPrice struct {
+	Model       string
+	InputPer1M  float64
+	OutputPer1M float64
+}
+
 // UserActivity summarizes a single user's own data.
 type UserActivity struct {
 	Runs        int
@@ -377,6 +385,11 @@ type Store interface {
 	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
 	UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error)
 	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
+
+	// Model prices (per-model cost overrides)
+	ListModelPrices(ctx context.Context) ([]ModelPrice, error)
+	UpsertModelPrice(ctx context.Context, p ModelPrice) error
+	DeleteModelPrice(ctx context.Context, model string) error
 
 	// Lifecycle
 	Close() error

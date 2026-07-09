@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const sections = [
   { to: '/settings', label: 'Model', end: true },
   { to: '/settings/display', label: 'Display', end: false },
+  { to: '/settings/pricing', label: 'Pricing', end: false },
 ];
 
 export function Settings() {

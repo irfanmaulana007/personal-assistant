@@ -176,6 +176,13 @@ export interface Preferences {
   usd_to_idr: number;
 }
 
+export interface ModelPrice {
+  model: string;
+  input_per_1m: number;
+  output_per_1m: number;
+  source: 'custom' | 'builtin';
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {
