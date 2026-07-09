@@ -4,6 +4,9 @@ import type {
   MyStats,
   Preferences,
   Persona,
+  Reminder,
+  ReminderPayload,
+  RemindersConfig,
   ModelPrice,
   Skill,
   Role,
@@ -116,6 +119,40 @@ export async function getPersona(): Promise<Persona> {
 
 export async function updatePersona(p: Persona): Promise<Persona> {
   return request<Persona>('/api/persona', { method: 'PUT', body: JSON.stringify(p) });
+}
+
+export async function listReminders(): Promise<Reminder[]> {
+  return request<Reminder[]>('/api/reminders');
+}
+
+export async function createReminder(r: ReminderPayload): Promise<Reminder> {
+  return request<Reminder>('/api/reminders', { method: 'POST', body: JSON.stringify(r) });
+}
+
+export async function updateReminder(id: number, r: ReminderPayload): Promise<Reminder> {
+  return request<Reminder>(`/api/reminders/${id}`, { method: 'PUT', body: JSON.stringify(r) });
+}
+
+export async function setReminderEnabled(id: number, enabled: boolean): Promise<Reminder> {
+  return request<Reminder>(`/api/reminders/${id}/enabled`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function deleteReminder(id: number): Promise<void> {
+  await request(`/api/reminders/${id}`, { method: 'DELETE' });
+}
+
+export async function getRemindersConfig(): Promise<RemindersConfig> {
+  return request<RemindersConfig>('/api/reminders/config');
+}
+
+export async function setRemindersConfig(enabled: boolean): Promise<RemindersConfig> {
+  return request<RemindersConfig>('/api/reminders/config', {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {

@@ -4,6 +4,7 @@ import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Skills } from './components/Skills';
+import { Reminders } from './components/Reminders';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
@@ -58,6 +59,7 @@ function App() {
           <Route index element={<Chat />} />
           <Route path="chat" element={<Chat />} />
           <Route path="skills" element={<Skills />} />
+          <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
             <Route index element={<AgentSettings />} />
