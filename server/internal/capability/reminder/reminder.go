@@ -104,19 +104,54 @@ func (h *Handler) list(ctx context.Context) (string, error) {
 	}
 
 	if len(reminders) == 0 {
-		return "No active reminders.", nil
+		return "Your schedule is empty — there are no active reminders.", nil
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("*Active Reminders* (%d):\n\n", len(reminders)))
+	sb.WriteString(fmt.Sprintf("*Your schedule* (%d reminders):\n\n", len(reminders)))
 
 	for _, r := range reminders {
-		sb.WriteString(fmt.Sprintf("#%d — _%s_\n", r.ID, r.Message))
-		sb.WriteString(fmt.Sprintf("   Due: %s\n\n", r.RemindAt.In(h.timezone).Format("Mon, Jan 2 at 3:04 PM")))
+		sb.WriteString(fmt.Sprintf("#%d — _%s_\n", r.ID, reminderBody(r)))
+		sb.WriteString(fmt.Sprintf("   %s\n\n", describeSchedule(r, h.timezone)))
 	}
 
 	sb.WriteString("Cancel with: _cancel reminder N_")
 	return sb.String(), nil
+}
+
+var weekdayNames = [...]string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+
+// describeSchedule renders a reminder's recurrence in human form for the schedule
+// listing (e.g. "Every day at 08:00, 20:00", "Weekly on Mon, Wed at 09:00").
+func describeSchedule(r store.Reminder, tz *time.Location) string {
+	times := strings.Join(r.Times, ", ")
+	switch r.RepeatMode {
+	case "daily":
+		return "Every day at " + times
+	case "weekly":
+		days := make([]string, 0, len(r.Weekdays))
+		for _, d := range r.Weekdays {
+			if d >= 0 && d <= 6 {
+				days = append(days, weekdayNames[d])
+			}
+		}
+		return fmt.Sprintf("Weekly on %s at %s", strings.Join(days, ", "), times)
+	case "monthly":
+		return fmt.Sprintf("Monthly on day %d at %s", r.DayOfMonth, times)
+	case "specific":
+		if event, err := time.ParseInLocation("2006-01-02T15:04", r.EventAt, tz); err == nil {
+			return "Event on " + event.Format("Mon, Jan 2 at 3:04 PM")
+		}
+		return "Event"
+	default: // once
+		if len(r.Times) == 0 { // legacy one-shot
+			return "On " + r.RemindAt.In(tz).Format("Mon, Jan 2 at 3:04 PM")
+		}
+		if day, err := time.ParseInLocation("2006-01-02", r.OnceDate, tz); err == nil {
+			return fmt.Sprintf("Once on %s at %s", day.Format("Mon, Jan 2"), times)
+		}
+		return "Once at " + times
+	}
 }
 
 func (h *Handler) cancel(ctx context.Context, result *intent.ParseResult) (string, error) {

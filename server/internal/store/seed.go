@@ -15,7 +15,7 @@ var skillSeed = []Skill{
 		DefaultEnabled: true,
 		SortOrder:      1,
 		Description:    "Set reminders that reach you on WhatsApp — from one-off nudges to bills and appointments. Tell the assistant what to remember and when, and it pings your WhatsApp when it's due.",
-		Prompt:         "You can set, list, and cancel reminders for the user; due reminders are delivered to their WhatsApp. Capture a clear message and a specific time. If the user describes a recurring need (e.g. the rent on the 5th of each month), schedule the next occurrence and tell them you'll remind them then. Always confirm the exact message and date/time you scheduled.",
+		Prompt:         "You can set, list, and cancel reminders for the user; due reminders are delivered to their WhatsApp. The user's reminders ARE their schedule/calendar/agenda — when they ask what's on their schedule or calendar, what's coming up, or what they have planned today/tomorrow/this week, call reminder_list and answer from it (do not say you lack calendar access). Capture a clear message and a specific time when setting one. Always confirm the exact message and date/time you scheduled.",
 	},
 	{
 		Key:            "ask_about_contact",

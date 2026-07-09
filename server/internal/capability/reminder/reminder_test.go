@@ -272,6 +272,24 @@ func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
 	}
 }
 
+func TestDescribeSchedule(t *testing.T) {
+	cases := []struct {
+		r    store.Reminder
+		want string
+	}{
+		{store.Reminder{RepeatMode: "daily", Times: []string{"08:00", "20:00"}}, "Every day at 08:00, 20:00"},
+		{store.Reminder{RepeatMode: "weekly", Weekdays: []int{1, 3}, Times: []string{"09:00"}}, "Weekly on Mon, Wed at 09:00"},
+		{store.Reminder{RepeatMode: "monthly", DayOfMonth: 5, Times: []string{"07:00"}}, "Monthly on day 5 at 07:00"},
+		{store.Reminder{RepeatMode: "once", OnceDate: "2026-03-10", Times: []string{"15:30"}}, "Once on Tue, Mar 10 at 15:30"},
+		{store.Reminder{RepeatMode: "specific", EventAt: "2026-09-01T06:00", Offsets: []int{60}}, "Event on Tue, Sep 1 at 6:00 AM"},
+	}
+	for _, c := range cases {
+		if got := describeSchedule(c.r, testTZ); got != c.want {
+			t.Errorf("describeSchedule = %q, want %q", got, c.want)
+		}
+	}
+}
+
 func TestHumanizeLead(t *testing.T) {
 	cases := map[time.Duration]string{
 		24 * time.Hour:   "1 day",
