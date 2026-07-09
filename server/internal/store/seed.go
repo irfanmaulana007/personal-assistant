@@ -50,8 +50,8 @@ var skillSeed = []Skill{
 		Category:       "Learning",
 		DefaultEnabled: false,
 		SortOrder:      7,
-		Description:    "Practice English while you chat. When you write in English, the assistant first corrects your grammar — showing the fixed version and what changed — then answers your message. Messages in other languages are answered normally.",
-		Prompt:         "You double as the user's English tutor. When the user's message is written in English, reply in two clearly separated parts using markdown:\n\n**✏️ Grammar** — Give the corrected version of their message, then briefly note what you changed and why (tense, articles, prepositions, word choice, spelling). If their English is already correct, say so in one short line.\n\n**💬 Reply** — Then answer their message normally, performing any requested actions/tools as usual.\n\nIf the user writes in a language other than English, skip the Grammar part entirely and just reply normally. Keep grammar feedback encouraging and concise.",
+		Description:    "Practice English while you chat. When you write in English, the assistant shows a corrected version of your message (grammar/spelling fixed), then answers normally. Messages in other languages are answered normally.",
+		Prompt:         "The user is practicing English. When the user's message is written in English, begin your response with ONLY the grammatically corrected version of their message — fix grammar, spelling, articles, tense, prepositions, and word choice, but keep their meaning and tone. Output nothing else in this part: no explanation, no labels, no commentary. Wrap it exactly between the markers [[grammar]] and [[/grammar]]. If their message is already correct, put the message unchanged inside the markers. After the closing [[/grammar]] marker, answer their message normally (using tools/actions as usual). If the user writes in a language other than English, do NOT include the [[grammar]] block at all — just answer normally.",
 	},
 	{
 		Key:            "hiking_tracker",

@@ -2,11 +2,24 @@ import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
 import type { ChatMessage } from '../types';
 
+// Split an assistant reply into an optional grammar correction (from the English
+// Tutor skill, wrapped in [[grammar]]…[[/grammar]]) and the actual reply.
+function splitGrammar(body: string): { grammar: string | null; reply: string } {
+  const m = body.match(/\[\[grammar\]\]([\s\S]*?)\[\[\/grammar\]\]/i);
+  if (!m) return { grammar: null, reply: body };
+  const grammar = m[1].trim();
+  const reply = body.replace(m[0], '').trim();
+  return { grammar: grammar || null, reply };
+}
+
 export function Message({ message }: { message: ChatMessage }) {
   const { formatChatTime } = usePreferences();
   const isUser = message.direction === 'out';
   const name = isUser ? 'You' : 'Assistant';
   const time = message.timestamp ? formatChatTime(message.timestamp) : '';
+  const { grammar, reply } = isUser
+    ? { grammar: null, reply: message.body }
+    : splitGrammar(message.body);
 
   return (
     <div className={`mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
@@ -24,7 +37,18 @@ export function Message({ message }: { message: ChatMessage }) {
         {message.image && (
           <img src={message.image} alt="attachment" className="mb-2 max-h-48 w-auto rounded-lg" />
         )}
-        {isUser ? message.body : <Markdown>{message.body}</Markdown>}
+        {isUser ? (
+          message.body
+        ) : (
+          <>
+            {grammar && (
+              <div className="mb-2 border-b border-gray-200 pb-2">
+                <Markdown className="text-xs italic text-gray-400">{grammar}</Markdown>
+              </div>
+            )}
+            <Markdown>{reply}</Markdown>
+          </>
+        )}
       </div>
     </div>
   );
