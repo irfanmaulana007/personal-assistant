@@ -181,10 +181,12 @@ export async function getLogs(
   from: string,
   to: string,
   platform: Channel = '',
-  limit = 100,
+  limit = 25,
+  cursor = 0,
 ): Promise<LogsResponse> {
   const p = platform ? `&platform=${platform}` : '';
-  return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}`);
+  const c = cursor ? `&cursor=${cursor}` : '';
+  return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}${c}`);
 }
 
 export async function getLog(id: number): Promise<Trace> {

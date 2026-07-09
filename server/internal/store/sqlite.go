@@ -693,12 +693,16 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 		q += ` AND platform = ?`
 		args = append(args, f.Platform)
 	}
+	if f.Cursor > 0 {
+		q += ` AND id < ?`
+		args = append(args, f.Cursor)
+	}
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, f.Offset)
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {

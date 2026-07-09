@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
 import { formatTokens, formatCost } from '../lib/format';
 import type { Trace, Channel } from '../types';
+
+const PAGE_SIZE = 25;
 
 function defaultRange(): { from: string; to: string } {
   const today = new Date();
@@ -33,22 +36,40 @@ const channelBadge: Record<string, string> = {
 };
 
 export function Logs() {
-  const [range, setRange] = useState(defaultRange);
-  const [channel, setChannel] = useState<Channel>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const def = defaultRange();
+  const from = searchParams.get('from') || def.from;
+  const to = searchParams.get('to') || def.to;
+  const channel = (searchParams.get('channel') as Channel) || '';
+
   const [traces, setTraces] = useState<Trace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [nextCursor, setNextCursor] = useState(0);
+  const [cursor, setCursor] = useState(0);
+  const [prevStack, setPrevStack] = useState<number[]>([]);
+
   const [selected, setSelected] = useState<Trace | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Persist filters to the URL; changing a filter resets pagination.
+  const patchParams = (patch: Record<string, string>) => {
+    const sp = new URLSearchParams(searchParams);
+    Object.entries(patch).forEach(([k, v]) => (v ? sp.set(k, v) : sp.delete(k)));
+    setLoading(true);
+    setSearchParams(sp);
+    setCursor(0);
+    setPrevStack([]);
+  };
+
   useEffect(() => {
     let active = true;
-    getLogs(range.from, range.to, channel)
+    getLogs(from, to, channel, PAGE_SIZE, cursor)
       .then((d) => {
-        if (active) {
-          setTraces(d.traces ?? []);
-          setError('');
-        }
+        if (!active) return;
+        setTraces(d.traces ?? []);
+        setNextCursor(d.next_cursor ?? 0);
+        setError('');
       })
       .catch((e) => {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load logs');
@@ -59,9 +80,16 @@ export function Logs() {
     return () => {
       active = false;
     };
-  }, [range.from, range.to, channel]);
+  }, [from, to, channel, cursor]);
 
-  const open = (t: Trace) => {
+  // Close the drawer on Escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSelected(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const openDetail = (t: Trace) => {
     setSelected(t);
     setDetailLoading(true);
     getLog(t.id)
@@ -70,76 +98,165 @@ export function Logs() {
       .finally(() => setDetailLoading(false));
   };
 
+  const goNext = () => {
+    if (!nextCursor) return;
+    setLoading(true);
+    setPrevStack((s) => [...s, cursor]);
+    setCursor(nextCursor);
+  };
+  const goPrev = () => {
+    if (prevStack.length === 0) return;
+    setLoading(true);
+    setPrevStack((s) => {
+      const copy = [...s];
+      const prev = copy.pop() ?? 0;
+      setCursor(prev);
+      return copy;
+    });
+  };
+
+  const startIdx = prevStack.length * PAGE_SIZE;
+
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-gray-900">Logs</h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            Every assistant run — inputs, tools, and outputs.
+            Every assistant run — click a row for inputs, tools, and outputs.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ChannelFilter value={channel} onChange={setChannel} />
+          <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
           <DateRangePicker
-            from={range.from}
-            to={range.to}
-            onChange={(from, to) => setRange({ from, to })}
+            from={from}
+            to={to}
+            onChange={(f, t) => patchParams({ from: f, to: t })}
           />
         </div>
       </div>
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          {loading ? (
-            <p className="p-5 text-sm text-gray-500">Loading…</p>
-          ) : traces.length === 0 ? (
-            <p className="p-5 text-sm text-gray-400">No runs in this range yet.</p>
-          ) : (
-            <div className="max-h-[70vh] overflow-y-auto">
-              {traces.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => open(t)}
-                  className={`flex w-full items-center gap-3 border-b border-gray-50 px-4 py-3 text-left transition last:border-0 hover:bg-gray-50 ${
-                    selected?.id === t.id ? 'bg-indigo-50/60' : ''
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm text-gray-800">{t.input || '(no input)'}</div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-400">
-                      <span>{format(parseISO(t.created_at), 'MMM d, HH:mm')}</span>
+      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2.5 font-medium">Message</th>
+                <th className="px-4 py-2.5 font-medium">Channel</th>
+                <th className="px-4 py-2.5 font-medium">Model</th>
+                <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
+                <th className="px-4 py-2.5 text-right font-medium">Latency</th>
+                <th className="px-4 py-2.5 text-right font-medium">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-sm text-gray-500">
+                    Loading…
+                  </td>
+                </tr>
+              ) : traces.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-sm text-gray-400">
+                    No runs in this range yet.
+                  </td>
+                </tr>
+              ) : (
+                traces.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => openDetail(t)}
+                    className="cursor-pointer border-b border-gray-50 transition last:border-0 hover:bg-gray-50"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
+                        />
+                        <span className="block max-w-[26rem] truncate text-gray-800">
+                          {t.input || '(no input)'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
                       <span
-                        className={`rounded px-1.5 py-0.5 font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500'}`}
+                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500'}`}
                       >
                         {t.platform}
                       </span>
-                      <span>{t.model || '—'}</span>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-gray-400 tabular-nums">
-                    <div>{formatTokens(t.total_tokens)} tok</div>
-                    <div>{fmtLatency(t.latency_ms)}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">{t.model || '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                      {formatTokens(t.total_tokens)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                      {fmtLatency(t.latency_ms)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-400">
+                      {format(parseISO(t.created_at), 'MMM d, HH:mm')}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          {!selected ? (
-            <p className="text-sm text-gray-400">Select a run to see its details.</p>
-          ) : (
-            <TraceDetail trace={selected} loading={detailLoading} />
-          )}
+        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+          <span className="text-xs text-gray-400">
+            {traces.length > 0 ? `Showing ${startIdx + 1}–${startIdx + traces.length}` : '—'}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={goPrev}
+              disabled={prevStack.length === 0}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              onClick={goNext}
+              disabled={!nextCursor}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
+
+      {selected && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30"
+            onClick={() => setSelected(null)}
+            aria-hidden
+          />
+          <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">Run detail</h2>
+              <button
+                onClick={() => setSelected(null)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <TraceDetail trace={selected} loading={detailLoading} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

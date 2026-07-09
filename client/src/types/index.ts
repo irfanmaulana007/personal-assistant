@@ -178,4 +178,5 @@ export interface Trace {
 
 export interface LogsResponse {
   traces: Trace[];
+  next_cursor?: number;
 }
