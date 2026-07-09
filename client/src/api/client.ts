@@ -148,10 +148,10 @@ export async function getRemindersConfig(): Promise<RemindersConfig> {
   return request<RemindersConfig>('/api/reminders/config');
 }
 
-export async function setRemindersConfig(enabled: boolean): Promise<RemindersConfig> {
+export async function setRemindersConfig(cfg: RemindersConfig): Promise<RemindersConfig> {
   return request<RemindersConfig>('/api/reminders/config', {
     method: 'PUT',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(cfg),
   });
 }
 

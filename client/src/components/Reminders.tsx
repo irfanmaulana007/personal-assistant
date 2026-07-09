@@ -8,7 +8,7 @@ import {
   getRemindersConfig,
   setRemindersConfig,
 } from '../api/client';
-import type { Reminder, ReminderPayload, RepeatMode } from '../types';
+import type { Reminder, ReminderPayload, RepeatMode, RemindersConfig } from '../types';
 import { Toggle } from './ui/Toggle';
 
 const inputClass =
@@ -111,9 +111,11 @@ function summarize(r: Reminder): string {
   return base;
 }
 
+const DEFAULT_DIGEST_TIME = '08:00';
+
 export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [globalEnabled, setGlobalEnabled] = useState(true);
+  const [config, setConfig] = useState<RemindersConfig>({ enabled: true, digest_time: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -125,7 +127,7 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
       .then(([rs, cfg]) => {
         if (!active) return;
         setReminders(rs);
-        setGlobalEnabled(cfg.enabled);
+        setConfig(cfg);
       })
       .catch((e) => active && setError(e instanceof Error ? e.message : 'Failed to load reminders'))
       .finally(() => active && setLoading(false));
@@ -136,15 +138,22 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
 
   const reload = async () => setReminders(await listReminders());
 
-  const toggleGlobal = async () => {
+  const saveConfig = async (next: RemindersConfig) => {
     setError('');
+    const prev = config;
+    setConfig(next); // optimistic
     try {
-      const cfg = await setRemindersConfig(!globalEnabled);
-      setGlobalEnabled(cfg.enabled);
+      setConfig(await setRemindersConfig(next));
     } catch (e) {
+      setConfig(prev);
       setError(e instanceof Error ? e.message : 'Failed to update setting');
     }
   };
+
+  const toggleGlobal = () => saveConfig({ ...config, enabled: !config.enabled });
+  const toggleDigest = () =>
+    saveConfig({ ...config, digest_time: config.digest_time ? '' : DEFAULT_DIGEST_TIME });
+  const setDigestTime = (t: string) => saveConfig({ ...config, digest_time: t });
 
   const toggleReminder = async (r: Reminder) => {
     setBusyId(r.id);
@@ -174,27 +183,51 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Reminders</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Schedule reminders delivered over WhatsApp. Set them to repeat and add one or more
-            times.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">All reminders</span>
-          <Toggle on={globalEnabled} disabled={!isAdmin} onClick={toggleGlobal} />
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight text-gray-900">Reminders</h1>
+        <p className="mt-0.5 text-sm text-gray-500">
+          Schedule reminders delivered over WhatsApp. Set them to repeat and add one or more times.
+        </p>
       </div>
 
-      {!isAdmin && (
-        <p className="mt-1 text-xs text-gray-400">
-          Only an admin can turn all reminders on or off.
-        </p>
-      )}
+      {/* Reminder settings — a section distinct from the reminder list. */}
+      <div className="mt-4 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white">
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-gray-900">All reminders</div>
+            <p className="mt-0.5 text-sm text-gray-500">Turn every reminder on or off at once.</p>
+          </div>
+          <Toggle on={config.enabled} disabled={!isAdmin} onClick={toggleGlobal} />
+        </div>
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-gray-900">Daily recap</div>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Send one WhatsApp message at a set time with your upcoming reminders (today &amp;
+              tomorrow).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {config.digest_time && (
+              <input
+                type="time"
+                value={config.digest_time}
+                disabled={!isAdmin}
+                onChange={(e) => setDigestTime(e.target.value)}
+                className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+              />
+            )}
+            <Toggle on={!!config.digest_time} disabled={!isAdmin} onClick={toggleDigest} />
+          </div>
+        </div>
+        {!isAdmin && (
+          <p className="px-4 py-2 text-xs text-gray-400">
+            Only an admin can change these settings.
+          </p>
+        )}
+      </div>
 
-      {!globalEnabled && (
+      {!config.enabled && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Reminders are paused. Nothing will be delivered until they’re turned back on.
         </div>
