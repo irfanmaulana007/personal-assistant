@@ -132,7 +132,7 @@ var skillTools = map[string][]toolSpec{
 		},
 		{
 			name:        "reminder_list",
-			description: "List the user's active reminders.",
+			description: "List the user's active reminders — their schedule, calendar, and agenda. Call this whenever the user asks what's on their schedule or calendar, what they have coming up, what's planned today/tomorrow/this week, or to see their reminders.",
 			capability:  intent.CapabilityReminder,
 			action:      intent.ActionReminderList,
 			parameters:  `{"type":"object","properties":{}}`,
