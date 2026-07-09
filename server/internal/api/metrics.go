@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sort"
 	"time"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
 type usageSummaryResp struct {
@@ -153,10 +155,18 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Emit one entry per day across the whole selected range (zero-filling days
+	// with no traces) so the time-series charts always span the date filter.
+	dayMap := make(map[string]store.UsageDay, len(stats.ByDay))
 	for _, d := range stats.ByDay {
+		dayMap[d.Date] = d
+	}
+	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
+		ds := day.Format(dateLayout)
+		d := dayMap[ds] // zero value when the day has no data
 		resp.ByDay = append(resp.ByDay, usageDayResp{
-			Date: d.Date, Requests: d.Requests, Errors: d.Errors, TotalTokens: d.TotalTokens,
-			AvgLatencyMs: d.AvgLatencyMs, EstimatedCostUSD: costByDay[d.Date],
+			Date: ds, Requests: d.Requests, Errors: d.Errors, TotalTokens: d.TotalTokens,
+			AvgLatencyMs: d.AvgLatencyMs, EstimatedCostUSD: costByDay[ds],
 		})
 	}
 	for _, p := range stats.ByPlatform {
