@@ -23,7 +23,7 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
     'w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition text-gray-900 placeholder-gray-400';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="w-full max-w-sm p-8 bg-white rounded-2xl border border-gray-200">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
