@@ -53,14 +53,14 @@ const components: Components = {
   pre: ({ children }) => <pre className="mb-2 last:mb-0">{children}</pre>,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse text-xs">{children}</table>
+      <table className="w-full border-collapse text-sm">{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead className="bg-black/[0.04]">{children}</thead>,
   th: ({ children }) => (
-    <th className="border border-gray-200 px-2 py-1 text-left font-semibold">{children}</th>
+    <th className="border border-gray-200 px-3 py-2 text-left font-semibold">{children}</th>
   ),
-  td: ({ children }) => <td className="border border-gray-200 px-2 py-1 align-top">{children}</td>,
+  td: ({ children }) => <td className="border border-gray-200 px-3 py-2 align-top">{children}</td>,
 };
 
 export function Markdown({
