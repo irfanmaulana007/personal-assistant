@@ -24,7 +24,7 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm p-8 bg-white rounded-2xl shadow-lg">
+      <div className="w-full max-w-sm p-8 bg-white rounded-2xl border border-gray-200">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <svg

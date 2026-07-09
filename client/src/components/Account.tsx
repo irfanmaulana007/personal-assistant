@@ -77,7 +77,7 @@ function UsersCard({
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
       <h2 className="mb-4 text-sm font-semibold text-gray-900">Users</h2>
 
       <div className="overflow-x-auto">

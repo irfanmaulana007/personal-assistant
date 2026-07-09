@@ -92,7 +92,7 @@ export function Logs() {
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
           {loading ? (
             <p className="p-5 text-sm text-gray-500">Loading…</p>
           ) : traces.length === 0 ? (
@@ -132,7 +132,7 @@ export function Logs() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
           {!selected ? (
             <p className="text-sm text-gray-400">Select a run to see its details.</p>
           ) : (

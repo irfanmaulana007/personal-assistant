@@ -83,7 +83,7 @@ export function Settings() {
         ) : (
           <form
             onSubmit={handleSave}
-            className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="mt-6 rounded-2xl border border-gray-200 bg-white p-6"
           >
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">LLM Provider</h2>
