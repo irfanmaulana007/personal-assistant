@@ -93,6 +93,34 @@ func TestReminderCRUDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSpecificReminderRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	const uid = 1
+
+	created, err := s.CreateReminder(ctx, uid, ReminderInput{
+		Title: "Flight", RepeatMode: "specific", EventAt: "2026-09-01T06:00", Offsets: []int{60, 1440}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := s.GetReminder(ctx, uid, created.ID)
+	if err != nil || got == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.EventAt != "2026-09-01T06:00" {
+		t.Errorf("event_at round-trip failed: %q", got.EventAt)
+	}
+	if len(got.Offsets) != 2 || got.Offsets[0] != 60 || got.Offsets[1] != 1440 {
+		t.Errorf("offsets round-trip failed: %v", got.Offsets)
+	}
+	// Event reminders are surfaced by ListEnabledForOwner (empty times).
+	enabled, _ := s.ListEnabledForOwner(ctx, uid)
+	if len(enabled) != 1 || enabled[0].RepeatMode != "specific" {
+		t.Errorf("expected the specific reminder in ListEnabledForOwner, got %+v", enabled)
+	}
+}
+
 func TestMarkReminderFiredDisables(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

@@ -182,6 +182,70 @@ func TestFireReminder_OnceDisables(t *testing.T) {
 	}
 }
 
+func TestFireSpecific_FiresEachOffsetThenDisables(t *testing.T) {
+	fs := &fakeStore{}
+	h, sent := testHandler(fs)
+	// Event at 2026-03-10 18:00 local; remind 1 day (1440m) and 1 hour (60m) before.
+	r := store.Reminder{
+		ID: 1, RepeatMode: "specific", Title: "Flight",
+		EventAt: "2026-03-10T18:00", Offsets: []int{60, 1440}, Enabled: true,
+	}
+
+	// First point: event − 1 day = 2026-03-09 18:00. Tick just after it.
+	h.fireSpecific(context.Background(), r, at(2026, time.March, 9, 18, 0).Add(20*time.Second))
+	if len(*sent) != 1 {
+		t.Fatalf("expected 1 send at the 1-day point, got %d", len(*sent))
+	}
+	if len(fs.fired) != 1 || fs.fired[0].disable {
+		t.Fatalf("1-day point should not disable, got %+v", fs.fired)
+	}
+	p1 := fs.fired[0].at
+	if !p1.Equal(at(2026, time.March, 9, 18, 0)) {
+		t.Fatalf("first point should be event-1day, got %v", p1)
+	}
+
+	// Advance last_fired_at; next point: event − 1 hour = 2026-03-10 17:00 → disables.
+	r.LastFiredAt = &p1
+	h.fireSpecific(context.Background(), r, at(2026, time.March, 10, 17, 0).Add(20*time.Second))
+	if len(*sent) != 2 {
+		t.Fatalf("expected 2 sends after the 1-hour point, got %d", len(*sent))
+	}
+	if !fs.fired[1].disable {
+		t.Fatalf("final (1-hour) point should disable the reminder, got %+v", fs.fired[1])
+	}
+}
+
+func TestFireSpecific_GuardBlocksRefire(t *testing.T) {
+	fs := &fakeStore{}
+	h, sent := testHandler(fs)
+	p := at(2026, time.March, 9, 18, 0)
+	r := store.Reminder{
+		ID: 2, RepeatMode: "specific", Title: "x",
+		EventAt: "2026-03-10T18:00", Offsets: []int{1440}, Enabled: true, LastFiredAt: &p,
+	}
+	// The only point (event−1day = 03-09 18:00) equals last_fired_at → no refire.
+	h.fireSpecific(context.Background(), r, at(2026, time.March, 9, 18, 0).Add(40*time.Second))
+	if len(*sent) != 0 {
+		t.Fatalf("guard should block refire of an already-fired point, got %d", len(*sent))
+	}
+}
+
+func TestHumanizeLead(t *testing.T) {
+	cases := map[time.Duration]string{
+		24 * time.Hour:   "1 day",
+		48 * time.Hour:   "2 days",
+		time.Hour:        "1 hour",
+		2 * time.Hour:    "2 hours",
+		30 * time.Minute: "30 minutes",
+		90 * time.Minute: "90 minutes",
+	}
+	for d, want := range cases {
+		if got := humanizeLead(d); got != want {
+			t.Errorf("humanizeLead(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
+
 func TestFireReminder_NothingDueOnNonMatchingDay(t *testing.T) {
 	fs := &fakeStore{}
 	h, sent := testHandler(fs)

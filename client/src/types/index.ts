@@ -192,7 +192,7 @@ export interface Persona {
   custom: string;
 }
 
-export type RepeatMode = 'once' | 'daily' | 'weekly' | 'monthly';
+export type RepeatMode = 'once' | 'daily' | 'weekly' | 'monthly' | 'specific';
 
 export interface Reminder {
   id: number;
@@ -202,6 +202,8 @@ export interface Reminder {
   weekdays: number[]; // 0=Sun..6=Sat
   day_of_month: number; // 1-31
   once_date: string; // "YYYY-MM-DD"
+  event_at: string; // "YYYY-MM-DDTHH:MM" (specific mode; optional otherwise)
+  offsets: number[]; // minutes before event_at (specific mode)
   enabled: boolean;
 }
 

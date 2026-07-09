@@ -301,6 +301,8 @@ func (s *SQLiteStore) migrate() error {
 		{"reminders", "weekdays", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "day_of_month", "INTEGER NOT NULL DEFAULT 0"},
 		{"reminders", "once_date", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "event_at", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "offsets", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "last_fired_at", "DATETIME"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -445,15 +447,15 @@ func (s *SQLiteStore) DeleteUser(ctx context.Context, id int64) error {
 
 // --- Reminders ---
 
-const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, enabled, last_fired_at, remind_at, created_at, notified, cancelled`
+const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, last_fired_at, remind_at, created_at, notified, cancelled`
 
 func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error) {
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO reminders (user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, enabled, remind_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO reminders (user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, remind_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, in.Title, in.Title, in.RepeatMode,
-		joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.Enabled,
+		joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.EventAt, joinInts(in.Offsets), in.Enabled,
 		now, now,
 	)
 	if err != nil {
@@ -519,9 +521,9 @@ func (s *SQLiteStore) ListEnabledForOwner(ctx context.Context, ownerID int64) ([
 
 func (s *SQLiteStore) UpdateReminder(ctx context.Context, userID, id int64, in ReminderInput) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE reminders SET title = ?, message = ?, repeat_mode = ?, times = ?, weekdays = ?, day_of_month = ?, once_date = ?, enabled = ?
+		`UPDATE reminders SET title = ?, message = ?, repeat_mode = ?, times = ?, weekdays = ?, day_of_month = ?, once_date = ?, event_at = ?, offsets = ?, enabled = ?
 		 WHERE id = ? AND user_id = ?`,
-		in.Title, in.Title, in.RepeatMode, joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.Enabled,
+		in.Title, in.Title, in.RepeatMode, joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.EventAt, joinInts(in.Offsets), in.Enabled,
 		id, userID,
 	)
 	return err
@@ -578,16 +580,17 @@ type rowScanner interface {
 
 func scanReminder(row rowScanner) (*Reminder, error) {
 	var r Reminder
-	var times, weekdays string
+	var times, weekdays, offsets string
 	var lastFired sql.NullTime
 	if err := row.Scan(
 		&r.ID, &r.UserID, &r.Title, &r.Message, &r.RepeatMode, &times, &weekdays,
-		&r.DayOfMonth, &r.OnceDate, &r.Enabled, &lastFired, &r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled,
+		&r.DayOfMonth, &r.OnceDate, &r.EventAt, &offsets, &r.Enabled, &lastFired, &r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled,
 	); err != nil {
 		return nil, err
 	}
 	r.Times = splitTimes(times)
 	r.Weekdays = splitInts(weekdays)
+	r.Offsets = splitInts(offsets)
 	if lastFired.Valid {
 		t := lastFired.Time.UTC()
 		r.LastFiredAt = &t
