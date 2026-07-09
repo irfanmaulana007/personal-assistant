@@ -55,6 +55,18 @@ func (s *SQLiteStore) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id)`,
 
+		`CREATE TABLE IF NOT EXISTS activities (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			type TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			occurred_at DATETIME NOT NULL,
+			source TEXT NOT NULL DEFAULT 'chat',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, occurred_at)`,
+
 		`CREATE TABLE IF NOT EXISTS skills (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,

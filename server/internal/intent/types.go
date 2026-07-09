@@ -55,6 +55,12 @@ const (
 	ActionContactSearch Action = "contact.search"
 )
 
+// Activity actions
+const (
+	ActionActivityLog       Action = "activity.log"
+	ActionActivitySummarize Action = "activity.summarize"
+)
+
 const (
 	ActionHelp Action = "help"
 )
