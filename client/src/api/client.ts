@@ -3,6 +3,7 @@ import type {
   User,
   MyStats,
   Preferences,
+  Persona,
   ModelPrice,
   Skill,
   Role,
@@ -107,6 +108,14 @@ export async function getPreferences(): Promise<Preferences> {
 
 export async function updatePreferences(p: Preferences): Promise<Preferences> {
   return request<Preferences>('/api/preferences', { method: 'PUT', body: JSON.stringify(p) });
+}
+
+export async function getPersona(): Promise<Persona> {
+  return request<Persona>('/api/persona');
+}
+
+export async function updatePersona(p: Persona): Promise<Persona> {
+  return request<Persona>('/api/persona', { method: 'PUT', body: JSON.stringify(p) });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {

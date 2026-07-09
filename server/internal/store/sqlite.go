@@ -169,6 +169,17 @@ func (s *SQLiteStore) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(remind_at) WHERE notified = 0 AND cancelled = 0`,
 
+		`CREATE TABLE IF NOT EXISTS user_personas (
+			user_id INTEGER PRIMARY KEY,
+			tone TEXT NOT NULL DEFAULT 'balanced',
+			emoji TEXT NOT NULL DEFAULT 'occasional',
+			length TEXT NOT NULL DEFAULT 'balanced',
+			personality TEXT NOT NULL DEFAULT 'balanced',
+			name TEXT NOT NULL DEFAULT '',
+			custom TEXT NOT NULL DEFAULT '',
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS memories (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,

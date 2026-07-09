@@ -31,6 +31,7 @@ import (
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -78,6 +79,7 @@ func main() {
 	settingsSvc := settings.New(db, encKey)
 	skillsSvc := skills.New(db)
 	memSvc := memory.New(db)
+	personaSvc := persona.New(db)
 	llmClient := llm.NewClient()
 	composioClient := composio.NewClient()
 
@@ -137,7 +139,7 @@ func main() {
 	composioTools := composiotools.New(composioClient, settingsSvc, log)
 
 	// LLM tool-calling agent (replaces the regex parser).
-	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, router, cfg.Owner, composioTools, log)
+	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, personaSvc, router, cfg.Owner, composioTools, log)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport

@@ -43,6 +43,17 @@ type Reminder struct {
 	Cancelled bool
 }
 
+// UserPersona configures the assistant's style for a user (injected into the
+// agent's system prompt). Empty/"balanced" fields use the default behavior.
+type UserPersona struct {
+	Tone        string // formal | balanced | casual
+	Emoji       string // none | occasional | frequent
+	Length      string // concise | balanced | detailed
+	Personality string // balanced | professional | friendly | witty | direct | encouraging
+	Name        string // what the assistant calls itself (optional)
+	Custom      string // free-text extra instructions
+}
+
 // Memory is a durable fact the agent has remembered about a user.
 type Memory struct {
 	ID        int64
@@ -351,6 +362,10 @@ type Store interface {
 	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)
 	MarkReminderNotified(ctx context.Context, id int64) error
 	CancelReminder(ctx context.Context, userID, id int64) error
+
+	// Agent persona (per-user style)
+	GetUserPersona(ctx context.Context, userID int64) (UserPersona, error)
+	SetUserPersona(ctx context.Context, userID int64, p UserPersona) error
 
 	// Memories (agent long-term memory, scoped to a user; FTS-backed)
 	CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error)

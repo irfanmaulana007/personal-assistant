@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Skills } from './components/Skills';
 import { Settings } from './components/Settings';
+import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
@@ -58,6 +59,12 @@ function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="skills" element={<Skills />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
+            <Route index element={<AgentSettings />} />
+            {isAdmin && <Route path="model" element={<ModelSettings />} />}
+            {isAdmin && <Route path="display" element={<DisplaySettings />} />}
+            {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
+          </Route>
           {isAdmin && [
             <Route key="integrations" path="integrations" element={<Integrations />} />,
             <Route key="dashboard" path="dashboard" element={<Dashboard />}>
@@ -68,11 +75,6 @@ function App() {
               <Route path="users" element={<Users />} />
             </Route>,
             <Route key="logs" path="logs" element={<Logs />} />,
-            <Route key="settings" path="settings" element={<Settings />}>
-              <Route index element={<ModelSettings />} />
-              <Route path="display" element={<DisplaySettings />} />
-              <Route path="pricing" element={<PricingSettings />} />
-            </Route>,
             <Route key="account" path="account" element={<Account />} />,
           ]}
           <Route path="*" element={<Navigate to="/chat" replace />} />
