@@ -204,9 +204,11 @@ type UsageTotals struct {
 
 // UsageDay is per-day usage for a time series.
 type UsageDay struct {
-	Date        string // YYYY-MM-DD (UTC)
-	Requests    int
-	TotalTokens int
+	Date         string // YYYY-MM-DD (UTC)
+	Requests     int
+	Errors       int
+	TotalTokens  int
+	AvgLatencyMs int
 }
 
 // DayModelUsage is per-day, per-model token usage — used to compute a per-day
@@ -240,6 +242,30 @@ type ToolCount struct {
 	Count int
 }
 
+// UserModelUsage is per-user, per-model usage — used to compute per-user cost
+// (pricing is applied in the API layer, like DayModelUsage).
+type UserModelUsage struct {
+	UserID           int64
+	Model            string
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	Errors           int
+}
+
+// UsageUser is a per-user usage row for the dashboard's Users section (name and
+// cost are filled in by the API layer).
+type UsageUser struct {
+	UserID           int64
+	Name             string
+	Email            string
+	Requests         int
+	TotalTokens      int
+	Errors           int
+	EstimatedCostUSD float64
+}
+
 // UserActivity summarizes a single user's own data.
 type UserActivity struct {
 	Runs        int
@@ -252,12 +278,19 @@ type UserActivity struct {
 type UsageStats struct {
 	Summary      UsageTotals
 	AvgLatencyMs int
+	LatencyP50   int
+	LatencyP95   int
+	LatencyP99   int
 	ToolCalls    int
 	Errors       int
+	ActiveUsers  int
 	ByDay        []UsageDay
 	ByModel      []UsageModel
 	ByPlatform   []UsagePlatform
 	TopTools     []ToolCount
+	ByHour       [24]int
+	ByWeekday    [7]int
+	ByUser       []UsageUser
 }
 
 // Store defines the persistence interface.
@@ -342,6 +375,7 @@ type Store interface {
 	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
 	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
+	UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error)
 	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
 
 	// Lifecycle

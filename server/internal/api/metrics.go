@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
@@ -14,8 +16,22 @@ type usageSummaryResp struct {
 	TotalTokens      int     `json:"total_tokens"`
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 	AvgLatencyMs     int     `json:"avg_latency_ms"`
+	LatencyP50Ms     int     `json:"latency_p50_ms"`
+	LatencyP95Ms     int     `json:"latency_p95_ms"`
+	LatencyP99Ms     int     `json:"latency_p99_ms"`
 	ToolCalls        int     `json:"tool_calls"`
 	Errors           int     `json:"errors"`
+	ActiveUsers      int     `json:"active_users"`
+}
+
+type usageUserResp struct {
+	UserID           int64   `json:"user_id"`
+	Name             string  `json:"name"`
+	Email            string  `json:"email"`
+	Requests         int     `json:"requests"`
+	TotalTokens      int     `json:"total_tokens"`
+	Errors           int     `json:"errors"`
+	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 }
 
 // validPlatform normalizes the platform query param ("" = all).
@@ -42,7 +58,9 @@ type toolCountResp struct {
 type usageDayResp struct {
 	Date             string  `json:"date"`
 	Requests         int     `json:"requests"`
+	Errors           int     `json:"errors"`
 	TotalTokens      int     `json:"total_tokens"`
+	AvgLatencyMs     int     `json:"avg_latency_ms"`
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 }
 
@@ -65,6 +83,9 @@ type usageResp struct {
 	ByModel    []usageModelResp    `json:"by_model"`
 	ByPlatform []usagePlatformResp `json:"by_platform"`
 	TopTools   []toolCountResp     `json:"top_tools"`
+	ByHour     []int               `json:"by_hour"`    // 24 buckets, UTC
+	ByWeekday  []int               `json:"by_weekday"` // 7 buckets (Sun=0), UTC
+	ByUser     []usageUserResp     `json:"by_user"`
 	// CostPartial is true when at least one model's cost could not be priced.
 	CostPartial bool `json:"cost_partial"`
 }
@@ -136,8 +157,8 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, d := range stats.ByDay {
 		resp.ByDay = append(resp.ByDay, usageDayResp{
-			Date: d.Date, Requests: d.Requests, TotalTokens: d.TotalTokens,
-			EstimatedCostUSD: costByDay[d.Date],
+			Date: d.Date, Requests: d.Requests, Errors: d.Errors, TotalTokens: d.TotalTokens,
+			AvgLatencyMs: d.AvgLatencyMs, EstimatedCostUSD: costByDay[d.Date],
 		})
 	}
 	for _, p := range stats.ByPlatform {
@@ -146,6 +167,10 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	for _, t := range stats.TopTools {
 		resp.TopTools = append(resp.TopTools, toolCountResp{Tool: t.Tool, Count: t.Count})
 	}
+
+	resp.ByHour = stats.ByHour[:]
+	resp.ByWeekday = stats.ByWeekday[:]
+	resp.ByUser = s.usageByUser(r.Context(), from, toExclusive, platform)
 
 	var totalCost float64
 	for _, m := range stats.ByModel {
@@ -173,9 +198,56 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		TotalTokens:      stats.Summary.TotalTokens,
 		EstimatedCostUSD: totalCost,
 		AvgLatencyMs:     stats.AvgLatencyMs,
+		LatencyP50Ms:     stats.LatencyP50,
+		LatencyP95Ms:     stats.LatencyP95,
+		LatencyP99Ms:     stats.LatencyP99,
 		ToolCalls:        stats.ToolCalls,
 		Errors:           stats.Errors,
+		ActiveUsers:      stats.ActiveUsers,
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// usageByUser aggregates per-user usage (requests/tokens/errors/cost), sorted by
+// requests desc, resolving names via ListUsers. Cost is priced per (user, model).
+func (s *Server) usageByUser(ctx context.Context, from, to time.Time, platform string) []usageUserResp {
+	rows, err := s.store.UsageByUserModel(ctx, from, to, platform)
+	if err != nil {
+		s.log.Error("usage by user", "error", err)
+		return nil
+	}
+
+	type nameEmail struct{ name, email string }
+	names := map[int64]nameEmail{}
+	if users, err := s.store.ListUsers(ctx); err == nil {
+		for _, u := range users {
+			names[u.ID] = nameEmail{u.Name, u.Email}
+		}
+	}
+
+	agg := map[int64]*usageUserResp{}
+	order := []int64{}
+	for _, r := range rows {
+		u := agg[r.UserID]
+		if u == nil {
+			info := names[r.UserID]
+			u = &usageUserResp{UserID: r.UserID, Name: info.name, Email: info.email}
+			agg[r.UserID] = u
+			order = append(order, r.UserID)
+		}
+		u.Requests += r.Requests
+		u.TotalTokens += r.TotalTokens
+		u.Errors += r.Errors
+		if c, known := llm.EstimateCost(r.Model, r.PromptTokens, r.CompletionTokens); known {
+			u.EstimatedCostUSD += c
+		}
+	}
+
+	out := make([]usageUserResp, 0, len(order))
+	for _, id := range order {
+		out = append(out, *agg[id])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Requests > out[j].Requests })
+	return out
 }

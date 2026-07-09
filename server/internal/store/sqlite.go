@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -231,6 +232,7 @@ func (s *SQLiteStore) migrate() error {
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_traces_created ON traces(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_traces_user ON traces(user_id)`,
 
 		`CREATE TABLE IF NOT EXISTS tool_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -819,10 +821,11 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 		        COALESCE(SUM(total_tokens), 0),
 		        COALESCE(SUM(tool_count), 0),
 		        COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0),
+		        COUNT(DISTINCT user_id),
 		        AVG(NULLIF(latency_ms, 0))
 		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc, base...,
 	).Scan(&stats.Summary.Requests, &stats.Summary.PromptTokens, &stats.Summary.CompletionTokens,
-		&stats.Summary.TotalTokens, &stats.ToolCalls, &stats.Errors, &avgLatency)
+		&stats.Summary.TotalTokens, &stats.ToolCalls, &stats.Errors, &stats.ActiveUsers, &avgLatency)
 	if err != nil {
 		return nil, fmt.Errorf("usage summary: %w", err)
 	}
@@ -830,9 +833,27 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 		stats.AvgLatencyMs = int(avgLatency.Float64)
 	}
 
+	// Latency percentiles (loads the latency column for the range; fine at this scale).
+	if p50, p95, p99, err := s.latencyPercentiles(ctx, pc, base); err != nil {
+		return nil, err
+	} else {
+		stats.LatencyP50, stats.LatencyP95, stats.LatencyP99 = p50, p95, p99
+	}
+
+	// Requests by hour-of-day and day-of-week (UTC; client rotates by display tz).
+	if err := s.usageByBucket(ctx, "%H", pc, base, stats.ByHour[:]); err != nil {
+		return nil, fmt.Errorf("usage by hour: %w", err)
+	}
+	if err := s.usageByBucket(ctx, "%w", pc, base, stats.ByWeekday[:]); err != nil {
+		return nil, fmt.Errorf("usage by weekday: %w", err)
+	}
+
 	// By day
 	dayRows, err := s.db.QueryContext(ctx,
-		`SELECT date(created_at) AS d, COUNT(*), COALESCE(SUM(total_tokens), 0)
+		`SELECT date(created_at) AS d, COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(total_tokens), 0),
+		        COALESCE(CAST(AVG(NULLIF(latency_ms, 0)) AS INTEGER), 0)
 		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc+`
 		 GROUP BY d ORDER BY d ASC`, base...,
 	)
@@ -842,7 +863,7 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 	defer dayRows.Close()
 	for dayRows.Next() {
 		var d UsageDay
-		if err := dayRows.Scan(&d.Date, &d.Requests, &d.TotalTokens); err != nil {
+		if err := dayRows.Scan(&d.Date, &d.Requests, &d.Errors, &d.TotalTokens, &d.AvgLatencyMs); err != nil {
 			return nil, fmt.Errorf("scan usage day: %w", err)
 		}
 		stats.ByDay = append(stats.ByDay, d)
@@ -923,6 +944,98 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 		stats.TopTools = append(stats.TopTools, t)
 	}
 	return stats, toolRows.Err()
+}
+
+// latencyPercentiles loads latency_ms for the range and returns p50/p95/p99.
+func (s *SQLiteStore) latencyPercentiles(ctx context.Context, pc string, base []any) (p50, p95, p99 int, err error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT latency_ms FROM traces WHERE created_at >= ? AND created_at < ? AND latency_ms > 0`+pc+`
+		 ORDER BY latency_ms ASC`, base...)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("latency percentiles: %w", err)
+	}
+	defer rows.Close()
+	var lat []int
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return 0, 0, 0, err
+		}
+		lat = append(lat, v)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, 0, err
+	}
+	pick := func(p float64) int {
+		if len(lat) == 0 {
+			return 0
+		}
+		idx := int(math.Ceil(p*float64(len(lat)))) - 1
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(lat) {
+			idx = len(lat) - 1
+		}
+		return lat[idx]
+	}
+	return pick(0.50), pick(0.95), pick(0.99), nil
+}
+
+// usageByBucket fills out[] with request counts grouped by a strftime bucket
+// (e.g. "%H" for hour-of-day 0..23, "%w" for weekday 0..6, Sunday=0), in UTC.
+func (s *SQLiteStore) usageByBucket(ctx context.Context, strftimeFmt, pc string, base []any, out []int) error {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT CAST(strftime('`+strftimeFmt+`', created_at) AS INTEGER) AS b, COUNT(*)
+		 FROM traces WHERE created_at >= ? AND created_at < ?`+pc+`
+		 GROUP BY b`, base...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var b, c int
+		if err := rows.Scan(&b, &c); err != nil {
+			return err
+		}
+		if b >= 0 && b < len(out) {
+			out[b] = c
+		}
+	}
+	return rows.Err()
+}
+
+// UsageByUserModel returns per-user, per-model usage for the Users section
+// (cost is priced in the API layer, like UsageByDayModel).
+func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error) {
+	q := `SELECT user_id, model, COUNT(*),
+	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
+	             COALESCE(SUM(total_tokens), 0),
+	             COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0)
+	      FROM traces WHERE created_at >= ? AND created_at < ?`
+	args := []any{from.UTC(), to.UTC()}
+	if platform != "" {
+		q += ` AND platform = ?`
+		args = append(args, platform)
+	}
+	q += ` GROUP BY user_id, model`
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("usage by user/model: %w", err)
+	}
+	defer rows.Close()
+
+	var out []UserModelUsage
+	for rows.Next() {
+		var u UserModelUsage
+		if err := rows.Scan(&u.UserID, &u.Model, &u.Requests, &u.PromptTokens,
+			&u.CompletionTokens, &u.TotalTokens, &u.Errors); err != nil {
+			return nil, fmt.Errorf("scan user/model: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 func (s *SQLiteStore) Close() error {
