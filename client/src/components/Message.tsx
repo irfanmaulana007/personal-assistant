@@ -1,4 +1,5 @@
 import { usePreferences } from '../contexts/preferences';
+import { Markdown } from './Markdown';
 import type { ChatMessage } from '../types';
 
 export function Message({ message }: { message: ChatMessage }) {
@@ -14,16 +15,16 @@ export function Message({ message }: { message: ChatMessage }) {
         {time && <span className="text-xs text-gray-400">{time}</span>}
       </div>
       <div
-        className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+        className={`max-w-[80%] break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? 'rounded-tr-sm bg-indigo-100 text-gray-900'
+            ? 'whitespace-pre-wrap rounded-tr-sm bg-indigo-100 text-gray-900'
             : 'rounded-tl-sm bg-gray-100 text-gray-900'
         }`}
       >
         {message.image && (
           <img src={message.image} alt="attachment" className="mb-2 max-h-48 w-auto rounded-lg" />
         )}
-        {message.body}
+        {isUser ? message.body : <Markdown>{message.body}</Markdown>}
       </div>
     </div>
   );
