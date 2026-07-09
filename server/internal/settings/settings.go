@@ -21,6 +21,9 @@ const (
 	KeyComposioAPIKey = "composio.api_key" // encrypted
 
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
+
+	KeyReminderDigestTime = "reminder_digest_time" // local "HH:MM"; empty ⇒ no daily recap
+	KeyReminderDigestLast = "reminder_digest_last" // "YYYY-MM-DD" of the last recap sent
 )
 
 // Service resolves and persists settings.
@@ -208,6 +211,29 @@ func (s *Service) SetRemindersEnabled(ctx context.Context, enabled bool) error {
 		val = "false"
 	}
 	return s.store.SetSetting(ctx, KeyRemindersEnabled, []byte(val))
+}
+
+// ReminderDigestTime returns the local "HH:MM" at which to send the daily recap,
+// or "" when the recap is disabled.
+func (s *Service) ReminderDigestTime(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyReminderDigestTime)
+	return v
+}
+
+// SetReminderDigestTime persists the daily-recap time ("HH:MM" or "" to disable).
+func (s *Service) SetReminderDigestTime(ctx context.Context, hhmm string) error {
+	return s.store.SetSetting(ctx, KeyReminderDigestTime, []byte(hhmm))
+}
+
+// ReminderDigestLastSent returns the "YYYY-MM-DD" of the last recap sent, or "".
+func (s *Service) ReminderDigestLastSent(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyReminderDigestLast)
+	return v
+}
+
+// SetReminderDigestLastSent records the date a recap was last sent.
+func (s *Service) SetReminderDigestLastSent(ctx context.Context, date string) error {
+	return s.store.SetSetting(ctx, KeyReminderDigestLast, []byte(date))
 }
 
 func (s *Service) getString(ctx context.Context, key string) (string, error) {

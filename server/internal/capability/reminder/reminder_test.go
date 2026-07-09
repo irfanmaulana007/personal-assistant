@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -227,6 +228,47 @@ func TestFireSpecific_GuardBlocksRefire(t *testing.T) {
 	h.fireSpecific(context.Background(), r, at(2026, time.March, 9, 18, 0).Add(40*time.Second))
 	if len(*sent) != 0 {
 		t.Fatalf("guard should block refire of an already-fired point, got %d", len(*sent))
+	}
+}
+
+func TestBuildDigest(t *testing.T) {
+	now := at(2026, time.March, 10, 7, 0) // Tuesday 07:00
+	reminders := []store.Reminder{
+		// Daily: 06:00 already past today (excluded), 20:00 today + tomorrow (included).
+		{RepeatMode: "daily", Title: "Stretch", Times: []string{"06:00", "20:00"}, Enabled: true},
+		// Weekly Wed (tomorrow) 09:00 → included; Tue is today but already past isn't set here.
+		{RepeatMode: "weekly", Title: "Standup", Weekdays: []int{3}, Times: []string{"09:00"}, Enabled: true},
+		// Specific event tomorrow 18:00 → included.
+		{RepeatMode: "specific", Title: "Flight", EventAt: "2026-03-11T18:00", Offsets: []int{60}, Enabled: true},
+		// Specific event far away → excluded.
+		{RepeatMode: "specific", Title: "Faraway", EventAt: "2026-04-01T10:00", Offsets: []int{60}, Enabled: true},
+	}
+	msg := buildDigest(reminders, now, testTZ)
+	if msg == "" {
+		t.Fatal("expected a non-empty digest")
+	}
+	for _, want := range []string{"Stretch", "Standup", "Flight", "Today 8:00 PM", "Tomorrow"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("digest missing %q; got:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "Faraway") {
+		t.Errorf("digest should not include out-of-window reminder; got:\n%s", msg)
+	}
+	// Stretch's today 06:00 is before now (07:00) → the today variant is excluded
+	// (tomorrow's 06:00 still legitimately appears).
+	if strings.Contains(msg, "Today 6:00 AM") {
+		t.Errorf("digest should exclude a past same-day slot; got:\n%s", msg)
+	}
+}
+
+func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
+	now := at(2026, time.March, 10, 7, 0)
+	reminders := []store.Reminder{
+		{RepeatMode: "weekly", Title: "Sat only", Weekdays: []int{6}, Times: []string{"09:00"}, Enabled: true},
+	}
+	if got := buildDigest(reminders, now, testTZ); got != "" {
+		t.Errorf("expected empty digest, got: %q", got)
 	}
 }
 

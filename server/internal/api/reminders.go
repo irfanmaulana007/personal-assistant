@@ -387,24 +387,41 @@ func (s *Server) handleSetReminderEnabled(w http.ResponseWriter, r *http.Request
 }
 
 type remindersConfigResp struct {
-	Enabled bool `json:"enabled"`
+	Enabled    bool   `json:"enabled"`
+	DigestTime string `json:"digest_time"` // local "HH:MM", or "" when the daily recap is off
 }
 
-// handleGetRemindersConfig returns the global reminders on/off state (any user).
+// handleGetRemindersConfig returns the global reminders settings (any user).
 func (s *Server) handleGetRemindersConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: s.settings.RemindersEnabled(r.Context())})
+	writeJSON(w, http.StatusOK, remindersConfigResp{
+		Enabled:    s.settings.RemindersEnabled(r.Context()),
+		DigestTime: s.settings.ReminderDigestTime(r.Context()),
+	})
 }
 
-// handleSetRemindersConfig sets the global reminders on/off state (admin only).
+// handleSetRemindersConfig sets the global reminders settings (admin only).
 func (s *Server) handleSetRemindersConfig(w http.ResponseWriter, r *http.Request) {
 	var req remindersConfigResp
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
+	digest := strings.TrimSpace(req.DigestTime)
+	if digest != "" {
+		norm, err := normalizeTimes([]string{digest})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "digest_time must be HH:MM"})
+			return
+		}
+		digest = norm[0]
+	}
 	if err := s.settings.SetRemindersEnabled(r.Context(), req.Enabled); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
 	}
-	writeJSON(w, http.StatusOK, req)
+	if err := s.settings.SetReminderDigestTime(r.Context(), digest); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
+		return
+	}
+	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: req.Enabled, DigestTime: digest})
 }
