@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { listSkills, setSkillEnabled } from '../api/client';
 import type { Skill } from '../types';
+import { Toggle } from './ui/Toggle';
 
 export function Skills() {
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -83,26 +84,5 @@ export function Skills() {
         </div>
       )}
     </div>
-  );
-}
-
-function Toggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      disabled={busy}
-      onClick={onClick}
-      className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50 ${
-        on ? 'bg-indigo-600' : 'bg-gray-200'
-      }`}
-    >
-      <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
-          on ? 'translate-x-5' : 'translate-x-0.5'
-        }`}
-      />
-    </button>
   );
 }

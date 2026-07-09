@@ -282,6 +282,38 @@ func (s *Server) handleDeleteReminder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handleSetReminderEnabled toggles a reminder's enabled flag without re-running
+// full validation, so a reminder can always be paused regardless of its state.
+func (s *Server) handleSetReminderEnabled(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := s.store.SetReminderEnabled(r.Context(), claims.UserID(), id, req.Enabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update reminder"})
+		return
+	}
+	rm, err := s.store.GetReminder(r.Context(), claims.UserID(), id)
+	if err != nil || rm == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "reminder not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toReminderResp(*rm))
+}
+
 type remindersConfigResp struct {
 	Enabled bool `json:"enabled"`
 }

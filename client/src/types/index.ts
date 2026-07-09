@@ -192,6 +192,25 @@ export interface Persona {
   custom: string;
 }
 
+export type RepeatMode = 'once' | 'daily' | 'weekly' | 'monthly';
+
+export interface Reminder {
+  id: number;
+  title: string;
+  repeat_mode: RepeatMode;
+  times: string[]; // "HH:MM"
+  weekdays: number[]; // 0=Sun..6=Sat
+  day_of_month: number; // 1-31
+  once_date: string; // "YYYY-MM-DD"
+  enabled: boolean;
+}
+
+export type ReminderPayload = Omit<Reminder, 'id'>;
+
+export interface RemindersConfig {
+  enabled: boolean;
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {

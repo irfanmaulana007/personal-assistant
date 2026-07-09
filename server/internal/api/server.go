@@ -100,6 +100,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("POST /api/reminders", protect(s.handleCreateReminder))
 	mux.Handle("GET /api/reminders/config", protect(s.handleGetRemindersConfig))
 	mux.Handle("PUT /api/reminders/{id}", protect(s.handleUpdateReminder))
+	mux.Handle("PUT /api/reminders/{id}/enabled", protect(s.handleSetReminderEnabled))
 	mux.Handle("DELETE /api/reminders/{id}", protect(s.handleDeleteReminder))
 
 	// Admin only
