@@ -30,6 +30,18 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    to: '/skills',
+    label: 'Skills',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
+      />
+    ),
+  },
+  {
     to: '/integrations',
     label: 'Integrations',
     adminOnly: true,

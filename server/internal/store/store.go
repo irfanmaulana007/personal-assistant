@@ -15,6 +15,24 @@ type User struct {
 	CreatedAt    time.Time
 }
 
+// Skill is a master-data capability that can be enabled per user.
+type Skill struct {
+	ID             int64
+	Key            string
+	Name           string
+	Description    string
+	Prompt         string
+	Category       string
+	DefaultEnabled bool
+	SortOrder      int
+}
+
+// UserSkill is a skill together with its effective enabled state for a user.
+type UserSkill struct {
+	Skill
+	Enabled bool
+}
+
 // Reminder represents a scheduled reminder.
 type Reminder struct {
 	ID        int64
@@ -161,6 +179,13 @@ type Store interface {
 	UpdateUserProfile(ctx context.Context, id int64, name, email string) error
 	DeleteUser(ctx context.Context, id int64) error
 	FirstAdmin(ctx context.Context) (*User, error)
+
+	// Skills (master data + per-user enable/disable)
+	ListSkills(ctx context.Context) ([]Skill, error)
+	GetSkill(ctx context.Context, id int64) (*Skill, error)
+	ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error)
+	SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error
+	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
 
 	// Reminders (scoped to a user; scheduler passes the owner's id)
 	CreateReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error)

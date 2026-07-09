@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
+import { Skills } from './components/Skills';
 import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
 import { Logs } from './components/Logs';
@@ -45,6 +46,7 @@ function App() {
       <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="skills" element={<Skills />} />
         <Route path="profile" element={<Profile />} />
         {isAdmin && [
           <Route key="integrations" path="integrations" element={<Integrations />} />,

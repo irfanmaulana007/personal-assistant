@@ -140,6 +140,15 @@ export interface UsageStats {
   cost_partial: boolean;
 }
 
+export interface Skill {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {
