@@ -131,6 +131,22 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
 		},
 	},
+	"ask_about_contact": {
+		{
+			name:        "contact_add",
+			description: "Save a personal contact for the user.",
+			capability:  intent.CapabilityContact,
+			action:      intent.ActionContactAdd,
+			parameters:  `{"type":"object","properties":{"name":{"type":"string","description":"The contact's name."},"phone":{"type":"string","description":"Phone number, if given."},"email":{"type":"string","description":"Email address, if given."},"note":{"type":"string","description":"Any extra note about the contact."}},"required":["name"]}`,
+		},
+		{
+			name:        "contact_search",
+			description: "Look up the user's saved contacts. Omit query to list all.",
+			capability:  intent.CapabilityContact,
+			action:      intent.ActionContactSearch,
+			parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"Name, phone, email, or keyword to search for. Empty lists all contacts."}}}`,
+		},
+	},
 }
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a

@@ -43,6 +43,16 @@ type Reminder struct {
 	Cancelled bool
 }
 
+// Contact is a saved contact, scoped to a user.
+type Contact struct {
+	ID        int64
+	Name      string
+	Phone     string
+	Email     string
+	Note      string
+	CreatedAt time.Time
+}
+
 // Note represents a saved note.
 type Note struct {
 	ID        int64
@@ -193,6 +203,10 @@ type Store interface {
 	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)
 	MarkReminderNotified(ctx context.Context, id int64) error
 	CancelReminder(ctx context.Context, userID, id int64) error
+
+	// Contacts (scoped to a user)
+	CreateContact(ctx context.Context, userID int64, name, phone, email, note string) (*Contact, error)
+	SearchContacts(ctx context.Context, userID int64, query string) ([]Contact, error)
 
 	// Notes (scoped to a user)
 	CreateNote(ctx context.Context, userID int64, title, content, tags string) (*Note, error)

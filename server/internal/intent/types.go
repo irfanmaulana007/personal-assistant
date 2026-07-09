@@ -8,6 +8,9 @@ const (
 	CapabilityEmail     Capability = "email"
 	CapabilityReminder  Capability = "reminder"
 	CapabilityKnowledge Capability = "knowledge"
+	CapabilityContact   Capability = "contact"
+	CapabilityActivity  Capability = "activity"
+	CapabilityTravel    Capability = "travel"
 	CapabilityHelp      Capability = "help"
 	CapabilityUnknown   Capability = "unknown"
 )
@@ -44,6 +47,12 @@ const (
 	ActionNoteSearch Action = "note.search"
 	ActionNoteList   Action = "note.list"
 	ActionNoteDelete Action = "note.delete"
+)
+
+// Contact actions
+const (
+	ActionContactAdd    Action = "contact.add"
+	ActionContactSearch Action = "contact.search"
 )
 
 const (
