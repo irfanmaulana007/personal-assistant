@@ -5,6 +5,7 @@ import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
 import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
+import { Markdown } from './Markdown';
 import type { Trace, Channel } from '../types';
 
 const PAGE_SIZE = 25;
@@ -236,8 +237,8 @@ export function Logs() {
             onClick={() => setSelected(null)}
             aria-hidden
           />
-          <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
+          <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl flex-col bg-white shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
               <h2 className="text-base font-semibold text-gray-900">Run detail</h2>
               <button
                 onClick={() => setSelected(null)}
@@ -254,7 +255,9 @@ export function Logs() {
                 </svg>
               </button>
             </div>
-            <TraceDetail trace={selected} loading={detailLoading} />
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <TraceDetail trace={selected} loading={detailLoading} />
+            </div>
           </div>
         </>
       )}
@@ -416,7 +419,13 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
       )}
 
       <Section title="Output">
-        <p className="whitespace-pre-wrap text-sm text-gray-800">{trace.output || '(none)'}</p>
+        {trace.output ? (
+          <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+            <Markdown>{trace.output}</Markdown>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">(none)</p>
+        )}
       </Section>
     </div>
   );
@@ -424,7 +433,7 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-5">
+    <div className="mt-6 border-t border-gray-100 pt-5 first:mt-0 first:border-0 first:pt-0">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</h3>
       {children}
     </div>
