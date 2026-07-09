@@ -2,6 +2,7 @@ import type {
   AuthResponse,
   User,
   MyStats,
+  Preferences,
   Skill,
   Role,
   ChatResponse,
@@ -97,6 +98,14 @@ export async function updateProfile(name: string, email: string): Promise<User> 
 
 export async function getMyStats(): Promise<MyStats> {
   return request<MyStats>('/api/auth/me/stats');
+}
+
+export async function getPreferences(): Promise<Preferences> {
+  return request<Preferences>('/api/preferences');
+}
+
+export async function updatePreferences(p: Preferences): Promise<Preferences> {
+  return request<Preferences>('/api/preferences', { method: 'PUT', body: JSON.stringify(p) });
 }
 
 export async function listSkills(): Promise<Skill[]> {

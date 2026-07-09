@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
 import { getMe, getMyStats, updateProfile, changePassword } from '../api/client';
 import { formatTokens } from '../lib/format';
+import { usePreferences } from '../contexts/preferences';
 import type { User, MyStats } from '../types';
 
 const inputClass =
@@ -52,6 +52,7 @@ export function Profile() {
 }
 
 function ProfileHeader({ user }: { user: User }) {
+  const { formatDate } = usePreferences();
   const displayName = user.name?.trim() || user.email;
   const initial = (user.name?.trim() || user.email || '?').charAt(0).toUpperCase();
   return (
@@ -71,9 +72,7 @@ function ProfileHeader({ user }: { user: User }) {
           </span>
         </div>
         <p className="truncate text-sm text-gray-500">{user.email}</p>
-        <p className="mt-0.5 text-xs text-gray-400">
-          Joined {format(parseISO(user.created_at), 'MMMM d, yyyy')}
-        </p>
+        <p className="mt-0.5 text-xs text-gray-400">Joined {formatDate(user.created_at)}</p>
       </div>
     </div>
   );

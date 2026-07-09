@@ -90,10 +90,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/api/chat/history", protect(s.handleChatHistory))
 	mux.Handle("GET /api/skills", protect(s.handleListSkills))
 	mux.Handle("PUT /api/skills/{id}", protect(s.handleSetSkill))
+	mux.Handle("GET /api/preferences", protect(s.handleGetPreferences))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
+	mux.Handle("PUT /api/preferences", admin(s.handleUpdatePreferences))
 	mux.Handle("/api/metrics/usage", admin(s.handleMetricsUsage))
 	mux.Handle("GET /api/logs", admin(s.handleListLogs))
 	mux.Handle("GET /api/logs/{id}", admin(s.handleGetLog))
