@@ -8,6 +8,9 @@ import { Settings } from './components/Settings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { Dashboard } from './components/Dashboard';
+import { Overview } from './components/dashboard/Overview';
+import { Usage } from './components/dashboard/Usage';
+import { Activity } from './components/dashboard/Activity';
 import { Logs } from './components/Logs';
 import { Account } from './components/Account';
 import { Profile } from './components/Profile';
@@ -54,7 +57,11 @@ function App() {
           <Route path="profile" element={<Profile />} />
           {isAdmin && [
             <Route key="integrations" path="integrations" element={<Integrations />} />,
-            <Route key="dashboard" path="dashboard" element={<Dashboard />} />,
+            <Route key="dashboard" path="dashboard" element={<Dashboard />}>
+              <Route index element={<Overview />} />
+              <Route path="usage" element={<Usage />} />
+              <Route path="activity" element={<Activity />} />
+            </Route>,
             <Route key="logs" path="logs" element={<Logs />} />,
             <Route key="settings" path="settings" element={<Settings />}>
               <Route index element={<ModelSettings />} />
