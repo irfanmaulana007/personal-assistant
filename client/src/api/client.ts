@@ -142,10 +142,10 @@ export async function deleteUser(id: number): Promise<void> {
   await request(`/api/users/${id}`, { method: 'DELETE' });
 }
 
-export async function sendMessage(message: string): Promise<ChatResponse> {
+export async function sendMessage(message: string, image?: string): Promise<ChatResponse> {
   return request<ChatResponse>('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, image: image ?? '' }),
   });
 }
 

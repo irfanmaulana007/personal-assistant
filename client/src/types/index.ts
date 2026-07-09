@@ -3,6 +3,7 @@ export interface ChatMessage {
   direction: 'in' | 'out';
   body: string;
   timestamp: string;
+  image?: string; // data: URL, for user messages with an attached image
 }
 
 export type Role = 'admin' | 'member';
