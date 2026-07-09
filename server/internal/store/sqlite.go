@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -293,6 +294,14 @@ func (s *SQLiteStore) migrate() error {
 		{"traces", "skills", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "steps_json", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"reminders", "title", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "enabled", "BOOLEAN NOT NULL DEFAULT 1"},
+		{"reminders", "repeat_mode", "TEXT NOT NULL DEFAULT 'once'"},
+		{"reminders", "times", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "weekdays", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "day_of_month", "INTEGER NOT NULL DEFAULT 0"},
+		{"reminders", "once_date", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "last_fired_at", "DATETIME"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -301,6 +310,14 @@ func (s *SQLiteStore) migrate() error {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", c.table, c.column, err)
 		}
+	}
+
+	// Partial index for the scheduler's owner lookup. Created after the columns
+	// above exist (the reminders table predates the `enabled` column).
+	if _, err := s.db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_reminders_owner_enabled ON reminders(user_id) WHERE enabled = 1 AND cancelled = 0`,
+	); err != nil {
+		return fmt.Errorf("create idx_reminders_owner_enabled: %w", err)
 	}
 
 	// Seed / upsert master data (skills).
@@ -428,40 +445,113 @@ func (s *SQLiteStore) DeleteUser(ctx context.Context, id int64) error {
 
 // --- Reminders ---
 
-func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error) {
+const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, enabled, last_fired_at, remind_at, created_at, notified, cancelled`
+
+func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error) {
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO reminders (user_id, message, remind_at, created_at) VALUES (?, ?, ?, ?)`,
-		userID, message, remindAt.UTC(), now,
+		`INSERT INTO reminders (user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, enabled, remind_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, in.Title, in.Title, in.RepeatMode,
+		joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.Enabled,
+		now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert reminder: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return &Reminder{ID: id, Message: message, RemindAt: remindAt, CreatedAt: now}, nil
+	return s.GetReminder(ctx, userID, id)
+}
+
+// CreateLegacyReminder inserts a one-shot reminder for the natural-language chat
+// path (no wall-clock recurrence semantics). Times stays empty so the scheduler
+// uses the legacy remind_at branch.
+func (s *SQLiteStore) CreateLegacyReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error) {
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO reminders (user_id, title, message, repeat_mode, remind_at, created_at) VALUES (?, ?, ?, 'once', ?, ?)`,
+		userID, message, message, remindAt.UTC(), now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert reminder: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return &Reminder{ID: id, UserID: userID, Title: message, Message: message, RemindAt: remindAt, CreatedAt: now, Enabled: true}, nil
+}
+
+func (s *SQLiteStore) GetReminder(ctx context.Context, userID, id int64) (*Reminder, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+reminderCols+` FROM reminders WHERE id = ? AND user_id = ?`, id, userID)
+	r, err := scanReminder(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get reminder: %w", err)
+	}
+	return r, nil
 }
 
 func (s *SQLiteStore) ListReminders(ctx context.Context, userID int64, activeOnly bool) ([]Reminder, error) {
-	query := `SELECT id, message, remind_at, created_at, notified, cancelled FROM reminders WHERE user_id = ?`
+	query := `SELECT ` + reminderCols + ` FROM reminders WHERE user_id = ? AND cancelled = 0`
 	if activeOnly {
-		query += ` AND notified = 0 AND cancelled = 0`
+		query += ` AND enabled = 1`
 	}
-	query += ` ORDER BY remind_at ASC`
+	query += ` ORDER BY created_at DESC`
 
 	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list reminders: %w", err)
 	}
 	defer rows.Close()
-
 	return scanReminders(rows)
+}
+
+func (s *SQLiteStore) ListEnabledForOwner(ctx context.Context, ownerID int64) ([]Reminder, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+reminderCols+` FROM reminders WHERE user_id = ? AND enabled = 1 AND cancelled = 0`, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list enabled reminders: %w", err)
+	}
+	defer rows.Close()
+	return scanReminders(rows)
+}
+
+func (s *SQLiteStore) UpdateReminder(ctx context.Context, userID, id int64, in ReminderInput) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE reminders SET title = ?, message = ?, repeat_mode = ?, times = ?, weekdays = ?, day_of_month = ?, once_date = ?, enabled = ?
+		 WHERE id = ? AND user_id = ?`,
+		in.Title, in.Title, in.RepeatMode, joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.Enabled,
+		id, userID,
+	)
+	return err
+}
+
+func (s *SQLiteStore) DeleteReminder(ctx context.Context, userID, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM reminders WHERE id = ? AND user_id = ?`, id, userID)
+	return err
+}
+
+func (s *SQLiteStore) SetReminderEnabled(ctx context.Context, userID, id int64, enabled bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET enabled = ? WHERE id = ? AND user_id = ?`, enabled, id, userID)
+	return err
+}
+
+// MarkReminderFired advances last_fired_at and optionally disables a completed
+// one-shot reminder, in one atomic statement.
+func (s *SQLiteStore) MarkReminderFired(ctx context.Context, id int64, firedAt time.Time, disable bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE reminders SET last_fired_at = ?, enabled = CASE WHEN ? THEN 0 ELSE enabled END WHERE id = ?`,
+		firedAt.UTC(), disable, id,
+	)
+	return err
 }
 
 func (s *SQLiteStore) GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, message, remind_at, created_at, notified, cancelled
+		`SELECT `+reminderCols+`
 		 FROM reminders
-		 WHERE user_id = ? AND remind_at <= ? AND notified = 0 AND cancelled = 0
+		 WHERE user_id = ? AND times = '' AND remind_at <= ? AND notified = 0 AND cancelled = 0
 		 ORDER BY remind_at ASC`,
 		userID, time.Now().UTC(),
 	)
@@ -469,7 +559,6 @@ func (s *SQLiteStore) GetDueReminders(ctx context.Context, userID int64) ([]Remi
 		return nil, fmt.Errorf("get due reminders: %w", err)
 	}
 	defer rows.Close()
-
 	return scanReminders(rows)
 }
 
@@ -483,16 +572,70 @@ func (s *SQLiteStore) CancelReminder(ctx context.Context, userID, id int64) erro
 	return err
 }
 
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanReminder(row rowScanner) (*Reminder, error) {
+	var r Reminder
+	var times, weekdays string
+	var lastFired sql.NullTime
+	if err := row.Scan(
+		&r.ID, &r.UserID, &r.Title, &r.Message, &r.RepeatMode, &times, &weekdays,
+		&r.DayOfMonth, &r.OnceDate, &r.Enabled, &lastFired, &r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled,
+	); err != nil {
+		return nil, err
+	}
+	r.Times = splitTimes(times)
+	r.Weekdays = splitInts(weekdays)
+	if lastFired.Valid {
+		t := lastFired.Time.UTC()
+		r.LastFiredAt = &t
+	}
+	return &r, nil
+}
+
 func scanReminders(rows *sql.Rows) ([]Reminder, error) {
 	var reminders []Reminder
 	for rows.Next() {
-		var r Reminder
-		if err := rows.Scan(&r.ID, &r.Message, &r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled); err != nil {
+		r, err := scanReminder(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan reminder: %w", err)
 		}
-		reminders = append(reminders, r)
+		reminders = append(reminders, *r)
 	}
 	return reminders, rows.Err()
+}
+
+func joinTimes(times []string) string { return strings.Join(times, ",") }
+
+func splitTimes(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
+func joinInts(nums []int) string {
+	parts := make([]string, len(nums))
+	for i, n := range nums {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ",")
+}
+
+func splitInts(s string) []int {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	nums := make([]int, 0, len(parts))
+	for _, p := range parts {
+		if n, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+			nums = append(nums, n)
+		}
+	}
+	return nums
 }
 
 // --- Notes ---

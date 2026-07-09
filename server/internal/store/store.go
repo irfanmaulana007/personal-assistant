@@ -33,14 +33,38 @@ type UserSkill struct {
 	Enabled bool
 }
 
-// Reminder represents a scheduled reminder.
+// Reminder represents a scheduled reminder. Newer reminders use the recurring
+// model (RepeatMode + Times + the mode-specific fields); legacy one-shot
+// reminders created via chat have Times empty and a populated RemindAt.
 type Reminder struct {
-	ID        int64
+	ID          int64
+	UserID      int64
+	Title       string
+	RepeatMode  string   // once | daily | weekly | monthly
+	Times       []string // local "HH:MM", sorted ascending
+	Weekdays    []int    // 0-6 (0=Sun), weekly only
+	DayOfMonth  int      // 1-31, monthly only
+	OnceDate    string   // local "YYYY-MM-DD", once only
+	Enabled     bool
+	LastFiredAt *time.Time // UTC instant of the most-recent slot fired; nil = never
+
+	// Legacy one-shot fields (retained for chat-created reminders).
 	Message   string
 	RemindAt  time.Time
 	CreatedAt time.Time
 	Notified  bool
 	Cancelled bool
+}
+
+// ReminderInput is the create/update payload for a recurring reminder.
+type ReminderInput struct {
+	Title      string
+	RepeatMode string
+	Times      []string
+	Weekdays   []int
+	DayOfMonth int
+	OnceDate   string
+	Enabled    bool
 }
 
 // UserPersona configures the assistant's style for a user (injected into the
@@ -357,8 +381,16 @@ type Store interface {
 	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
 
 	// Reminders (scoped to a user; scheduler passes the owner's id)
-	CreateReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error)
+	CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error)
+	GetReminder(ctx context.Context, userID, id int64) (*Reminder, error)
 	ListReminders(ctx context.Context, userID int64, activeOnly bool) ([]Reminder, error)
+	UpdateReminder(ctx context.Context, userID, id int64, in ReminderInput) error
+	DeleteReminder(ctx context.Context, userID, id int64) error
+	SetReminderEnabled(ctx context.Context, userID, id int64, enabled bool) error
+	ListEnabledForOwner(ctx context.Context, ownerID int64) ([]Reminder, error)
+	MarkReminderFired(ctx context.Context, id int64, firedAt time.Time, disable bool) error
+	// Legacy one-shot path (chat-created reminders).
+	CreateLegacyReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error)
 	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)
 	MarkReminderNotified(ctx context.Context, id int64) error
 	CancelReminder(ctx context.Context, userID, id int64) error

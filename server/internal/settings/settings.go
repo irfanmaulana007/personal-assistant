@@ -19,6 +19,8 @@ const (
 	KeyLLMModel       = "llm.model"        // plaintext
 	KeyLLMBaseURL     = "llm.base_url"     // plaintext
 	KeyComposioAPIKey = "composio.api_key" // encrypted
+
+	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 )
 
 // Service resolves and persists settings.
@@ -187,6 +189,25 @@ func (s *Service) SetComposioKey(ctx context.Context, key string) error {
 // Mask returns a masked view of a secret (e.g. "••••7890"), or "" if empty.
 func Mask(secret string) string {
 	return mask(secret)
+}
+
+// RemindersEnabled reports whether the reminder scheduler is globally enabled.
+// The feature is on by default; only an explicit "false" disables it.
+func (s *Service) RemindersEnabled(ctx context.Context) bool {
+	v, err := s.getString(ctx, KeyRemindersEnabled)
+	if err != nil {
+		return true
+	}
+	return v != "false"
+}
+
+// SetRemindersEnabled persists the global reminders on/off toggle.
+func (s *Service) SetRemindersEnabled(ctx context.Context, enabled bool) error {
+	val := "true"
+	if !enabled {
+		val = "false"
+	}
+	return s.store.SetSetting(ctx, KeyRemindersEnabled, []byte(val))
 }
 
 func (s *Service) getString(ctx context.Context, key string) (string, error) {
