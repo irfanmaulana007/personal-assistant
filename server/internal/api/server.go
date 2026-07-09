@@ -96,11 +96,17 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/preferences", protect(s.handleGetPreferences))
 	mux.Handle("GET /api/persona", protect(s.handleGetPersona))
 	mux.Handle("PUT /api/persona", protect(s.handleSetPersona))
+	mux.Handle("GET /api/reminders", protect(s.handleListReminders))
+	mux.Handle("POST /api/reminders", protect(s.handleCreateReminder))
+	mux.Handle("GET /api/reminders/config", protect(s.handleGetRemindersConfig))
+	mux.Handle("PUT /api/reminders/{id}", protect(s.handleUpdateReminder))
+	mux.Handle("DELETE /api/reminders/{id}", protect(s.handleDeleteReminder))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", admin(s.handleUpdatePreferences))
+	mux.Handle("PUT /api/reminders/config", admin(s.handleSetRemindersConfig))
 	mux.Handle("GET /api/pricing", admin(s.handleListPricing))
 	mux.Handle("PUT /api/pricing", admin(s.handleSetPricing))
 	mux.Handle("DELETE /api/pricing/{model}", admin(s.handleDeletePricing))

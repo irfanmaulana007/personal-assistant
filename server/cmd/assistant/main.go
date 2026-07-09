@@ -115,7 +115,7 @@ func main() {
 		}
 	}
 
-	reminderHandler := reminder.New(db, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
+	reminderHandler := reminder.New(db, settingsSvc, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
 	if cfg.Capabilities.Reminders.Enabled {
 		handlers = append(handlers, reminderHandler)
 	}

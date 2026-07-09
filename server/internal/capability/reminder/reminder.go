@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,13 +12,20 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 )
 
+// graceWindow bounds how late a missed slot may fire after a restart/outage.
+// Slots older than this are silently skipped (marker advanced, no send) to avoid
+// blasting stale reminders on boot. Must be well above the tick interval.
+const graceWindow = 15 * time.Minute
+
 // Handler handles reminder-related commands and runs the background scheduler.
 type Handler struct {
 	store         store.Store
+	settings      *settings.Service
 	timezone      *time.Location
 	checkInterval time.Duration
 	sendFunc      transport.SendFunc
@@ -26,9 +34,10 @@ type Handler struct {
 }
 
 // New creates a new reminder handler.
-func New(s store.Store, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
+func New(s store.Store, settingsSvc *settings.Service, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
 	return &Handler{
 		store:         s,
+		settings:      settingsSvc,
 		timezone:      timezone,
 		checkInterval: checkInterval,
 		ownerJID:      ownerJID,
@@ -76,7 +85,7 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 		return fmt.Sprintf("I couldn't understand %q as a time. Try: _in 30 minutes_, _at 5pm_, _tomorrow at 9am_", timeStr), nil
 	}
 
-	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), message, remindAt)
+	reminder, err := h.store.CreateLegacyReminder(ctx, authctx.UserID(ctx), message, remindAt)
 	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
 	}
@@ -147,9 +156,15 @@ func (h *Handler) StartScheduler(ctx context.Context) {
 }
 
 func (h *Handler) checkDueReminders(ctx context.Context) {
+	// Global on/off toggle. When disabled, do nothing — importantly, we do not
+	// advance any last_fired_at, so re-enabling resumes cleanly.
+	if h.settings != nil && !h.settings.RemindersEnabled(ctx) {
+		return
+	}
+
 	// Reminders are per-user, but WhatsApp delivery only reaches the owner
-	// (the first admin, mapped to the configured owner JID). Other users' due
-	// reminders remain listable in chat but are not pushed.
+	// (the first admin, mapped to the configured owner JID). Other users'
+	// reminders remain manageable in the UI but are not pushed.
 	owner, err := h.store.FirstAdmin(ctx)
 	if err != nil {
 		h.log.Error("failed to resolve owner for reminders", "error", err)
@@ -159,26 +174,182 @@ func (h *Handler) checkDueReminders(ctx context.Context) {
 		return // no admin yet (setup not completed)
 	}
 
-	reminders, err := h.store.GetDueReminders(ctx, owner.ID)
+	now := time.Now().In(h.timezone)
+
+	reminders, err := h.store.ListEnabledForOwner(ctx, owner.ID)
 	if err != nil {
-		h.log.Error("failed to get due reminders", "error", err)
+		h.log.Error("failed to list reminders", "error", err)
 		return
 	}
 
 	for _, r := range reminders {
-		msg := fmt.Sprintf("⏰ *Reminder*: %s", r.Message)
+		if len(r.Times) == 0 {
+			h.fireLegacy(ctx, r) // one-shot chat reminder (remind_at based)
+			continue
+		}
+		h.fireReminder(ctx, r, now)
+	}
+}
 
-		if h.sendFunc != nil {
-			if err := h.sendFunc(ctx, h.ownerJID, msg); err != nil {
-				h.log.Error("failed to send reminder", "id", r.ID, "error", err)
+// fireLegacy handles the pre-recurrence one-shot reminders (Times empty): fire
+// when remind_at has passed, then mark notified.
+func (h *Handler) fireLegacy(ctx context.Context, r store.Reminder) {
+	if r.Notified || r.RemindAt.After(time.Now().UTC()) {
+		return
+	}
+	msg := fmt.Sprintf("⏰ *Reminder*: %s", reminderBody(r))
+	if h.sendFunc != nil {
+		if err := h.sendFunc(ctx, h.ownerJID, msg); err != nil {
+			h.log.Error("failed to send reminder", "id", r.ID, "error", err)
+			return
+		}
+	}
+	if err := h.store.MarkReminderNotified(ctx, r.ID); err != nil {
+		h.log.Error("failed to mark reminder notified", "id", r.ID, "error", err)
+	}
+	h.log.Info("reminder sent", "id", r.ID)
+}
+
+// fireReminder evaluates a recurring reminder and sends at most one notification
+// per tick (the most-recent past-due slot), advancing last_fired_at so a slot
+// never fires twice.
+func (h *Handler) fireReminder(ctx context.Context, r store.Reminder, now time.Time) {
+	slot, ok := h.mostRecentSlot(r, now)
+	if !ok {
+		return
+	}
+	// Monotonic-advance guard: only fire a slot strictly newer than the last.
+	if r.LastFiredAt != nil && !slot.After(*r.LastFiredAt) {
+		return
+	}
+	disable := h.isDone(r, slot)
+
+	// Bounded catch-up: skip stale slots but still advance the marker (and
+	// disable a spent one-shot) so they neither fire late nor loop forever.
+	if now.Sub(slot) > graceWindow {
+		if err := h.store.MarkReminderFired(ctx, r.ID, slot, disable); err != nil {
+			h.log.Error("failed to advance stale reminder", "id", r.ID, "error", err)
+		}
+		h.log.Info("skipped stale reminder slot", "id", r.ID, "slot", slot)
+		return
+	}
+
+	msg := fmt.Sprintf("⏰ *Reminder*: %s", reminderBody(r))
+	if h.sendFunc != nil {
+		if err := h.sendFunc(ctx, h.ownerJID, msg); err != nil {
+			h.log.Error("failed to send reminder", "id", r.ID, "error", err)
+			return
+		}
+	}
+	if err := h.store.MarkReminderFired(ctx, r.ID, slot, disable); err != nil {
+		h.log.Error("failed to mark reminder fired", "id", r.ID, "error", err)
+	}
+	h.log.Info("reminder sent", "id", r.ID, "slot", slot)
+}
+
+// mostRecentSlot returns the latest scheduled instant (in the app timezone) that
+// is at or before now, across the reminder's times over a two-day local
+// lookback, honoring the repeat mode. ok is false when nothing is due.
+func (h *Handler) mostRecentSlot(r store.Reminder, now time.Time) (time.Time, bool) {
+	var best time.Time
+	found := false
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, h.timezone)
+	for _, day := range []time.Time{today.AddDate(0, 0, -1), today} {
+		if !dayQualifies(r, day) {
+			continue
+		}
+		for _, hm := range r.Times {
+			hh, mm, ok := parseHM(hm)
+			if !ok {
 				continue
 			}
+			slot := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, h.timezone)
+			if slot.After(now) {
+				continue
+			}
+			if !found || slot.After(best) {
+				best, found = slot, true
+			}
 		}
-
-		if err := h.store.MarkReminderNotified(ctx, r.ID); err != nil {
-			h.log.Error("failed to mark reminder notified", "id", r.ID, "error", err)
-		}
-
-		h.log.Info("reminder sent", "id", r.ID, "message", r.Message)
 	}
+	return best, found
+}
+
+// isDone reports whether a one-shot reminder has fired its last time for the day
+// and should be auto-disabled.
+func (h *Handler) isDone(r store.Reminder, slot time.Time) bool {
+	if r.RepeatMode != "once" {
+		return false
+	}
+	maxHM := ""
+	for _, hm := range r.Times {
+		if hm > maxHM {
+			maxHM = hm
+		}
+	}
+	hh, mm, ok := parseHM(maxHM)
+	if !ok {
+		return true
+	}
+	last := time.Date(slot.Year(), slot.Month(), slot.Day(), hh, mm, 0, 0, h.timezone)
+	return !slot.Before(last)
+}
+
+// dayQualifies reports whether the reminder's repeat rule matches the local day.
+func dayQualifies(r store.Reminder, day time.Time) bool {
+	switch r.RepeatMode {
+	case "daily":
+		return true
+	case "weekly":
+		wd := int(day.Weekday()) // 0=Sun..6=Sat
+		for _, d := range r.Weekdays {
+			if d == wd {
+				return true
+			}
+		}
+		return false
+	case "monthly":
+		return day.Day() == effectiveDOM(r.DayOfMonth, day)
+	default: // once
+		return r.OnceDate == day.Format("2006-01-02")
+	}
+}
+
+// effectiveDOM clamps a day-of-month to the last day of the given month, so
+// e.g. day 31 fires on Feb 28/29 and 30-day months' last day.
+func effectiveDOM(dom int, day time.Time) int {
+	last := time.Date(day.Year(), day.Month()+1, 0, 0, 0, 0, 0, day.Location()).Day()
+	if dom > last {
+		return last
+	}
+	return dom
+}
+
+func parseHM(hm string) (int, int, bool) {
+	parts := strings.SplitN(hm, ":", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	hh, err1 := strconv.Atoi(parts[0])
+	mm, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || hh < 0 || hh > 23 || mm < 0 || mm > 59 {
+		return 0, 0, false
+	}
+	return hh, mm, true
+}
+
+// SortTimes returns the times sorted ascending (helper for callers building input).
+func SortTimes(times []string) []string {
+	out := append([]string(nil), times...)
+	sort.Strings(out)
+	return out
+}
+
+// reminderBody is the human text sent in a notification: the title, or the
+// legacy message when no title is set.
+func reminderBody(r store.Reminder) string {
+	if r.Title != "" {
+		return r.Title
+	}
+	return r.Message
 }
