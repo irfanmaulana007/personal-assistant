@@ -570,12 +570,15 @@ func (s *SQLiteStore) LogMessage(ctx context.Context, log *MessageLog) error {
 }
 
 func (s *SQLiteStore) GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error) {
+	// Take the most-recent `limit` rows, then present them oldest-first.
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, platform, direction, sender, body, intent, action, created_at
-		 FROM message_log
-		 WHERE user_id = ? AND platform = ?
-		 ORDER BY created_at ASC
-		 LIMIT ?`,
+		`SELECT id, user_id, platform, direction, sender, body, intent, action, created_at FROM (
+		   SELECT id, user_id, platform, direction, sender, body, intent, action, created_at
+		   FROM message_log
+		   WHERE user_id = ? AND platform = ?
+		   ORDER BY created_at DESC, id DESC
+		   LIMIT ?
+		 ) ORDER BY created_at ASC, id ASC`,
 		userID, platform, limit,
 	)
 	if err != nil {

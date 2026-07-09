@@ -148,6 +148,9 @@ func main() {
 			userID := owner.ID
 			uctx := authctx.WithUserID(ctx, userID)
 
+			// Recent conversation history for context (before logging this message).
+			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
+
 			// Log incoming message
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				UserID:    userID,
@@ -159,7 +162,7 @@ func main() {
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(uctx, msg.Text, nil, "")
+			res, err := assistant.Run(uctx, msg.Text, history, "")
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
@@ -308,4 +311,25 @@ func setupLogger(cfg config.LoggingConfig) *slog.Logger {
 	}
 
 	return slog.New(handler)
+}
+
+// recentAgentHistory loads the most recent conversation turns for a platform and
+// maps them to agent messages (oldest first), for use as agent context.
+func recentAgentHistory(ctx context.Context, db store.Store, userID int64, platform string, limit int) []agent.Message {
+	logs, err := db.GetMessageHistory(ctx, userID, platform, limit)
+	if err != nil {
+		return nil
+	}
+	out := make([]agent.Message, 0, len(logs))
+	for _, l := range logs {
+		if l.Body == "" {
+			continue
+		}
+		role := "assistant"
+		if l.Direction == "in" {
+			role = "user"
+		}
+		out = append(out, agent.Message{Role: role, Content: l.Body})
+	}
+	return out
 }
