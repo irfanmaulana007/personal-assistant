@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"sort"
 	"time"
-
-	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 )
 
 type usageSummaryResp struct {
@@ -150,7 +148,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	costByDay := map[string]float64{}
 	if dayModels, err := s.store.UsageByDayModel(r.Context(), from, toExclusive, platform); err == nil {
 		for _, dm := range dayModels {
-			if c, known := llm.EstimateCost(dm.Model, dm.PromptTokens, dm.CompletionTokens); known {
+			if c, known := s.pricing.Estimate(dm.Model, dm.PromptTokens, dm.CompletionTokens); known {
 				costByDay[dm.Date] += c
 			}
 		}
@@ -174,7 +172,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 
 	var totalCost float64
 	for _, m := range stats.ByModel {
-		cost, known := llm.EstimateCost(m.Model, m.PromptTokens, m.CompletionTokens)
+		cost, known := s.pricing.Estimate(m.Model, m.PromptTokens, m.CompletionTokens)
 		if known {
 			totalCost += cost
 		} else {
@@ -239,7 +237,7 @@ func (s *Server) usageByUser(ctx context.Context, from, to time.Time, platform s
 		u.Requests += r.Requests
 		u.TotalTokens += r.TotalTokens
 		u.Errors += r.Errors
-		if c, known := llm.EstimateCost(r.Model, r.PromptTokens, r.CompletionTokens); known {
+		if c, known := s.pricing.Estimate(r.Model, r.PromptTokens, r.CompletionTokens); known {
 			u.EstimatedCostUSD += c
 		}
 	}

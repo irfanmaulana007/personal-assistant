@@ -13,6 +13,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/pricing"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
@@ -29,6 +30,7 @@ type WhatsAppController interface {
 type Server struct {
 	agent      *agent.Agent
 	settings   *settings.Service
+	pricing    *pricing.Service
 	llmClient  *llm.Client
 	composio   *composio.Client
 	whatsapp   WhatsAppController
@@ -55,6 +57,7 @@ func NewServer(
 	return &Server{
 		agent:      agent,
 		settings:   settingsSvc,
+		pricing:    pricing.New(store),
 		llmClient:  llmClient,
 		composio:   composioClient,
 		whatsapp:   whatsapp,
@@ -96,6 +99,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", admin(s.handleUpdatePreferences))
+	mux.Handle("GET /api/pricing", admin(s.handleListPricing))
+	mux.Handle("PUT /api/pricing", admin(s.handleSetPricing))
+	mux.Handle("DELETE /api/pricing/{model}", admin(s.handleDeletePricing))
 	mux.Handle("/api/metrics/usage", admin(s.handleMetricsUsage))
 	mux.Handle("GET /api/logs", admin(s.handleListLogs))
 	mux.Handle("GET /api/logs/{id}", admin(s.handleGetLog))

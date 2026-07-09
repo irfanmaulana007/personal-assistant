@@ -234,6 +234,13 @@ func (s *SQLiteStore) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_traces_created ON traces(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_traces_user ON traces(user_id)`,
 
+		`CREATE TABLE IF NOT EXISTS model_prices (
+			model TEXT PRIMARY KEY,
+			input_per_1m REAL NOT NULL DEFAULT 0,
+			output_per_1m REAL NOT NULL DEFAULT 0,
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS tool_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			tool TEXT NOT NULL,

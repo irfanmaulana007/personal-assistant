@@ -33,3 +33,19 @@ func EstimateCost(model string, promptTokens, completionTokens int) (float64, bo
 		float64(completionTokens)/1_000_000*p.OutputPer1M
 	return cost, true
 }
+
+// CostFor computes cost from an explicit rate (USD per 1M tokens).
+func CostFor(p ModelPrice, promptTokens, completionTokens int) float64 {
+	return float64(promptTokens)/1_000_000*p.InputPer1M +
+		float64(completionTokens)/1_000_000*p.OutputPer1M
+}
+
+// DefaultPrices returns a copy of the built-in rate table (used as fallback
+// defaults and shown alongside DB overrides in the UI).
+func DefaultPrices() map[string]ModelPrice {
+	out := make(map[string]ModelPrice, len(prices))
+	for k, v := range prices {
+		out[k] = v
+	}
+	return out
+}

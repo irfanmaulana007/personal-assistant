@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -33,8 +32,8 @@ type traceResp struct {
 	CreatedAt        string               `json:"created_at"`
 }
 
-func traceToResp(t *store.Trace, includeTools bool) traceResp {
-	cost, _ := llm.EstimateCost(t.Model, t.PromptTokens, t.CompletionTokens)
+func (s *Server) traceToResp(t *store.Trace, includeTools bool) traceResp {
+	cost, _ := s.pricing.Estimate(t.Model, t.PromptTokens, t.CompletionTokens)
 	r := traceResp{
 		ID:               t.ID,
 		Platform:         t.Platform,
@@ -114,7 +113,7 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 		traces = traces[:limit]
 	}
 	for i := range traces {
-		out.Traces = append(out.Traces, traceToResp(&traces[i], false))
+		out.Traces = append(out.Traces, s.traceToResp(&traces[i], false))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -135,5 +134,5 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, traceToResp(t, true))
+	writeJSON(w, http.StatusOK, s.traceToResp(t, true))
 }
