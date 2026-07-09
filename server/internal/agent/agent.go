@@ -19,6 +19,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -47,6 +48,7 @@ type Agent struct {
 	client   *llm.Client
 	settings *settings.Service
 	skills   *skills.Service
+	memory   *memory.Service
 	router   *capability.Router
 	owner    config.OwnerConfig
 	provider ToolProvider // optional; extra tools (may be nil)
@@ -54,11 +56,12 @@ type Agent struct {
 }
 
 // New creates an agent. provider may be nil (no extra tools).
-func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
+func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Service, memSvc *memory.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
 	return &Agent{
 		client:   client,
 		settings: settingsSvc,
 		skills:   skillsSvc,
+		memory:   memSvc,
 		router:   router,
 		owner:    owner,
 		provider: provider,
@@ -99,18 +102,26 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		return nil, ErrNotConfigured
 	}
 
+	userID := authctx.UserID(ctx)
+
 	// Resolve the user's enabled skills: their prompts enrich the system
 	// prompt and their tools are added to the tool list.
 	var enabledSkills []store.Skill
 	if a.skills != nil {
-		enabledSkills = a.skills.Enabled(ctx, authctx.UserID(ctx))
+		enabledSkills = a.skills.Enabled(ctx, userID)
 	}
 	enabledKeys := make([]string, 0, len(enabledSkills))
 	for _, sk := range enabledSkills {
 		enabledKeys = append(enabledKeys, sk.Key)
 	}
 
-	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills)}}
+	// Retrieve long-term memories relevant to this message for prompt injection.
+	var memories []store.Memory
+	if a.memory != nil {
+		memories = a.memory.Relevant(ctx, userID, userMessage, 6)
+	}
+
+	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills, memories)}}
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
@@ -206,7 +217,7 @@ func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) string {
 	return a.router.Route(ctx, result)
 }
 
-func (a *Agent) systemPrompt(enabledSkills []store.Skill) string {
+func (a *Agent) systemPrompt(enabledSkills []store.Skill, memories []store.Memory) string {
 	loc := a.owner.Location()
 	now := time.Now().In(loc)
 	name := a.owner.Name
@@ -224,24 +235,36 @@ Guidelines:
 - After a tool returns, summarize the result for the user clearly, concisely, and in a friendly tone.
 - If a request is ambiguous or missing a required detail, ask one short clarifying question instead of guessing.
 - For general questions or small talk, just reply directly without calling any tool.
-- Never claim to have sent an email — the email tool only creates drafts.`,
+- Never claim to have sent an email — the email tool only creates drafts.
+
+Memory:
+- You have long-term memory. Call the "remember" tool to save durable facts about the user (plans, budgets, preferences, decisions, ongoing tasks) so you can use them later and in future sessions. Do this proactively when the user shares something worth keeping.
+- Use the "recall" tool to look something up when needed. Rely on the "things you remember" below when present.
+- Never claim you have saved or will remember something unless you actually called the "remember" tool, and never claim you have no record without checking.`,
 		name,
 		now.Format("Monday, January 2, 2006 at 3:04 PM"),
 		a.owner.Timezone,
 	)
 
+	var b strings.Builder
+	b.WriteString(base)
+
+	if len(memories) > 0 {
+		b.WriteString("\n\nRelevant things you remember about the user:")
+		for _, m := range memories {
+			b.WriteString("\n- " + m.Content)
+		}
+	}
+
 	if len(enabledSkills) > 0 {
-		var b strings.Builder
-		b.WriteString(base)
 		b.WriteString("\n\nThe user has enabled these skills:")
 		for _, sk := range enabledSkills {
 			if sk.Prompt != "" {
 				b.WriteString(fmt.Sprintf("\n\n## %s\n%s", sk.Name, sk.Prompt))
 			}
 		}
-		return b.String()
 	}
-	return base
+	return b.String()
 }
 
 func addUsage(total *llm.Usage, u llm.Usage) {

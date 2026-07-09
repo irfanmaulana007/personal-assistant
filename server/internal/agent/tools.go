@@ -103,6 +103,20 @@ var toolSpecs = []toolSpec{
 		action:      intent.ActionNoteDelete,
 		parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Note number to delete."}},"required":["id"]}`,
 	},
+	{
+		name:        "remember",
+		description: "Save a durable fact about the user to long-term memory (plans, budgets, preferences, decisions, ongoing tasks) so you can use it in later messages and future sessions.",
+		capability:  intent.CapabilityMemory,
+		action:      intent.ActionMemoryRemember,
+		parameters:  `{"type":"object","properties":{"content":{"type":"string","description":"The fact to remember, written as a concise standalone statement (e.g. 'User's Japan trip budget is Rp35-50 million, solo, 14 days')."}},"required":["content"]}`,
+	},
+	{
+		name:        "recall",
+		description: "Search your long-term memory for what you already know about the user.",
+		capability:  intent.CapabilityMemory,
+		action:      intent.ActionMemoryRecall,
+		parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"What to look up in memory."}},"required":["query"]}`,
+	},
 }
 
 // skillTools maps a skill key to the extra tools that skill provides. These are

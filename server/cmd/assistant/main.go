@@ -21,6 +21,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
+	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
@@ -29,6 +30,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -75,6 +77,7 @@ func main() {
 	// resolved from the database (the single source of truth).
 	settingsSvc := settings.New(db, encKey)
 	skillsSvc := skills.New(db)
+	memSvc := memory.New(db)
 	llmClient := llm.NewClient()
 	composioClient := composio.NewClient()
 
@@ -118,6 +121,9 @@ func main() {
 		handlers = append(handlers, knowledge.New(db, cfg.Capabilities.Knowledge.MaxNoteLength))
 	}
 
+	// Long-term memory is always on (remember/recall).
+	handlers = append(handlers, memorycap.New(memSvc, log))
+
 	// Skill capabilities (gated per user via the skills framework; always
 	// registered so the router can serve them when the skill is enabled).
 	handlers = append(handlers, contacts.New(db, log))
@@ -131,7 +137,7 @@ func main() {
 	composioTools := composiotools.New(composioClient, settingsSvc, log)
 
 	// LLM tool-calling agent (replaces the regex parser).
-	assistant := agent.New(llmClient, settingsSvc, skillsSvc, router, cfg.Owner, composioTools, log)
+	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, router, cfg.Owner, composioTools, log)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport

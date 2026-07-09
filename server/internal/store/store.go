@@ -43,6 +43,14 @@ type Reminder struct {
 	Cancelled bool
 }
 
+// Memory is a durable fact the agent has remembered about a user.
+type Memory struct {
+	ID        int64
+	Content   string
+	Kind      string
+	CreatedAt time.Time
+}
+
 // Contact is a saved contact, scoped to a user.
 type Contact struct {
 	ID        int64
@@ -328,6 +336,12 @@ type Store interface {
 	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)
 	MarkReminderNotified(ctx context.Context, id int64) error
 	CancelReminder(ctx context.Context, userID, id int64) error
+
+	// Memories (agent long-term memory, scoped to a user; FTS-backed)
+	CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error)
+	SearchMemories(ctx context.Context, userID int64, ftsQuery string, limit int) ([]Memory, error)
+	ListMemories(ctx context.Context, userID int64, limit int) ([]Memory, error)
+	DeleteMemory(ctx context.Context, userID, id int64) error
 
 	// Contacts (scoped to a user)
 	CreateContact(ctx context.Context, userID int64, name, phone, email, note string) (*Contact, error)
