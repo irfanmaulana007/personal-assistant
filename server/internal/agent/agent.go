@@ -88,8 +88,9 @@ type Message struct {
 }
 
 // Run executes the tool-calling loop for a single user message. history holds
-// prior turns (oldest first) for conversational context.
-func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) (*Result, error) {
+// prior turns (oldest first) for conversational context. image, when non-empty,
+// is a data: URL attached to the user message (requires a vision-capable model).
+func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, image string) (*Result, error) {
 	cfg, err := a.settings.LLMConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve llm config: %w", err)
@@ -113,7 +114,14 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
-	messages = append(messages, llm.Message{Role: "user", Content: userMessage})
+	if image != "" {
+		messages = append(messages, llm.Message{Role: "user", ContentParts: []llm.ContentPart{
+			{Type: "text", Text: userMessage},
+			{Type: "image_url", ImageURL: &llm.ImageURL{URL: image}},
+		}})
+	} else {
+		messages = append(messages, llm.Message{Role: "user", Content: userMessage})
+	}
 
 	tools := toolSchemas()
 	tools = append(tools, skillToolSchemas(enabledKeys)...)

@@ -157,7 +157,7 @@ func main() {
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(uctx, msg.Text, nil)
+			res, err := assistant.Run(uctx, msg.Text, nil, "")
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {

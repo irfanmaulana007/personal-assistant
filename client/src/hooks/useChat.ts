@@ -28,18 +28,19 @@ export function useChat() {
       });
   }, []);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, image?: string) => {
     const userMsg: ChatMessage = {
       id: nextId(),
       direction: 'out',
       body: text,
       timestamp: new Date().toISOString(),
+      image,
     };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
     try {
-      const res = await apiSendMessage(text);
+      const res = await apiSendMessage(text, image);
       const assistantMsg: ChatMessage = {
         id: nextId(),
         direction: 'in',

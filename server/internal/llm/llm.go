@@ -35,6 +35,41 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
+
+	// ContentParts, when set, is sent as a multimodal content array (text +
+	// images) instead of the plain Content string. Not populated on decode.
+	ContentParts []ContentPart `json:"-"`
+}
+
+// ContentPart is one element of a multimodal message content array.
+type ContentPart struct {
+	Type     string    `json:"type"` // "text" or "image_url"
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+// ImageURL carries an image reference (a data: URL is supported).
+type ImageURL struct {
+	URL string `json:"url"`
+}
+
+// MarshalJSON serializes content as a parts array when ContentParts is set,
+// otherwise as the plain string (preserving omitempty for tool-call messages).
+func (m Message) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		Role       string     `json:"role"`
+		Content    any        `json:"content,omitempty"`
+		ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+		ToolCallID string     `json:"tool_call_id,omitempty"`
+		Name       string     `json:"name,omitempty"`
+	}
+	a := alias{Role: m.Role, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID, Name: m.Name}
+	if len(m.ContentParts) > 0 {
+		a.Content = m.ContentParts
+	} else if m.Content != "" {
+		a.Content = m.Content
+	}
+	return json.Marshal(a)
 }
 
 // Tool describes a callable function exposed to the model.

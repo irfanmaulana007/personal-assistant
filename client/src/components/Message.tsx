@@ -16,6 +16,9 @@ export function Message({ message }: MessageProps) {
             : 'bg-gray-100 text-gray-900 rounded-bl-md'
         }`}
       >
+        {message.image && (
+          <img src={message.image} alt="attachment" className="mb-2 max-h-48 w-auto rounded-lg" />
+        )}
         {message.body}
       </div>
     </div>
