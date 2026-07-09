@@ -10,6 +10,12 @@ export interface PreferencesValue {
   formatDate: (iso: string, opts?: { time?: boolean; seconds?: boolean }) => string;
   /** Format a USD amount in the selected currency. */
   formatMoney: (usd: number) => string;
+  /**
+   * Compact chat timestamp in the selected timezone: time if today,
+   * "Yesterday" if yesterday, weekday name if earlier this week (Mon-start),
+   * otherwise the date.
+   */
+  formatChatTime: (iso: string) => string;
 }
 
 export const PreferencesCtx = createContext<PreferencesValue | null>(null);
