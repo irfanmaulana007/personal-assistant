@@ -684,6 +684,35 @@ func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) 
 	return id, nil
 }
 
+// UsageByDayModel returns per-day, per-model token sums for a cost time series.
+func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error) {
+	q := `SELECT date(created_at) AS d, model,
+	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
+	      FROM traces WHERE created_at >= ? AND created_at < ?`
+	args := []any{from.UTC(), to.UTC()}
+	if platform != "" {
+		q += ` AND platform = ?`
+		args = append(args, platform)
+	}
+	q += ` GROUP BY d, model ORDER BY d ASC`
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("usage by day/model: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DayModelUsage
+	for rows.Next() {
+		var u DayModelUsage
+		if err := rows.Scan(&u.Date, &u.Model, &u.PromptTokens, &u.CompletionTokens); err != nil {
+			return nil, fmt.Errorf("scan day/model: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error) {
 	q := `SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
 	             total_tokens, latency_ms, tool_count, status, error, created_at

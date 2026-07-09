@@ -209,6 +209,15 @@ type UsageDay struct {
 	TotalTokens int
 }
 
+// DayModelUsage is per-day, per-model token usage — used to compute a per-day
+// cost series (pricing is applied in the API layer).
+type DayModelUsage struct {
+	Date             string // YYYY-MM-DD (UTC)
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+}
+
 // UsageModel is per-model usage for a breakdown.
 type UsageModel struct {
 	Model            string
@@ -332,6 +341,7 @@ type Store interface {
 	GetTrace(ctx context.Context, id int64) (*Trace, error)
 	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
+	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
 	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
 
 	// Lifecycle
