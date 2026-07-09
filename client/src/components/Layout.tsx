@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { UserMenu } from './UserMenu';
+import type { User } from '../types';
 
 interface LayoutProps {
   onLogout: () => void;
   isAdmin: boolean;
+  user: User | null;
 }
 
 interface NavItem {
@@ -79,18 +82,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    to: '/profile',
-    label: 'Profile',
-    icon: (
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-      />
-    ),
-  },
-  {
     to: '/settings',
     label: 'Settings',
     adminOnly: true,
@@ -113,7 +104,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Layout({ onLogout, isAdmin }: LayoutProps) {
+export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
   const items = navItems.filter((item) => isAdmin || !item.adminOnly);
   return (
     <div className="h-screen flex bg-white">
@@ -158,21 +149,8 @@ export function Layout({ onLogout, isAdmin }: LayoutProps) {
           ))}
         </nav>
 
-        <div className="px-3 py-3 border-t border-gray-200">
-          <button
-            onClick={onLogout}
-            className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-            Logout
-          </button>
+        <div className="border-t border-gray-200 p-2">
+          <UserMenu user={user} onLogout={onLogout} />
         </div>
       </aside>
 

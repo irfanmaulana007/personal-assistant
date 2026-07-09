@@ -11,8 +11,18 @@ import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 
 function App() {
-  const { authenticated, isAdmin, needsSetup, loading, submitting, error, login, setup, logout } =
-    useAuth();
+  const {
+    user,
+    authenticated,
+    isAdmin,
+    needsSetup,
+    loading,
+    submitting,
+    error,
+    login,
+    setup,
+    logout,
+  } = useAuth();
 
   if (loading) {
     return (
@@ -32,7 +42,7 @@ function App() {
 
   return (
     <Routes>
-      <Route element={<Layout onLogout={logout} isAdmin={isAdmin} />}>
+      <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
         <Route index element={<Chat />} />
         <Route path="chat" element={<Chat />} />
         <Route path="profile" element={<Profile />} />
