@@ -141,7 +141,7 @@ func toStoreTools(inv []agent.ToolInvocation) []store.ToolInvocation {
 
 // recentHistory returns the last few web turns as agent context (oldest first).
 func (s *Server) recentHistory(ctx context.Context, userID int64) []agent.Message {
-	const maxTurns = 10
+	const maxTurns = 20
 	logs, err := s.store.GetMessageHistory(ctx, userID, "web", maxTurns)
 	if err != nil {
 		s.log.Warn("failed to load history for agent context", "error", err)
