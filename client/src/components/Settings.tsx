@@ -73,7 +73,7 @@ export function Settings() {
     'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">Configure the LLM that powers your assistant.</p>

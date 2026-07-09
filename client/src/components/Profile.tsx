@@ -31,7 +31,7 @@ export function Profile() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
       <h1 className="text-xl font-semibold tracking-tight text-gray-900">Profile</h1>
       <p className="mt-0.5 text-sm text-gray-500">Manage your account details and password.</p>
 
