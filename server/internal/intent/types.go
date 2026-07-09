@@ -61,6 +61,13 @@ const (
 	ActionActivitySummarize Action = "activity.summarize"
 )
 
+// Travel actions
+const (
+	ActionTripCreate  Action = "trip.create"
+	ActionExpenseAdd  Action = "trip.expense_add"
+	ActionTripSummary Action = "trip.summary"
+)
+
 const (
 	ActionHelp Action = "help"
 )

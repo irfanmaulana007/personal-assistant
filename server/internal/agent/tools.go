@@ -163,6 +163,29 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"days":{"type":"integer","description":"Look-back window in days. Defaults to 7."}}}`,
 		},
 	},
+	"travel_control": {
+		{
+			name:        "trip_create",
+			description: "Start a new trip to track expenses against (becomes the active trip).",
+			capability:  intent.CapabilityTravel,
+			action:      intent.ActionTripCreate,
+			parameters:  `{"type":"object","properties":{"name":{"type":"string","description":"Name for the trip."},"destination":{"type":"string","description":"Where the trip is to."},"budget":{"type":"number","description":"Optional total budget."},"currency":{"type":"string","description":"Currency code, e.g. IDR, USD."}},"required":["name"]}`,
+		},
+		{
+			name:        "expense_add",
+			description: "Record an expense against the active (or named) trip.",
+			capability:  intent.CapabilityTravel,
+			action:      intent.ActionExpenseAdd,
+			parameters:  `{"type":"object","properties":{"amount":{"type":"number","description":"Expense amount."},"category":{"type":"string","description":"e.g. food, hotel, transport, activity."},"note":{"type":"string","description":"Optional detail."},"currency":{"type":"string","description":"Currency; defaults to the trip's currency."},"trip":{"type":"string","description":"Trip name; defaults to the active trip."}},"required":["amount"]}`,
+		},
+		{
+			name:        "trip_summary",
+			description: "Summarize a trip's spending by category vs budget.",
+			capability:  intent.CapabilityTravel,
+			action:      intent.ActionTripSummary,
+			parameters:  `{"type":"object","properties":{"trip":{"type":"string","description":"Trip name; defaults to the active trip."}}}`,
+		},
+	},
 }
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a

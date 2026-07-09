@@ -63,6 +63,28 @@ type Activity struct {
 	CreatedAt   time.Time
 }
 
+// Trip is a travel trip whose expenses are tracked, scoped to a user.
+type Trip struct {
+	ID          int64
+	Name        string
+	Destination string
+	Budget      float64
+	Currency    string
+	Active      bool
+	StartedAt   time.Time
+}
+
+// TripExpense is a single expense logged against a trip.
+type TripExpense struct {
+	ID       int64
+	TripID   int64
+	Amount   float64
+	Currency string
+	Category string
+	Note     string
+	SpentAt  time.Time
+}
+
 // Note represents a saved note.
 type Note struct {
 	ID        int64
@@ -221,6 +243,13 @@ type Store interface {
 	// Activities (scoped to a user)
 	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
 	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
+
+	// Travel (scoped to a user)
+	CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error)
+	ActiveTrip(ctx context.Context, userID int64) (*Trip, error)
+	FindTrip(ctx context.Context, userID int64, name string) (*Trip, error)
+	AddExpense(ctx context.Context, userID, tripID int64, amount float64, currency, category, note string, spentAt time.Time) (*TripExpense, error)
+	ListTripExpenses(ctx context.Context, userID, tripID int64) ([]TripExpense, error)
 
 	// Notes (scoped to a user)
 	CreateNote(ctx context.Context, userID int64, title, content, tags string) (*Note, error)
