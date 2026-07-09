@@ -1,12 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
-const sections = [
-  { to: '/settings', label: 'Model', end: true },
-  { to: '/settings/display', label: 'Display', end: false },
-  { to: '/settings/pricing', label: 'Pricing', end: false },
+const allSections = [
+  { to: '/settings', label: 'Agent', end: true, admin: false },
+  { to: '/settings/model', label: 'Model', end: false, admin: true },
+  { to: '/settings/display', label: 'Display', end: false, admin: true },
+  { to: '/settings/pricing', label: 'Pricing', end: false, admin: true },
 ];
 
-export function Settings() {
+export function Settings({ isAdmin }: { isAdmin: boolean }) {
+  const sections = allSections.filter((s) => isAdmin || !s.admin);
+
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
       <h1 className="text-xl font-semibold tracking-tight text-gray-900">Settings</h1>

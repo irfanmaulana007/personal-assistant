@@ -94,6 +94,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/skills", protect(s.handleListSkills))
 	mux.Handle("PUT /api/skills/{id}", protect(s.handleSetSkill))
 	mux.Handle("GET /api/preferences", protect(s.handleGetPreferences))
+	mux.Handle("GET /api/persona", protect(s.handleGetPersona))
+	mux.Handle("PUT /api/persona", protect(s.handleSetPersona))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))

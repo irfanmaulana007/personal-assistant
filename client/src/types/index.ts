@@ -183,6 +183,15 @@ export interface ModelPrice {
   source: 'custom' | 'builtin';
 }
 
+export interface Persona {
+  tone: string; // formal | balanced | casual
+  emoji: string; // none | occasional | frequent
+  length: string; // concise | balanced | detailed
+  personality: string; // balanced | professional | friendly | witty | direct | encouraging
+  name: string;
+  custom: string;
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {

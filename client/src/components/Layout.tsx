@@ -221,14 +221,12 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
           )}
         </nav>
 
-        {isAdmin && (
-          <div className="px-3 pb-2">
-            <NavLink to="/settings" className={({ isActive }) => leafClass(isActive)}>
-              <Icon>{settingsIcon}</Icon>
-              Settings
-            </NavLink>
-          </div>
-        )}
+        <div className="px-3 pb-2">
+          <NavLink to="/settings" className={({ isActive }) => leafClass(isActive)}>
+            <Icon>{settingsIcon}</Icon>
+            Settings
+          </NavLink>
+        </div>
 
         <div className="border-t border-white/10 p-2">
           <UserMenu user={user} onLogout={onLogout} />

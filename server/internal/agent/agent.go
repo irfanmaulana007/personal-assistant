@@ -20,6 +20,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -49,6 +50,7 @@ type Agent struct {
 	settings *settings.Service
 	skills   *skills.Service
 	memory   *memory.Service
+	persona  *persona.Service
 	router   *capability.Router
 	owner    config.OwnerConfig
 	provider ToolProvider // optional; extra tools (may be nil)
@@ -56,12 +58,13 @@ type Agent struct {
 }
 
 // New creates an agent. provider may be nil (no extra tools).
-func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Service, memSvc *memory.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
+func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Service, memSvc *memory.Service, personaSvc *persona.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
 	return &Agent{
 		client:   client,
 		settings: settingsSvc,
 		skills:   skillsSvc,
 		memory:   memSvc,
+		persona:  personaSvc,
 		router:   router,
 		owner:    owner,
 		provider: provider,
@@ -137,7 +140,12 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		memories = a.memory.Relevant(ctx, userID, userMessage, 6)
 	}
 
-	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills, memories)}}
+	personaPrompt := ""
+	if a.persona != nil {
+		personaPrompt = a.persona.Prompt(ctx, userID)
+	}
+
+	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills, memories, personaPrompt)}}
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
@@ -255,7 +263,7 @@ func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) string {
 	return a.router.Route(ctx, result)
 }
 
-func (a *Agent) systemPrompt(enabledSkills []store.Skill, memories []store.Memory) string {
+func (a *Agent) systemPrompt(enabledSkills []store.Skill, memories []store.Memory, personaPrompt string) string {
 	loc := a.owner.Location()
 	now := time.Now().In(loc)
 	name := a.owner.Name
@@ -287,6 +295,10 @@ Memory:
 
 	var b strings.Builder
 	b.WriteString(base)
+
+	if personaPrompt != "" {
+		b.WriteString("\n\n" + personaPrompt)
+	}
 
 	if len(memories) > 0 {
 		b.WriteString("\n\nRelevant things you remember about the user:")
