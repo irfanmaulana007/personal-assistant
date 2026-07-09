@@ -124,6 +124,13 @@ var weekdayNames = [...]string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 // describeSchedule renders a reminder's recurrence in human form for the schedule
 // listing (e.g. "Every day at 08:00, 20:00", "Weekly on Mon, Wed at 09:00").
 func describeSchedule(r store.Reminder, tz *time.Location) string {
+	// When a reminder tracks an actual event, the schedule shows the EVENT time —
+	// the notification itself may fire earlier (e.g. an hour before).
+	if r.EventAt != "" {
+		if event, err := time.ParseInLocation("2006-01-02T15:04", r.EventAt, tz); err == nil {
+			return "Event on " + event.Format("Mon, Jan 2 at 3:04 PM")
+		}
+	}
 	times := strings.Join(r.Times, ", ")
 	switch r.RepeatMode {
 	case "daily":
@@ -138,12 +145,7 @@ func describeSchedule(r store.Reminder, tz *time.Location) string {
 		return fmt.Sprintf("Weekly on %s at %s", strings.Join(days, ", "), times)
 	case "monthly":
 		return fmt.Sprintf("Monthly on day %d at %s", r.DayOfMonth, times)
-	case "specific":
-		if event, err := time.ParseInLocation("2006-01-02T15:04", r.EventAt, tz); err == nil {
-			return "Event on " + event.Format("Mon, Jan 2 at 3:04 PM")
-		}
-		return "Event"
-	default: // once
+	default: // once (and any event reminder whose event time failed to parse)
 		if len(r.Times) == 0 { // legacy one-shot
 			return "On " + r.RemindAt.In(tz).Format("Mon, Jan 2 at 3:04 PM")
 		}

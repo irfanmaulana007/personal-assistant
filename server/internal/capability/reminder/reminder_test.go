@@ -282,6 +282,9 @@ func TestDescribeSchedule(t *testing.T) {
 		{store.Reminder{RepeatMode: "monthly", DayOfMonth: 5, Times: []string{"07:00"}}, "Monthly on day 5 at 07:00"},
 		{store.Reminder{RepeatMode: "once", OnceDate: "2026-03-10", Times: []string{"15:30"}}, "Once on Tue, Mar 10 at 15:30"},
 		{store.Reminder{RepeatMode: "specific", EventAt: "2026-09-01T06:00", Offsets: []int{60}}, "Event on Tue, Sep 1 at 6:00 AM"},
+		// Any reminder carrying an event time shows the event time (15:00), not
+		// its earlier notification time (14:00).
+		{store.Reminder{RepeatMode: "once", OnceDate: "2026-07-11", Times: []string{"14:00"}, EventAt: "2026-07-11T15:00"}, "Event on Sat, Jul 11 at 3:00 PM"},
 	}
 	for _, c := range cases {
 		if got := describeSchedule(c.r, testTZ); got != c.want {
