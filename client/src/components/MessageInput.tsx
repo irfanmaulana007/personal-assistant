@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
 
 interface MessageInputProps {
   onSend: (message: string) => void;
@@ -7,6 +7,13 @@ interface MessageInputProps {
 
 export function MessageInput({ onSend, disabled }: MessageInputProps) {
   const [text, setText] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus the input on mount (i.e. every time the Chat page is opened) and
+  // again whenever the assistant finishes replying.
+  useEffect(() => {
+    if (!disabled) inputRef.current?.focus();
+  }, [disabled]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -27,6 +34,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
     <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 bg-white">
       <div className="flex gap-2 items-end max-w-3xl mx-auto">
         <textarea
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
