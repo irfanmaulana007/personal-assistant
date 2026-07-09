@@ -387,15 +387,17 @@ func (s *Server) handleSetReminderEnabled(w http.ResponseWriter, r *http.Request
 }
 
 type remindersConfigResp struct {
-	Enabled    bool   `json:"enabled"`
-	DigestTime string `json:"digest_time"` // local "HH:MM", or "" when the daily recap is off
+	Enabled     bool   `json:"enabled"`
+	DigestTime  string `json:"digest_time"`  // local "HH:MM", or "" when the daily recap is off
+	DefaultTime string `json:"default_time"` // local "HH:MM" used when a reminder has no time
 }
 
 // handleGetRemindersConfig returns the global reminders settings (any user).
 func (s *Server) handleGetRemindersConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, remindersConfigResp{
-		Enabled:    s.settings.RemindersEnabled(r.Context()),
-		DigestTime: s.settings.ReminderDigestTime(r.Context()),
+		Enabled:     s.settings.RemindersEnabled(r.Context()),
+		DigestTime:  s.settings.ReminderDigestTime(r.Context()),
+		DefaultTime: s.settings.ReminderDefaultTime(r.Context()),
 	})
 }
 
@@ -415,6 +417,12 @@ func (s *Server) handleSetRemindersConfig(w http.ResponseWriter, r *http.Request
 		}
 		digest = norm[0]
 	}
+	// The default reminder time is required (a reminder always needs a fire time).
+	def, err := normalizeTimes([]string{strings.TrimSpace(req.DefaultTime)})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "default_time must be HH:MM"})
+		return
+	}
 	if err := s.settings.SetRemindersEnabled(r.Context(), req.Enabled); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
@@ -423,5 +431,9 @@ func (s *Server) handleSetRemindersConfig(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
 	}
-	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: req.Enabled, DigestTime: digest})
+	if err := s.settings.SetReminderDefaultTime(r.Context(), def[0]); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
+		return
+	}
+	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: req.Enabled, DigestTime: digest, DefaultTime: def[0]})
 }

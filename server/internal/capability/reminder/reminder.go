@@ -123,9 +123,10 @@ func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (str
 		return "How often should it repeat — once, daily, weekly, or monthly?", nil
 	}
 
+	// When no time is given, fall back to the user's configured default time.
 	times := parseTimesCSV(result.Entities["times"])
 	if len(times) == 0 {
-		return "What time should I remind you? For example, _9am_ or _08:00_.", nil
+		times = []string{h.defaultTime(ctx)}
 	}
 
 	in := store.ReminderInput{Title: title, RepeatMode: repeat, Times: times, Enabled: true}
@@ -156,6 +157,17 @@ func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (str
 		return "", fmt.Errorf("create reminder: %w", err)
 	}
 	return fmt.Sprintf("Reminder scheduled (#%d): _%s_\n%s", reminder.ID, title, describeSchedule(*reminder, h.timezone)), nil
+}
+
+// defaultTime returns the user's configured default reminder time (HH:MM),
+// falling back to a fixed default when settings are unavailable.
+func (h *Handler) defaultTime(ctx context.Context) string {
+	if h.settings != nil {
+		if hh, mm, ok := parseHM(h.settings.ReminderDefaultTime(ctx)); ok {
+			return fmt.Sprintf("%02d:%02d", hh, mm)
+		}
+	}
+	return settings.DefaultReminderTime
 }
 
 func firstNonEmpty(vals ...string) string {

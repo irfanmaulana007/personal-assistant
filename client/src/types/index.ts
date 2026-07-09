@@ -212,6 +212,7 @@ export type ReminderPayload = Omit<Reminder, 'id'>;
 export interface RemindersConfig {
   enabled: boolean;
   digest_time: string; // 'HH:MM' or '' when the daily recap is off
+  default_time: string; // 'HH:MM' used when a reminder has no explicit time
 }
 
 export type Channel = '' | 'web' | 'whatsapp';
