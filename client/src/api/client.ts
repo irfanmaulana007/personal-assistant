@@ -1,6 +1,7 @@
 import type {
   AuthResponse,
   User,
+  MyStats,
   Role,
   ChatResponse,
   HistoryEntry,
@@ -91,6 +92,10 @@ export async function updateProfile(name: string, email: string): Promise<User> 
     method: 'PATCH',
     body: JSON.stringify({ name, email }),
   });
+}
+
+export async function getMyStats(): Promise<MyStats> {
+  return request<MyStats>('/api/auth/me/stats');
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {

@@ -21,6 +21,13 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface MyStats {
+  runs: number;
+  total_tokens: number;
+  reminders: number;
+  notes: number;
+}
+
 export interface ChatResponse {
   response: string;
 }
