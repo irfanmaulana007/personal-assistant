@@ -600,6 +600,27 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 	return traces, rows.Err()
 }
 
+// GetUserActivity returns per-user counts for the profile page.
+func (s *SQLiteStore) GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error) {
+	a := &UserActivity{}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) FROM traces WHERE user_id = ?`, userID,
+	).Scan(&a.Runs, &a.TotalTokens); err != nil {
+		return nil, fmt.Errorf("user runs: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM reminders WHERE user_id = ? AND notified = 0 AND cancelled = 0`, userID,
+	).Scan(&a.Reminders); err != nil {
+		return nil, fmt.Errorf("user reminders: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notes WHERE user_id = ?`, userID,
+	).Scan(&a.Notes); err != nil {
+		return nil, fmt.Errorf("user notes: %w", err)
+	}
+	return a, nil
+}
+
 func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	var t Trace
 	var toolsJSON string

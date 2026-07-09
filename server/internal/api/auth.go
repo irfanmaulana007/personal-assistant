@@ -193,6 +193,27 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toUserResp(user))
 }
 
+// handleMyStats returns the current user's own activity counts.
+func (s *Server) handleMyStats(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	a, err := s.store.GetUserActivity(r.Context(), claims.UserID())
+	if err != nil {
+		s.log.Error("user activity", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load activity"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{
+		"runs":         a.Runs,
+		"total_tokens": a.TotalTokens,
+		"reminders":    a.Reminders,
+		"notes":        a.Notes,
+	})
+}
+
 type passwordChange struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`

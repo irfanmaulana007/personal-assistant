@@ -128,6 +128,14 @@ type ToolCount struct {
 	Count int
 }
 
+// UserActivity summarizes a single user's own data.
+type UserActivity struct {
+	Runs        int
+	TotalTokens int
+	Reminders   int // active
+	Notes       int
+}
+
 // UsageStats is the combined usage report over a period.
 type UsageStats struct {
 	Summary      UsageTotals
@@ -188,6 +196,7 @@ type Store interface {
 	GetTrace(ctx context.Context, id int64) (*Trace, error)
 	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
+	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
 
 	// Lifecycle
 	Close() error
