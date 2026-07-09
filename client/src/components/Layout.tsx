@@ -163,7 +163,7 @@ function NavGroup({ item }: { item: NavGroupItem }) {
         </svg>
       </button>
       {open && (
-        <div className="mt-0.5 space-y-0.5 pl-11">
+        <div className="mt-0.5 space-y-0.5 pl-9">
           {item.children.map((c) => (
             <NavLink
               key={c.to}
