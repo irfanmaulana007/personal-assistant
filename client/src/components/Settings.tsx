@@ -34,7 +34,7 @@ export function Settings() {
           </ul>
         </nav>
 
-        <div className="min-w-0 max-w-2xl flex-1">
+        <div className="min-w-0 flex-1">
           <Outlet />
         </div>
       </div>

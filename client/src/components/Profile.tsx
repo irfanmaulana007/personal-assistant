@@ -38,7 +38,7 @@ export function Profile() {
       {loading ? (
         <p className="mt-6 text-sm text-gray-500">Loading…</p>
       ) : user ? (
-        <div className="mt-6 max-w-4xl space-y-6">
+        <div className="mt-6 space-y-6">
           <ProfileHeader user={user} />
           {stats && <ActivityRow stats={stats} />}
           <div className="grid gap-6 lg:grid-cols-2">

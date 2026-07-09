@@ -64,7 +64,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
 
   return (
     <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4">
-      <div className="mx-auto max-w-3xl">
+      <div>
         {image && (
           <div className="mb-2 flex items-center gap-2">
             <div className="relative">

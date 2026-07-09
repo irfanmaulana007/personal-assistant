@@ -61,7 +61,7 @@ export function Skills() {
       {loading ? (
         <p className="mt-6 text-sm text-gray-500">Loading…</p>
       ) : (
-        <div className="mt-6 max-w-3xl space-y-6">
+        <div className="mt-6 space-y-6">
           {groups.map((g) => (
             <div key={g.category}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
