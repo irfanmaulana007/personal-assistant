@@ -68,7 +68,11 @@ const DEFAULT_DIGEST_TIME = '08:00';
 
 export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [config, setConfig] = useState<RemindersConfig>({ enabled: true, digest_time: '' });
+  const [config, setConfig] = useState<RemindersConfig>({
+    enabled: true,
+    digest_time: '',
+    default_time: '09:00',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -107,6 +111,7 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const toggleDigest = () =>
     saveConfig({ ...config, digest_time: config.digest_time ? '' : DEFAULT_DIGEST_TIME });
   const setDigestTime = (t: string) => saveConfig({ ...config, digest_time: t });
+  const setDefaultTime = (t: string) => t && saveConfig({ ...config, default_time: t });
 
   const toggleReminder = async (r: Reminder) => {
     setBusyId(r.id);
@@ -151,6 +156,21 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
             <p className="mt-0.5 text-sm text-gray-500">Turn every reminder on or off at once.</p>
           </div>
           <Toggle on={config.enabled} disabled={!isAdmin} onClick={toggleGlobal} />
+        </div>
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-gray-900">Default reminder time</div>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Used when you create a reminder without saying a time.
+            </p>
+          </div>
+          <input
+            type="time"
+            value={config.default_time}
+            disabled={!isAdmin}
+            onChange={(e) => setDefaultTime(e.target.value)}
+            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+          />
         </div>
         <div className="flex items-start justify-between gap-4 p-4">
           <div className="min-w-0">

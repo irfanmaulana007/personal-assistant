@@ -22,9 +22,13 @@ const (
 
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
-	KeyReminderDigestTime = "reminder_digest_time" // local "HH:MM"; empty ⇒ no daily recap
-	KeyReminderDigestLast = "reminder_digest_last" // "YYYY-MM-DD" of the last recap sent
+	KeyReminderDigestTime  = "reminder_digest_time"  // local "HH:MM"; empty ⇒ no daily recap
+	KeyReminderDigestLast  = "reminder_digest_last"  // "YYYY-MM-DD" of the last recap sent
+	KeyReminderDefaultTime = "reminder_default_time" // local "HH:MM" used when a reminder has no time
 )
+
+// DefaultReminderTime is used when the user hasn't configured one.
+const DefaultReminderTime = "09:00"
 
 // Service resolves and persists settings.
 type Service struct {
@@ -223,6 +227,21 @@ func (s *Service) ReminderDigestTime(ctx context.Context) string {
 // SetReminderDigestTime persists the daily-recap time ("HH:MM" or "" to disable).
 func (s *Service) SetReminderDigestTime(ctx context.Context, hhmm string) error {
 	return s.store.SetSetting(ctx, KeyReminderDigestTime, []byte(hhmm))
+}
+
+// ReminderDefaultTime returns the local "HH:MM" to use for reminders created
+// without an explicit time, falling back to DefaultReminderTime.
+func (s *Service) ReminderDefaultTime(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyReminderDefaultTime)
+	if v == "" {
+		return DefaultReminderTime
+	}
+	return v
+}
+
+// SetReminderDefaultTime persists the default reminder time ("HH:MM").
+func (s *Service) SetReminderDefaultTime(ctx context.Context, hhmm string) error {
+	return s.store.SetSetting(ctx, KeyReminderDefaultTime, []byte(hhmm))
 }
 
 // ReminderDigestLastSent returns the "YYYY-MM-DD" of the last recap sent, or "".

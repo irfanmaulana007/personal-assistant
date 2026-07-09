@@ -11,6 +11,7 @@ import (
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -304,6 +305,31 @@ func TestScheduleCreatesVisibleRecurring(t *testing.T) {
 	r := rs[0]
 	if r.RepeatMode != "monthly" || r.DayOfMonth != 5 || len(r.Times) != 1 || r.Times[0] != "09:00" {
 		t.Errorf("unexpected reminder stored: %+v", r)
+	}
+}
+
+func TestScheduleUsesDefaultTimeWhenOmitted(t *testing.T) {
+	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	svc := settings.New(st, nil)
+	ctx := authctx.WithUserID(context.Background(), 1)
+	if err := svc.SetReminderDefaultTime(ctx, "22:00"); err != nil {
+		t.Fatalf("set default time: %v", err)
+	}
+	h := &Handler{store: st, settings: svc, timezone: testTZ, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	// No "times" provided → the configured default (22:00) is applied.
+	if _, err := h.schedule(ctx, &intent.ParseResult{
+		Action:   intent.ActionReminderSchedule,
+		Entities: map[string]string{"title": "Pay internet", "repeat": "monthly", "day_of_month": "5"},
+	}); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	rs, _ := st.ListReminders(ctx, 1, true)
+	if len(rs) != 1 || len(rs[0].Times) != 1 || rs[0].Times[0] != "22:00" {
+		t.Fatalf("expected default time 22:00, got %+v", rs)
 	}
 }
 
