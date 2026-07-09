@@ -16,7 +16,7 @@ const DefaultProvider = "deepseek"
 
 // Providers is the registry of known providers, in display order.
 var Providers = []ProviderInfo{
-	{ID: "deepseek", Label: "DeepSeek", DefaultBaseURL: "https://api.deepseek.com", DefaultModel: "deepseek-chat"},
+	{ID: "deepseek", Label: "DeepSeek", DefaultBaseURL: "https://api.deepseek.com", DefaultModel: "deepseek-v4-flash"},
 	{ID: "openai", Label: "OpenAI", DefaultBaseURL: "https://api.openai.com/v1", DefaultModel: "gpt-4o-mini"},
 	{ID: "openrouter", Label: "OpenRouter", DefaultBaseURL: "https://openrouter.ai/api/v1", DefaultModel: "openai/gpt-4o-mini"},
 	{ID: "groq", Label: "Groq", DefaultBaseURL: "https://api.groq.com/openai/v1", DefaultModel: "llama-3.3-70b-versatile"},
