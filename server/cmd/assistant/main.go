@@ -21,6 +21,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composiotools"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
@@ -120,6 +121,7 @@ func main() {
 	// registered so the router can serve them when the skill is enabled).
 	handlers = append(handlers, contacts.New(db, log))
 	handlers = append(handlers, activity.New(db, timezone, log))
+	handlers = append(handlers, travel.New(db, timezone, log))
 
 	router := capability.NewRouter(log, handlers...)
 
