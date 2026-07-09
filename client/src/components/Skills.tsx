@@ -67,7 +67,7 @@ export function Skills() {
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 {g.category}
               </h2>
-              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
                 {g.skills.map((sk) => (
                   <div key={sk.id} className="flex items-start gap-4 p-4">
                     <div className="min-w-0 flex-1">

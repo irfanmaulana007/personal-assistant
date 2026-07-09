@@ -55,7 +55,7 @@ function ProfileHeader({ user }: { user: User }) {
   const displayName = user.name?.trim() || user.email;
   const initial = (user.name?.trim() || user.email || '?').charAt(0).toUpperCase();
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 text-2xl font-semibold text-indigo-700">
         {initial}
       </div>
@@ -89,7 +89,7 @@ function ActivityRow({ stats }: { stats: MyStats }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {tiles.map((t) => (
-        <div key={t.label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div key={t.label} className="rounded-2xl border border-gray-200 bg-white p-4">
           <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
             {t.label}
           </div>
@@ -130,7 +130,7 @@ function DetailsCard({ user, onSaved }: { user: User; onSaved: (u: User) => void
   };
 
   return (
-    <form onSubmit={save} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <form onSubmit={save} className="rounded-2xl border border-gray-200 bg-white p-5">
       <h2 className="mb-4 text-sm font-semibold text-gray-900">Details</h2>
       <div className="space-y-3">
         <div>
@@ -199,7 +199,7 @@ function PasswordCard() {
   };
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-5">
       <h2 className="mb-4 text-sm font-semibold text-gray-900">Password</h2>
       <div className="space-y-3">
         <input

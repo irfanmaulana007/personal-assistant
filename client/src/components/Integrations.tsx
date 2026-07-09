@@ -113,10 +113,7 @@ function ComposioKeyCard({
   };
 
   return (
-    <form
-      onSubmit={save}
-      className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-    >
+    <form onSubmit={save} className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900">Composio API key</h2>
         {data.configured ? (
@@ -196,7 +193,7 @@ function ToolkitCard({
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-sm font-semibold text-indigo-700">
