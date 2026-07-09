@@ -213,9 +213,17 @@ func main() {
 				trace.CompletionTokens = res.Usage.CompletionTokens
 				trace.TotalTokens = res.Usage.TotalTokens
 				trace.ToolCount = len(res.Tools)
+				trace.Skills = res.Skills
 				for _, tool := range res.Tools {
-					trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result})
+					trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result, LatencyMs: tool.LatencyMs})
 					_ = db.LogToolUsage(ctx, userID, tool.Name, msg.Platform)
+				}
+				for _, st := range res.Steps {
+					trace.Steps = append(trace.Steps, store.LLMCall{
+						Step: st.Step, Model: st.Model, PromptTokens: st.PromptTokens,
+						CompletionTokens: st.CompletionTokens, TotalTokens: st.TotalTokens,
+						LatencyMs: st.LatencyMs, FinishReason: st.FinishReason, ToolCalls: st.ToolCalls,
+					})
 				}
 			}
 			_, _ = db.CreateTrace(ctx, trace)

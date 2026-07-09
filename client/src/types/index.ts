@@ -189,10 +189,25 @@ export interface ToolInvocation {
   name: string;
   arguments: string;
   result: string;
+  latency_ms?: number;
+}
+
+export interface LLMCall {
+  step: number;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  finish_reason?: string;
+  tool_calls?: string[];
+  estimated_cost_usd: number;
 }
 
 export interface Trace {
   id: number;
+  user_id: number;
+  user?: string;
   platform: string;
   input: string;
   output: string;
@@ -203,6 +218,8 @@ export interface Trace {
   latency_ms: number;
   tool_count: number;
   tools?: ToolInvocation[];
+  steps?: LLMCall[];
+  skills?: string[];
   status: string;
   error?: string;
   estimated_cost_usd: number;

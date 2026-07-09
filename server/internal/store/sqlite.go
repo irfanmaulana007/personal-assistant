@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -278,6 +279,8 @@ func (s *SQLiteStore) migrate() error {
 	// Additive column migrations for tables created by earlier versions.
 	addColumns := []struct{ table, column, ddl string }{
 		{"users", "name", "TEXT NOT NULL DEFAULT ''"},
+		{"traces", "skills", "TEXT NOT NULL DEFAULT ''"},
+		{"traces", "steps_json", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -699,15 +702,21 @@ func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) 
 			toolsJSON = string(b)
 		}
 	}
+	stepsJSON := ""
+	if len(t.Steps) > 0 {
+		if b, err := json.Marshal(t.Steps); err == nil {
+			stepsJSON = string(b)
+		}
+	}
 	status := t.Status
 	if status == "" {
 		status = "ok"
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO traces (user_id, platform, input, output, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_count, tools_json, status, error, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO traces (user_id, platform, input, output, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.UserID, t.Platform, t.Input, t.Output, t.Model, t.PromptTokens, t.CompletionTokens, t.TotalTokens,
-		t.LatencyMs, t.ToolCount, toolsJSON, status, t.Error, time.Now().UTC(),
+		t.LatencyMs, t.ToolCount, toolsJSON, strings.Join(t.Skills, ","), stepsJSON, status, t.Error, time.Now().UTC(),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert trace: %w", err)
@@ -807,14 +816,14 @@ func (s *SQLiteStore) GetUserActivity(ctx context.Context, userID int64) (*UserA
 
 func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	var t Trace
-	var toolsJSON string
+	var toolsJSON, stepsJSON, skills string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
-		        total_tokens, latency_ms, tool_count, tools_json, status, error, created_at
+		        total_tokens, latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at
 		 FROM traces WHERE id = ?`, id,
 	).Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
 		&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
-		&toolsJSON, &t.Status, &t.Error, &t.CreatedAt)
+		&toolsJSON, &skills, &stepsJSON, &t.Status, &t.Error, &t.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -823,6 +832,12 @@ func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	}
 	if toolsJSON != "" {
 		_ = json.Unmarshal([]byte(toolsJSON), &t.Tools)
+	}
+	if stepsJSON != "" {
+		_ = json.Unmarshal([]byte(stepsJSON), &t.Steps)
+	}
+	if skills != "" {
+		t.Skills = strings.Split(skills, ",")
 	}
 	return &t, nil
 }

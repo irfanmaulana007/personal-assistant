@@ -126,8 +126,9 @@ type chatResponse struct {
 
 // CompletionResult is the parsed outcome of a chat completion request.
 type CompletionResult struct {
-	Message Message
-	Usage   Usage
+	Message      Message
+	Usage        Usage
+	FinishReason string
 }
 
 // Client is a minimal OpenAI-compatible chat completions client.
@@ -200,5 +201,5 @@ func (c *Client) Complete(ctx context.Context, cfg Config, messages []Message, t
 		return nil, fmt.Errorf("llm returned no choices")
 	}
 
-	return &CompletionResult{Message: parsed.Choices[0].Message, Usage: parsed.Usage}, nil
+	return &CompletionResult{Message: parsed.Choices[0].Message, Usage: parsed.Usage, FinishReason: parsed.Choices[0].FinishReason}, nil
 }

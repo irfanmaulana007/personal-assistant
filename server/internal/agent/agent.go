@@ -74,14 +74,30 @@ type ToolInvocation struct {
 	Name      string
 	Arguments string
 	Result    string
+	LatencyMs int
+}
+
+// LLMCall records one LLM round-trip within a run (the agent loops, so a run
+// can involve several calls).
+type LLMCall struct {
+	Step             int
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	LatencyMs        int
+	FinishReason     string
+	ToolCalls        []string // tool names requested in this step
 }
 
 // Result is the outcome of an agent run.
 type Result struct {
-	Reply string
-	Usage llm.Usage
-	Model string
-	Tools []ToolInvocation // tools invoked during the run, in order
+	Reply  string
+	Usage  llm.Usage
+	Model  string
+	Tools  []ToolInvocation // tools invoked during the run, in order
+	Steps  []LLMCall        // each LLM round-trip, in order
+	Skills []string         // skill keys active for this run
 }
 
 // Message is a prior conversation turn used as context.
@@ -141,29 +157,49 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	}
 	var total llm.Usage
 	var used []ToolInvocation
+	var steps []LLMCall
+
+	recordStep := func(res *llm.CompletionResult, latencyMs int) {
+		names := make([]string, 0, len(res.Message.ToolCalls))
+		for _, tc := range res.Message.ToolCalls {
+			names = append(names, tc.Function.Name)
+		}
+		steps = append(steps, LLMCall{
+			Step: len(steps) + 1, Model: cfg.Model,
+			PromptTokens: res.Usage.PromptTokens, CompletionTokens: res.Usage.CompletionTokens,
+			TotalTokens: res.Usage.TotalTokens, LatencyMs: latencyMs,
+			FinishReason: res.FinishReason, ToolCalls: names,
+		})
+	}
 
 	for i := 0; i < maxIterations; i++ {
+		start := time.Now()
 		res, err := a.client.Complete(ctx, cfg, messages, tools)
 		if err != nil {
 			return nil, err
 		}
+		recordStep(res, int(time.Since(start).Milliseconds()))
 		addUsage(&total, res.Usage)
 
 		msg := res.Message
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used}, nil
+			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys}, nil
 		}
 
 		for _, tc := range msg.ToolCalls {
+			tStart := time.Now()
 			var result string
 			if a.provider != nil && a.provider.Handles(tc.Function.Name) {
 				result = a.provider.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 			} else {
 				result = a.execTool(ctx, tc)
 			}
-			used = append(used, ToolInvocation{Name: tc.Function.Name, Arguments: tc.Function.Arguments, Result: result})
+			used = append(used, ToolInvocation{
+				Name: tc.Function.Name, Arguments: tc.Function.Arguments, Result: result,
+				LatencyMs: int(time.Since(tStart).Milliseconds()),
+			})
 			messages = append(messages, llm.Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,
@@ -174,16 +210,18 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	}
 
 	// Tool budget exhausted — force a final textual answer without tools.
+	start := time.Now()
 	res, err := a.client.Complete(ctx, cfg, messages, nil)
 	if err != nil {
 		return nil, err
 	}
+	recordStep(res, int(time.Since(start).Milliseconds()))
 	addUsage(&total, res.Usage)
 	reply := strings.TrimSpace(res.Message.Content)
 	if reply == "" {
 		reply = "I wasn't able to finish that request. Could you rephrase or break it into smaller steps?"
 	}
-	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used}, nil
+	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys}, nil
 }
 
 // execTool maps a tool call onto a capability action and runs it via the router.
