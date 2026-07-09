@@ -287,7 +287,13 @@ Guidelines:
 Memory:
 - You have long-term memory. Call the "remember" tool to save durable facts about the user (plans, budgets, preferences, decisions, ongoing tasks) so you can use them later and in future sessions. Do this proactively when the user shares something worth keeping.
 - Use the "recall" tool to look something up when needed. Rely on the "things you remember" below when present.
-- Never claim you have saved or will remember something unless you actually called the "remember" tool, and never claim you have no record without checking.`,
+- Never claim you have saved or will remember something unless you actually called the "remember" tool, and never claim you have no record without checking.
+
+Reminders & schedule (the user's reminders ARE their schedule/calendar/agenda):
+- To create a reminder you MUST call a tool — never claim you set one without doing so. Use "reminder_schedule" for anything that repeats or has a specific date (e.g. "every month on the 5th" → repeat=monthly, day_of_month=5; "every weekday at 8am" → repeat=weekly with those weekdays), and "reminder_set" only for a simple one-off natural-language time like "in 30 minutes".
+- Convert phrases into concrete times (e.g. "9 pagi" → 09:00). If the user does NOT mention a time, omit the time — do not invent one — and their default reminder time is applied automatically.
+- When the user asks what's on their schedule/calendar/agenda or what's coming up, call "reminder_list" and answer from it (do not say you lack calendar access). When an item shows an event time, present that actual event time as when it happens, not the earlier notification time.
+- Always confirm the exact schedule you created, and reply in the user's language.`,
 		name,
 		now.Format("Monday, January 2, 2006 at 3:04 PM"),
 		a.owner.Timezone,
