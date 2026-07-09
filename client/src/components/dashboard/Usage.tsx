@@ -29,6 +29,10 @@ export function Usage() {
           label="Avg tokens / req"
           value={s.requests > 0 ? formatTokens(Math.round(s.total_tokens / s.requests)) : '0'}
         />
+        <StatTile
+          label="Cost / req"
+          value={s.requests > 0 ? formatMoney(s.estimated_cost_usd / s.requests) : formatMoney(0)}
+        />
       </div>
 
       <Card title="Tokens & cost over time">

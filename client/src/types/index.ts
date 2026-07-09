@@ -75,8 +75,22 @@ export interface UsageSummary {
   total_tokens: number;
   estimated_cost_usd: number;
   avg_latency_ms: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
   tool_calls: number;
   errors: number;
+  active_users: number;
+}
+
+export interface UsageUser {
+  user_id: number;
+  name: string;
+  email: string;
+  requests: number;
+  total_tokens: number;
+  errors: number;
+  estimated_cost_usd: number;
 }
 
 export interface UsagePlatform {
@@ -93,7 +107,9 @@ export interface ToolCount {
 export interface UsageDay {
   date: string;
   requests: number;
+  errors: number;
   total_tokens: number;
+  avg_latency_ms: number;
   estimated_cost_usd: number;
 }
 
@@ -139,6 +155,9 @@ export interface UsageStats {
   by_model: UsageModel[];
   by_platform: UsagePlatform[];
   top_tools: ToolCount[];
+  by_hour: number[];
+  by_weekday: number[];
+  by_user: UsageUser[];
   cost_partial: boolean;
 }
 

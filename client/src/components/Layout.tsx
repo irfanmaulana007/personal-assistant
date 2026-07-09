@@ -66,6 +66,8 @@ const navItems: NavEntry[] = [
       { to: '/dashboard', label: 'Overview', end: true },
       { to: '/dashboard/usage', label: 'Usage' },
       { to: '/dashboard/activity', label: 'Activity' },
+      { to: '/dashboard/performance', label: 'Performance' },
+      { to: '/dashboard/users', label: 'Users' },
     ],
   },
   {

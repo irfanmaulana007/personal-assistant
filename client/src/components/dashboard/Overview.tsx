@@ -11,8 +11,9 @@ export function Overview() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatTile label="Requests" value={s.requests.toLocaleString()} />
+        <StatTile label="Active users" value={s.active_users.toLocaleString()} />
         <StatTile
           label="Errors"
           value={s.errors.toLocaleString()}
@@ -30,6 +31,7 @@ export function Overview() {
         />
         <StatTile label="Tool calls" value={s.tool_calls.toLocaleString()} />
         <StatTile label="Avg latency" value={formatLatency(s.avg_latency_ms)} />
+        <StatTile label="p95 latency" value={formatLatency(s.latency_p95_ms)} />
         <StatTile
           label="Avg tokens / req"
           value={s.requests > 0 ? formatTokens(Math.round(s.total_tokens / s.requests)) : '0'}
