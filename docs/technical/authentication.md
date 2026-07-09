@@ -37,7 +37,7 @@ This check happens at the top of the message pipeline. Non-owner messages are si
   "installed": {
     "client_id": "xxx.apps.googleusercontent.com",
     "client_secret": "xxx",
-    "redirect_uris": ["http://localhost:8080/callback"]
+    "redirect_uris": ["http://localhost:8090/callback"]
   }
 }
 ```

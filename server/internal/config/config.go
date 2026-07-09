@@ -138,7 +138,7 @@ func defaults() *Config {
 		},
 		Web: WebConfig{
 			Enabled:   true,
-			Port:      8080,
+			Port:      8090,
 			StaticDir: "client/dist",
 		},
 		Database: DatabaseConfig{
