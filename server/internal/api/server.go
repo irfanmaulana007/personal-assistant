@@ -88,6 +88,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("POST /api/auth/password", protect(s.handleChangePassword))
 	mux.Handle("/api/chat", protect(s.handleChat))
 	mux.Handle("/api/chat/history", protect(s.handleChatHistory))
+	mux.Handle("GET /api/skills", protect(s.handleListSkills))
+	mux.Handle("PUT /api/skills/{id}", protect(s.handleSetSkill))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))

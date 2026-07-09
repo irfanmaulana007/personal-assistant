@@ -14,11 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
 // ErrNotConfigured is returned when no LLM API key has been configured.
@@ -43,6 +46,7 @@ type ToolProvider interface {
 type Agent struct {
 	client   *llm.Client
 	settings *settings.Service
+	skills   *skills.Service
 	router   *capability.Router
 	owner    config.OwnerConfig
 	provider ToolProvider // optional; extra tools (may be nil)
@@ -50,10 +54,11 @@ type Agent struct {
 }
 
 // New creates an agent. provider may be nil (no extra tools).
-func New(client *llm.Client, settingsSvc *settings.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
+func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Service, router *capability.Router, owner config.OwnerConfig, provider ToolProvider, log *slog.Logger) *Agent {
 	return &Agent{
 		client:   client,
 		settings: settingsSvc,
+		skills:   skillsSvc,
 		router:   router,
 		owner:    owner,
 		provider: provider,
@@ -93,13 +98,25 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message) 
 		return nil, ErrNotConfigured
 	}
 
-	messages := []llm.Message{{Role: "system", Content: a.systemPrompt()}}
+	// Resolve the user's enabled skills: their prompts enrich the system
+	// prompt and their tools are added to the tool list.
+	var enabledSkills []store.Skill
+	if a.skills != nil {
+		enabledSkills = a.skills.Enabled(ctx, authctx.UserID(ctx))
+	}
+	enabledKeys := make([]string, 0, len(enabledSkills))
+	for _, sk := range enabledSkills {
+		enabledKeys = append(enabledKeys, sk.Key)
+	}
+
+	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills)}}
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
 	messages = append(messages, llm.Message{Role: "user", Content: userMessage})
 
 	tools := toolSchemas()
+	tools = append(tools, skillToolSchemas(enabledKeys)...)
 	if a.provider != nil {
 		tools = append(tools, a.provider.Tools(ctx)...)
 	}
@@ -181,7 +198,7 @@ func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) string {
 	return a.router.Route(ctx, result)
 }
 
-func (a *Agent) systemPrompt() string {
+func (a *Agent) systemPrompt(enabledSkills []store.Skill) string {
 	loc := a.owner.Location()
 	now := time.Now().In(loc)
 	name := a.owner.Name
@@ -189,7 +206,7 @@ func (a *Agent) systemPrompt() string {
 		name = "the user"
 	}
 
-	return fmt.Sprintf(`You are a helpful personal assistant for %s.
+	base := fmt.Sprintf(`You are a helpful personal assistant for %s.
 The current date and time is %s (timezone: %s).
 
 You can manage the user's calendar, email, reminders, and notes by calling the provided tools.
@@ -204,6 +221,19 @@ Guidelines:
 		now.Format("Monday, January 2, 2006 at 3:04 PM"),
 		a.owner.Timezone,
 	)
+
+	if len(enabledSkills) > 0 {
+		var b strings.Builder
+		b.WriteString(base)
+		b.WriteString("\n\nThe user has enabled these skills:")
+		for _, sk := range enabledSkills {
+			if sk.Prompt != "" {
+				b.WriteString(fmt.Sprintf("\n\n## %s\n%s", sk.Name, sk.Prompt))
+			}
+		}
+		return b.String()
+	}
+	return base
 }
 
 func addUsage(total *llm.Usage, u llm.Usage) {

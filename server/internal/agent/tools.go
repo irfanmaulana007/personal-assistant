@@ -126,26 +126,49 @@ var toolSpecs = []toolSpec{
 	},
 }
 
+// skillTools maps a skill key to the extra tools that skill provides. These are
+// only exposed to the LLM when the user has the skill enabled. Populated as each
+// skill is implemented (contacts, activity, travel, …).
+var skillTools = map[string][]toolSpec{}
+
+// toolByName indexes every tool (base + all skill tools) so execTool can route a
+// tool call to its capability action regardless of which skill exposed it.
 var toolByName = func() map[string]toolSpec {
 	m := make(map[string]toolSpec, len(toolSpecs))
 	for _, t := range toolSpecs {
 		m[t.name] = t
 	}
+	for _, ts := range skillTools {
+		for _, t := range ts {
+			m[t.name] = t
+		}
+	}
 	return m
 }()
 
-// toolSchemas returns the tool definitions in the LLM wire format.
+func specToTool(t toolSpec) llm.Tool {
+	return llm.Tool{
+		Type:     "function",
+		Function: llm.ToolFunction{Name: t.name, Description: t.description, Parameters: json.RawMessage(t.parameters)},
+	}
+}
+
+// toolSchemas returns the always-on base tool definitions in the LLM wire format.
 func toolSchemas() []llm.Tool {
 	tools := make([]llm.Tool, len(toolSpecs))
 	for i, t := range toolSpecs {
-		tools[i] = llm.Tool{
-			Type: "function",
-			Function: llm.ToolFunction{
-				Name:        t.name,
-				Description: t.description,
-				Parameters:  json.RawMessage(t.parameters),
-			},
-		}
+		tools[i] = specToTool(t)
 	}
 	return tools
+}
+
+// skillToolSchemas returns the tools provided by the given enabled skill keys.
+func skillToolSchemas(keys []string) []llm.Tool {
+	var out []llm.Tool
+	for _, k := range keys {
+		for _, t := range skillTools[k] {
+			out = append(out, specToTool(t))
+		}
+	}
+	return out
 }

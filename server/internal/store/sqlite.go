@@ -43,6 +43,25 @@ func (s *SQLiteStore) migrate() error {
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS skills (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			key TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			prompt TEXT NOT NULL DEFAULT '',
+			category TEXT NOT NULL DEFAULT '',
+			default_enabled INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS user_skills (
+			user_id INTEGER NOT NULL,
+			skill_id INTEGER NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (user_id, skill_id)
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS reminders (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			message TEXT NOT NULL,
@@ -144,6 +163,11 @@ func (s *SQLiteStore) migrate() error {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", c.table, c.column, err)
 		}
+	}
+
+	// Seed / upsert master data (skills).
+	if err := s.seedSkills(); err != nil {
+		return fmt.Errorf("seed skills: %w", err)
 	}
 	return nil
 }

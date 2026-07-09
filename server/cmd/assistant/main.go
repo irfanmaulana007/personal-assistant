@@ -26,6 +26,7 @@ import (
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport/whatsapp"
@@ -69,6 +70,7 @@ func main() {
 	// Runtime LLM settings (provider/API key/model/base URL) — stored in and
 	// resolved from the database (the single source of truth).
 	settingsSvc := settings.New(db, encKey)
+	skillsSvc := skills.New(db)
 	llmClient := llm.NewClient()
 	composioClient := composio.NewClient()
 
@@ -118,7 +120,7 @@ func main() {
 	composioTools := composiotools.New(composioClient, settingsSvc, log)
 
 	// LLM tool-calling agent (replaces the regex parser).
-	assistant := agent.New(llmClient, settingsSvc, router, cfg.Owner, composioTools, log)
+	assistant := agent.New(llmClient, settingsSvc, skillsSvc, router, cfg.Owner, composioTools, log)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
