@@ -37,6 +37,7 @@ func (s *SQLiteStore) migrate() error {
 		`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			email TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			role TEXT NOT NULL DEFAULT 'member',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
@@ -133,6 +134,7 @@ func (s *SQLiteStore) migrate() error {
 
 	// Additive column migrations for tables created by earlier versions.
 	addColumns := []struct{ table, column, ddl string }{
+		{"users", "name", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -198,22 +200,22 @@ func (s *SQLiteStore) CreateUser(ctx context.Context, email, passwordHash, role 
 
 func (s *SQLiteStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE email = ?`, email))
+		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE email = ?`, email))
 }
 
 func (s *SQLiteStore) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE id = ?`, id))
+		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE id = ?`, id))
 }
 
 func (s *SQLiteStore) FirstAdmin(ctx context.Context) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`))
+		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`))
 }
 
 func (s *SQLiteStore) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -225,7 +227,7 @@ func (s *SQLiteStore) scanUser(row *sql.Row) (*User, error) {
 
 func (s *SQLiteStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users ORDER BY id ASC`)
+		`SELECT id, email, name, password_hash, role, created_at FROM users ORDER BY id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -234,7 +236,7 @@ func (s *SQLiteStore) ListUsers(ctx context.Context) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, u)
@@ -249,6 +251,11 @@ func (s *SQLiteStore) UpdateUserRole(ctx context.Context, id int64, role string)
 
 func (s *SQLiteStore) UpdateUserPassword(ctx context.Context, id int64, passwordHash string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
+	return err
+}
+
+func (s *SQLiteStore) UpdateUserProfile(ctx context.Context, id int64, name, email string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET name = ?, email = ? WHERE id = ?`, name, email, id)
 	return err
 }
 

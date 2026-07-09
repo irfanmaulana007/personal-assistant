@@ -83,6 +83,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Authenticated (any role)
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))
+	mux.Handle("PATCH /api/auth/me", protect(s.handleUpdateProfile))
 	mux.Handle("POST /api/auth/password", protect(s.handleChangePassword))
 	mux.Handle("/api/chat", protect(s.handleChat))
 	mux.Handle("/api/chat/history", protect(s.handleChatHistory))

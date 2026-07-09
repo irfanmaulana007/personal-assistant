@@ -45,6 +45,7 @@ type credentials struct {
 type userResp struct {
 	ID        int64  `json:"id"`
 	Email     string `json:"email"`
+	Name      string `json:"name"`
 	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
 }
@@ -56,7 +57,7 @@ type loginResponse struct {
 }
 
 func toUserResp(u *store.User) userResp {
-	return userResp{ID: u.ID, Email: u.Email, Role: u.Role, CreatedAt: u.CreatedAt.Format(time.RFC3339)}
+	return userResp{ID: u.ID, Email: u.Email, Name: u.Name, Role: u.Role, CreatedAt: u.CreatedAt.Format(time.RFC3339)}
 }
 
 // handleAuthStatus reports whether initial setup (first admin) is required.
@@ -148,6 +149,47 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
+	writeJSON(w, http.StatusOK, toUserResp(user))
+}
+
+type profileUpdate struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// handleUpdateProfile updates the current user's own name and email.
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req profileUpdate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !strings.Contains(email, "@") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid email is required"})
+		return
+	}
+
+	// Email must stay unique.
+	if existing, err := s.store.GetUserByEmail(r.Context(), email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	} else if existing != nil && existing.ID != claims.UserID() {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "that email is already in use"})
+		return
+	}
+
+	if err := s.store.UpdateUserProfile(r.Context(), claims.UserID(), strings.TrimSpace(req.Name), email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update profile"})
+		return
+	}
+	user, _ := s.store.GetUserByID(r.Context(), claims.UserID())
 	writeJSON(w, http.StatusOK, toUserResp(user))
 }
 
