@@ -3,12 +3,14 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "8090:8090"
+      - '8090:8090'
     volumes:
-      - ./server/data:/app/server/data
-      - ./server/config:/app/server/config
+      - assistant-data:/app/data
     environment:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEB_PASSWORD=${WEB_PASSWORD}
-    stdin_open: true
-    tty: true
+      - OWNER_JID=${OWNER_JID}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+volumes:
+  assistant-data:
