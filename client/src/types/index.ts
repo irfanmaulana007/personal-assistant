@@ -151,6 +151,12 @@ export interface Skill {
   enabled: boolean;
 }
 
+export interface Preferences {
+  timezone: string; // 'UTC' | 'Asia/Jakarta'
+  currency: string; // 'USD' | 'IDR'
+  usd_to_idr: number;
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {

@@ -1,5 +1,5 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { formatTokens, formatCost } from '../../lib/format';
+import { formatTokens } from '../../lib/format';
 
 export interface ModelDatum {
   model: string;
@@ -12,19 +12,33 @@ interface TooltipEntry {
   payload: ModelDatum;
 }
 
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: TooltipEntry[] }) {
+function ChartTooltip({
+  active,
+  payload,
+  formatMoney,
+}: {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  formatMoney: (usd: number) => string;
+}) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm">
       <div className="font-medium text-gray-900">{p.model}</div>
       <div className="text-gray-500">{formatTokens(p.tokens)} tokens</div>
-      <div className="text-gray-500">{p.rateKnown ? `${formatCost(p.cost)} est.` : 'no rate'}</div>
+      <div className="text-gray-500">{p.rateKnown ? `${formatMoney(p.cost)} est.` : 'no rate'}</div>
     </div>
   );
 }
 
-export function ModelBarChart({ data }: { data: ModelDatum[] }) {
+export function ModelBarChart({
+  data,
+  formatMoney,
+}: {
+  data: ModelDatum[];
+  formatMoney: (usd: number) => string;
+}) {
   if (data.length === 0) {
     return <p className="text-sm text-gray-400">No data yet.</p>;
   }
@@ -48,7 +62,10 @@ export function ModelBarChart({ data }: { data: ModelDatum[] }) {
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f3f4f6' }} />
+        <Tooltip
+          content={<ChartTooltip formatMoney={formatMoney} />}
+          cursor={{ fill: '#f3f4f6' }}
+        />
         <Bar
           dataKey="tokens"
           fill="#4f46e5"

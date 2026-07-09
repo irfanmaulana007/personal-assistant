@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
-import { formatTokens, formatCost } from '../lib/format';
+import { formatTokens } from '../lib/format';
+import { usePreferences } from '../contexts/preferences';
 import type { Trace, Channel } from '../types';
 
 const PAGE_SIZE = 25;
@@ -36,6 +36,7 @@ const channelBadge: Record<string, string> = {
 };
 
 export function Logs() {
+  const { formatDate } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
@@ -196,7 +197,7 @@ export function Logs() {
                       {fmtLatency(t.latency_ms)}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-400">
-                      {format(parseISO(t.created_at), 'MMM d, HH:mm')}
+                      {formatDate(t.created_at, { time: true })}
                     </td>
                   </tr>
                 ))
@@ -262,6 +263,7 @@ export function Logs() {
 }
 
 function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
+  const { formatDate, formatMoney } = usePreferences();
   const meta = [
     { k: 'Model', v: trace.model || '—' },
     {
@@ -269,7 +271,7 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
       v: `${formatTokens(trace.total_tokens)} (${trace.prompt_tokens}/${trace.completion_tokens})`,
     },
     { k: 'Latency', v: fmtLatency(trace.latency_ms) },
-    { k: 'Cost', v: formatCost(trace.estimated_cost_usd) },
+    { k: 'Cost', v: formatMoney(trace.estimated_cost_usd) },
   ];
 
   return (
@@ -283,7 +285,7 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
           {trace.status === 'error' ? 'Error' : 'OK'}
         </span>
         <span className="text-xs text-gray-400">
-          {format(parseISO(trace.created_at), 'MMM d, yyyy HH:mm:ss')}
+          {formatDate(trace.created_at, { time: true, seconds: true })}
         </span>
       </div>
 

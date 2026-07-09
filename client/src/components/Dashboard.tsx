@@ -5,7 +5,8 @@ import { ModelBarChart } from './charts/ModelBarChart';
 import { HorizontalBar } from './charts/HorizontalBar';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
-import { formatTokens, formatCost } from '../lib/format';
+import { formatTokens } from '../lib/format';
+import { usePreferences } from '../contexts/preferences';
 import type { Channel } from '../types';
 
 function defaultRange(): { from: string; to: string } {
@@ -64,6 +65,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export function Dashboard() {
+  const { formatMoney } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
@@ -124,7 +126,7 @@ export function Dashboard() {
             />
             <StatTile
               label="Est. cost"
-              value={formatCost(stats.summary.estimated_cost_usd)}
+              value={formatMoney(stats.summary.estimated_cost_usd)}
               sub={stats.cost_partial ? 'excludes unpriced models' : 'estimated'}
             />
             <StatTile label="Tool calls" value={stats.summary.tool_calls.toLocaleString()} />
@@ -167,7 +169,7 @@ export function Dashboard() {
                       value: d.estimated_cost_usd,
                     }))}
                     color="#059669"
-                    format={formatCost}
+                    format={formatMoney}
                   />
                 </Card>
               </div>
@@ -175,6 +177,7 @@ export function Dashboard() {
               <div className="mt-6 grid gap-4 lg:grid-cols-2">
                 <Card title="Tokens by model">
                   <ModelBarChart
+                    formatMoney={formatMoney}
                     data={stats.by_model.map((m) => ({
                       model: m.model,
                       tokens: m.total_tokens,
