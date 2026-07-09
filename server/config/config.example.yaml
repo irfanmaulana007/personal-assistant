@@ -9,7 +9,7 @@ whatsapp:
 
 web:
   enabled: true
-  port: 8080
+  port: 8090
   password: "" # Set via WEB_PASSWORD env var
   static_dir: "../client/dist"
 

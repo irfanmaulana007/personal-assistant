@@ -19,8 +19,8 @@ cp server/config/config.example.yaml server/config/config.yaml
 make deps
 
 # 3. Run
-make dev-server        # Go server on :8080 (hot reload via air)
-make dev-client        # Vite dev client on :5273 (proxies /api to :8080)
+make dev-server        # Go server on :8090 (hot reload via air)
+make dev-client        # Vite dev client on :5273 (proxies /api to :8090)
 ```
 
 Then open the client, log in with your web password, and **before chatting**,
@@ -28,7 +28,7 @@ open **Settings** and add your LLM API key — see
 [docs/setup/llm-agent.md](docs/setup/llm-agent.md).
 
 For a single production-style run: `make run` (serves the built client from the
-Go server on `:8080`).
+Go server on `:8090`).
 
 ## Make targets
 
