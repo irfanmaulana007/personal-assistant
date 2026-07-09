@@ -60,11 +60,13 @@ func traceToResp(t *store.Trace, includeTools bool) traceResp {
 }
 
 type logsResp struct {
-	Traces []traceResp `json:"traces"`
+	Traces     []traceResp `json:"traces"`
+	NextCursor int64       `json:"next_cursor,omitempty"`
 }
 
 // handleListLogs returns a page of traces (most recent first). Query params:
-// from, to (YYYY-MM-DD, default last 30 days), platform, limit, offset.
+// from, to (YYYY-MM-DD, default last 30 days), platform, limit, and cursor (the
+// id of the last trace from the previous page; 0/absent = first page).
 func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	to := today
@@ -83,21 +85,22 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 		from, to = to, from
 	}
 
-	limit := 50
+	limit := 25
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
 		limit = v
 	}
-	offset := 0
-	if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v > 0 {
-		offset = v
+	var cursor int64
+	if v, err := strconv.ParseInt(r.URL.Query().Get("cursor"), 10, 64); err == nil && v > 0 {
+		cursor = v
 	}
 
+	// Fetch one extra row to know whether a further page exists.
 	traces, err := s.store.ListTraces(r.Context(), store.TraceFilter{
 		Platform: validPlatform(r.URL.Query().Get("platform")),
 		From:     from,
 		To:       to.AddDate(0, 0, 1),
-		Limit:    limit,
-		Offset:   offset,
+		Limit:    limit + 1,
+		Cursor:   cursor,
 	})
 	if err != nil {
 		s.log.Error("list traces", "error", err)
@@ -105,7 +108,11 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := logsResp{Traces: make([]traceResp, 0, len(traces))}
+	out := logsResp{Traces: make([]traceResp, 0, limit)}
+	if len(traces) > limit {
+		out.NextCursor = traces[limit-1].ID
+		traces = traces[:limit]
+	}
 	for i := range traces {
 		out.Traces = append(out.Traces, traceToResp(&traces[i], false))
 	}

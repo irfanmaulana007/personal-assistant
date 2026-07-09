@@ -183,13 +183,15 @@ type Trace struct {
 	CreatedAt        time.Time
 }
 
-// TraceFilter narrows a trace listing.
+// TraceFilter narrows a trace listing. Pagination is cursor-based: Cursor is
+// the id of the last trace from the previous page (0 = first page); results are
+// ordered by id descending, so the next page is everything with id < Cursor.
 type TraceFilter struct {
 	Platform string // "" = all
 	From     time.Time
 	To       time.Time
 	Limit    int
-	Offset   int
+	Cursor   int64
 }
 
 // UsageTotals aggregates token usage over a period.
