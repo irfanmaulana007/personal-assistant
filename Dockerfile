@@ -2,18 +2,20 @@
 FROM node:22-alpine AS client-builder
 WORKDIR /app/client
 COPY client/package.json client/package-lock.json ./
-RUN npm ci
+# npm install (not ci) so the Linux/musl-specific optional native deps resolve
+# even though the committed lockfile is generated on a different platform.
+RUN npm install --no-audit --no-fund
 COPY client/ .
 RUN npm run build
 
-# Stage 2: Build server
+# Stage 2: Build server (CGO required for go-sqlite3; sqlite_fts5 for notes search)
 FROM golang:1.25-alpine AS server-builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY server/ server/
-RUN CGO_ENABLED=1 go build -o personal-assistant ./server/cmd/assistant
+RUN CGO_ENABLED=1 go build -tags sqlite_fts5 -o personal-assistant ./server/cmd/assistant
 
 # Stage 3: Final image
 FROM alpine:3.22
@@ -22,10 +24,13 @@ WORKDIR /app
 
 COPY --from=server-builder /app/personal-assistant .
 COPY --from=client-builder /app/client/dist ./client/dist
+# Container config (paths relative to /app; secrets injected from env at runtime).
+COPY server/config/config.docker.yaml ./config/config.yaml
 
-RUN mkdir -p /app/server/data /app/server/config
+# Persistent data: SQLite app DB + WhatsApp (whatsmeow) session live here.
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
 
-VOLUME ["/app/server/data", "/app/server/config"]
-EXPOSE 8080
+EXPOSE 8090
 
-ENTRYPOINT ["./personal-assistant", "-config", "server/config/config.yaml"]
+ENTRYPOINT ["./personal-assistant", "-config", "config/config.yaml"]
