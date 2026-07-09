@@ -147,6 +147,22 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"Name, phone, email, or keyword to search for. Empty lists all contacts."}}}`,
 		},
 	},
+	"activity_summary": {
+		{
+			name:        "activity_log",
+			description: "Record a sport or workout the user did.",
+			capability:  intent.CapabilityActivity,
+			action:      intent.ActionActivityLog,
+			parameters:  `{"type":"object","properties":{"type":{"type":"string","description":"Kind of activity, e.g. running, football, gym, yoga."},"description":{"type":"string","description":"Short detail, e.g. '5k' or '1 hour'."},"when":{"type":"string","description":"When it happened, e.g. 'this morning', 'yesterday'. Defaults to now."}},"required":["type"]}`,
+		},
+		{
+			name:        "activity_summarize",
+			description: "Summarize the user's recent sport/workout activity.",
+			capability:  intent.CapabilityActivity,
+			action:      intent.ActionActivitySummarize,
+			parameters:  `{"type":"object","properties":{"days":{"type":"integer","description":"Look-back window in days. Defaults to 7."}}}`,
+		},
+	},
 }
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a

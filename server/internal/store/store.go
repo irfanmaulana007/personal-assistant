@@ -53,6 +53,16 @@ type Contact struct {
 	CreatedAt time.Time
 }
 
+// Activity is a logged sport/workout session, scoped to a user.
+type Activity struct {
+	ID          int64
+	Type        string
+	Description string
+	OccurredAt  time.Time
+	Source      string // "chat", "reminder", "travel"
+	CreatedAt   time.Time
+}
+
 // Note represents a saved note.
 type Note struct {
 	ID        int64
@@ -207,6 +217,10 @@ type Store interface {
 	// Contacts (scoped to a user)
 	CreateContact(ctx context.Context, userID int64, name, phone, email, note string) (*Contact, error)
 	SearchContacts(ctx context.Context, userID int64, query string) ([]Contact, error)
+
+	// Activities (scoped to a user)
+	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
+	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
 
 	// Notes (scoped to a user)
 	CreateNote(ctx context.Context, userID int64, title, content, tags string) (*Note, error)
