@@ -63,14 +63,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize store
-	db, err := store.NewSQLite(cfg.Database.Path)
+	// Initialize store (backend selected by cfg.Database.Driver)
+	db, err := store.Open(ctx, cfg.Database)
 	if err != nil {
 		log.Error("failed to initialize database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	log.Info("database initialized", "path", cfg.Database.Path)
+	log.Info("database initialized", "driver", cfg.Database.Driver)
 
 	// Decode the encryption key once for reuse (Google tokens + settings).
 	encKey, err := crypto.DecodeKey(cfg.Security.EncryptionKey)

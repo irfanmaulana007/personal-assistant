@@ -434,6 +434,11 @@ type Store interface {
 // travel, notes, OAuth tokens, settings, and model prices. In the hybrid
 // backend this is served by PostgreSQL.
 type DataStore interface {
+	// SetTranslator injects the optional English-normalization translator,
+	// applied to reminder/life-goal text before it is persisted. Wired after
+	// construction because the translator depends on runtime settings.
+	SetTranslator(t Translator)
+
 	// Users
 	CountUsers(ctx context.Context) (int, error)
 	CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error)

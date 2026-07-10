@@ -14,7 +14,15 @@ web:
   static_dir: "../client/dist"
 
 database:
+  # Storage backend: "sqlite" (single file, default) or "hybrid"
+  # (PostgreSQL for main data + MongoDB for logs).
+  driver: "sqlite"
+  # Used when driver is "sqlite".
   path: "data/assistant.db"
+  # Used when driver is "hybrid" (env-expanded; see .env / POSTGRES_DSN etc.).
+  postgres_dsn: "${POSTGRES_DSN}"
+  mongo_uri: "${MONGO_URI}"
+  mongo_db: "assistant_logs"
 
 google:
   credentials_file: "config/google_credentials.json"
