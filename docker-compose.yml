@@ -5,12 +5,55 @@ services:
     ports:
       - '8090:8090'
     volumes:
+      # SQLite is no longer the app store on the hybrid driver, but the WhatsApp
+      # (whatsmeow) session DB still lives here — keep the volume.
       - assistant-data:/app/data
     environment:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEB_PASSWORD=${WEB_PASSWORD}
       - OWNER_JID=${OWNER_JID}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Hybrid backend: PostgreSQL for main data, MongoDB for logs.
+      - DB_DRIVER=hybrid
+      - POSTGRES_DSN=postgres://assistant:${POSTGRES_PASSWORD}@postgres:5432/assistant?sslmode=disable
+      - MONGO_URI=mongodb://root:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      - MONGO_DB=assistant_logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=assistant
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=assistant
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U assistant -d assistant']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   assistant-data:
+  pgdata:
+  mongodata:

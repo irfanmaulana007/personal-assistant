@@ -16,6 +16,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY server/ server/
 RUN CGO_ENABLED=1 go build -tags sqlite_fts5 -o personal-assistant ./server/cmd/assistant
+# ETL: migrate an existing SQLite database into the hybrid Postgres+Mongo backend.
+# Run in-container with e.g.:
+#   docker compose run --rm --entrypoint /app/migrate-db assistant --config config/config.yaml --verify
+RUN CGO_ENABLED=1 go build -tags sqlite_fts5 -o migrate-db ./server/cmd/migrate-db
 
 # Stage 3: Final image
 FROM alpine:3.22
@@ -23,6 +27,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=server-builder /app/personal-assistant .
+COPY --from=server-builder /app/migrate-db .
 COPY --from=client-builder /app/client/dist ./client/dist
 # Container config (paths relative to /app; secrets injected from env at runtime).
 COPY server/config/config.docker.yaml ./config/config.yaml
