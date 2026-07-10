@@ -70,6 +70,14 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 		EstimatedCostUSD: cost,
 		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
 	}
+	// Resolve the user's display name (shown in the logs list and detail).
+	if u, err := s.store.GetUserByID(ctx, t.UserID); err == nil && u != nil {
+		if u.Name != "" {
+			r.User = u.Name
+		} else {
+			r.User = u.Email
+		}
+	}
 	if includeTools {
 		for _, tv := range t.Tools {
 			r.Tools = append(r.Tools, toolInvocationResp{Name: tv.Name, Arguments: tv.Arguments, Result: tv.Result, LatencyMs: tv.LatencyMs})
@@ -82,9 +90,6 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 				LatencyMs: st.LatencyMs, FinishReason: st.FinishReason, ToolCalls: st.ToolCalls,
 				EstimatedCostUSD: c,
 			})
-		}
-		if u, err := s.store.GetUserByID(ctx, t.UserID); err == nil && u != nil {
-			r.User = u.Email
 		}
 	}
 	return r

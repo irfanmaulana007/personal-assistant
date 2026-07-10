@@ -37,7 +37,7 @@ const channelBadge: Record<string, string> = {
 };
 
 export function Logs() {
-  const { formatDate } = usePreferences();
+  const { formatDate, formatMoney } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
@@ -146,23 +146,25 @@ export function Logs() {
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-2.5 font-medium">Message</th>
+                <th className="px-4 py-2.5 font-medium">User</th>
                 <th className="px-4 py-2.5 font-medium">Channel</th>
                 <th className="px-4 py-2.5 font-medium">Model</th>
                 <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
-                <th className="px-4 py-2.5 text-right font-medium">Latency</th>
+                <th className="px-4 py-2.5 text-right font-medium">Duration</th>
+                <th className="px-4 py-2.5 text-right font-medium">Est. cost</th>
                 <th className="px-4 py-2.5 text-right font-medium">Time</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-sm text-gray-500">
+                  <td colSpan={8} className="px-4 py-6 text-sm text-gray-500">
                     Loading…
                   </td>
                 </tr>
               ) : traces.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-sm text-gray-400">
+                  <td colSpan={8} className="px-4 py-6 text-sm text-gray-400">
                     No runs in this range yet.
                   </td>
                 </tr>
@@ -178,10 +180,15 @@ export function Logs() {
                         <span
                           className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
                         />
-                        <span className="block max-w-[26rem] truncate text-gray-800">
+                        <span className="block max-w-[22rem] truncate text-gray-800">
                           {t.input || '(no input)'}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      <span className="block max-w-[10rem] truncate">
+                        {t.user || `#${t.user_id}`}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -196,6 +203,9 @@ export function Logs() {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-600">
                       {fmtLatency(t.latency_ms)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                      {formatMoney(t.estimated_cost_usd)}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-400">
                       {formatDate(t.created_at, { time: true })}
