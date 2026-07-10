@@ -10,6 +10,8 @@ import (
 const lifeGoalCols = "id, title, note, done, created_at, done_at"
 
 func (s *SQLiteStore) CreateLifeGoal(ctx context.Context, userID int64, title, note string) (*LifeGoal, error) {
+	title = s.enTitle(ctx, title)
+	note = s.enText(ctx, note)
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO life_goals (user_id, title, note, done, created_at) VALUES (?, ?, ?, 0, ?)`,
@@ -48,6 +50,8 @@ func (s *SQLiteStore) GetLifeGoal(ctx context.Context, userID, id int64) (*LifeG
 }
 
 func (s *SQLiteStore) UpdateLifeGoal(ctx context.Context, userID, id int64, title, note string) error {
+	title = s.enTitle(ctx, title)
+	note = s.enText(ctx, note)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE life_goals SET title = ?, note = ? WHERE id = ? AND user_id = ?`,
 		title, note, id, userID)
