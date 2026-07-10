@@ -10,11 +10,11 @@ func TestLifeGoalCRUDRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	const uid = 1
 
-	created, err := s.CreateLifeGoal(ctx, uid, "Take a swimming course", "beginner class")
+	created, err := s.CreateLifeGoal(ctx, uid, "Swimming Lessons", "Learn to swim freestyle confidently.", "beginner class")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if created.ID == 0 || created.Title != "Take a swimming course" || created.Done {
+	if created.ID == 0 || created.Title != "Swimming Lessons" || created.Done {
 		t.Fatalf("unexpected created goal: %+v", created)
 	}
 
@@ -22,16 +22,16 @@ func TestLifeGoalCRUDRoundTrip(t *testing.T) {
 	if err != nil || got == nil {
 		t.Fatalf("get: %v (nil=%v)", err, got == nil)
 	}
-	if got.Note != "beginner class" || got.DoneAt != nil {
+	if got.Description != "Learn to swim freestyle confidently." || got.Note != "beginner class" || got.DoneAt != nil {
 		t.Errorf("round-trip failed: %+v", got)
 	}
 
-	// Update title/note.
-	if err := s.UpdateLifeGoal(ctx, uid, created.ID, "Gym membership", "near the office"); err != nil {
+	// Update title/description/note.
+	if err := s.UpdateLifeGoal(ctx, uid, created.ID, "Gym Membership", "Build a consistent workout habit.", "near the office"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	got, _ = s.GetLifeGoal(ctx, uid, created.ID)
-	if got.Title != "Gym membership" || got.Note != "near the office" {
+	if got.Title != "Gym Membership" || got.Description != "Build a consistent workout habit." || got.Note != "near the office" {
 		t.Errorf("update round-trip failed: %+v", got)
 	}
 
@@ -67,7 +67,7 @@ func TestLifeGoalScopedToUser(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	mine, err := s.CreateLifeGoal(ctx, 1, "Visit Japan", "")
+	mine, err := s.CreateLifeGoal(ctx, 1, "Visit Japan", "", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -94,8 +94,8 @@ func TestListLifeGoalsOrdersUnfinishedFirst(t *testing.T) {
 	ctx := context.Background()
 	const uid = 1
 
-	a, _ := s.CreateLifeGoal(ctx, uid, "First", "")
-	_, _ = s.CreateLifeGoal(ctx, uid, "Second", "")
+	a, _ := s.CreateLifeGoal(ctx, uid, "First", "", "")
+	_, _ = s.CreateLifeGoal(ctx, uid, "Second", "", "")
 	// Check off the first-created one; it should sort after the pending one.
 	if err := s.SetLifeGoalDone(ctx, uid, a.ID, true); err != nil {
 		t.Fatalf("set done: %v", err)

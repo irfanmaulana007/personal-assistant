@@ -226,6 +226,7 @@ export interface RemindersConfig {
 export interface LifeGoal {
   id: number;
   title: string;
+  description: string;
   note: string;
   done: boolean;
   done_at: string; // RFC3339, or '' when not done
@@ -234,6 +235,7 @@ export interface LifeGoal {
 
 export interface LifeGoalPayload {
   title: string;
+  description: string;
   note: string;
 }
 

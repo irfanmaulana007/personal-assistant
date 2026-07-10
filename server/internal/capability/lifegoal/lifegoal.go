@@ -51,12 +51,16 @@ func (h *Handler) add(ctx context.Context, result *intent.ParseResult) (string, 
 	if title == "" {
 		return "What would you like to add to your life list?", nil
 	}
+	description := strings.TrimSpace(result.Entities["description"])
 	note := strings.TrimSpace(result.Entities["note"])
-	g, err := h.store.CreateLifeGoal(ctx, authctx.UserID(ctx), title, note)
+	g, err := h.store.CreateLifeGoal(ctx, authctx.UserID(ctx), title, description, note)
 	if err != nil {
 		return "", fmt.Errorf("create life goal: %w", err)
 	}
 	msg := fmt.Sprintf("Added to your life list: *%s* ☐", g.Title)
+	if g.Description != "" {
+		msg += "\n" + g.Description
+	}
 	if g.Note != "" {
 		msg += "\n" + g.Note
 	}
@@ -85,6 +89,9 @@ func (h *Handler) list(ctx context.Context, _ *intent.ParseResult) (string, erro
 			box = "☑"
 		}
 		sb.WriteString(fmt.Sprintf("\n%d. %s %s", i+1, box, g.Title))
+		if g.Description != "" {
+			sb.WriteString("\n   " + g.Description)
+		}
 		if g.Note != "" {
 			sb.WriteString("\n   " + g.Note)
 		}

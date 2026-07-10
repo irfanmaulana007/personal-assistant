@@ -74,19 +74,19 @@ func TestTranslatorNormalizesLifeGoal(t *testing.T) {
 	s.SetTranslator(fakeTranslator{})
 	ctx := context.Background()
 
-	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "kelas pemula")
+	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if g.Title != "BELAJAR MENYELAM" || g.Note != "kelas pemula [en]" {
+	if g.Title != "BELAJAR MENYELAM" || g.Description != "impian lama [en]" || g.Note != "kelas pemula [en]" {
 		t.Errorf("life goal not normalized on create: %+v", g)
 	}
 
-	if err := s.UpdateLifeGoal(ctx, 1, g.ID, "keanggotaan gym", "dekat kantor"); err != nil {
+	if err := s.UpdateLifeGoal(ctx, 1, g.ID, "keanggotaan gym", "rutin olahraga", "dekat kantor"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	got, _ := s.GetLifeGoal(ctx, 1, g.ID)
-	if got.Title != "KEANGGOTAAN GYM" || got.Note != "dekat kantor [en]" {
+	if got.Title != "KEANGGOTAAN GYM" || got.Description != "rutin olahraga [en]" || got.Note != "dekat kantor [en]" {
 		t.Errorf("life goal not normalized on update: %+v", got)
 	}
 }
@@ -95,11 +95,11 @@ func TestNoTranslatorStoresAsIs(t *testing.T) {
 	s := newTestStore(t) // no translator injected
 	ctx := context.Background()
 
-	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "kelas pemula")
+	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if g.Title != "belajar menyelam" || g.Note != "kelas pemula" {
+	if g.Title != "belajar menyelam" || g.Description != "impian lama" || g.Note != "kelas pemula" {
 		t.Errorf("expected text stored verbatim without a translator: %+v", g)
 	}
 }

@@ -181,7 +181,7 @@ var skillTools = map[string][]toolSpec{
 			description: "Add an item to the user's life list — something they want to do in life (e.g. 'Take a swimming course', 'Get a gym membership', 'Visit Japan'). Use this when the user says they want to do/achieve something someday.",
 			capability:  intent.CapabilityLifeGoal,
 			action:      intent.ActionLifeGoalAdd,
-			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"The thing the user wants to do."},"note":{"type":"string","description":"Any extra detail, optional."}},"required":["title"]}`,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"A short, punchy title for the goal — phrase it like an actual title, ideally 1-3 words (e.g. 'Swimming Lessons', not 'Efficient Freestyle Swimming Lessons'; 'Visit Japan', not 'Take a Two-Week Trip to Japan')."},"description":{"type":"string","description":"A one- or two-sentence description that enriches the goal based on what the user said and the title — what it involves or why it matters (e.g. for swimming: 'Learn to swim freestyle confidently through structured beginner lessons.'). Always provide this."},"note":{"type":"string","description":"Any short extra personal detail the user gave, optional (e.g. 'beginner class', 'near the office')."}},"required":["title","description"]}`,
 		},
 		{
 			name:        "lifegoal_list",
