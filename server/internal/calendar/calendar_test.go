@@ -13,11 +13,15 @@ func testService() *Service {
 
 func TestParseCreatedEventID(t *testing.T) {
 	cases := map[string]string{
-		`{"id":"abc"}`:                            "abc",
+		`{"id":"abc"}`: "abc",
+		// The real runtime shape: ExecuteTool strips the outer "data", leaving the
+		// id under a top-level "response_data".
+		`{"response_data":{"id":"jkl"}}`: "jkl",
+		// Tolerated (un-unwrapped) shapes.
 		`{"data":{"id":"def"}}`:                   "def",
 		`{"data":{"response_data":{"id":"ghi"}}}`: "ghi",
-		`{"foo":1}`:                               "",
-		`not json`:                                "",
+		`{"foo":1}`: "",
+		`not json`:  "",
 	}
 	for raw, want := range cases {
 		if got := parseCreatedEventID(raw); got != want {
@@ -77,6 +81,19 @@ func TestParseEvents_AllDayUnderDataWrapper(t *testing.T) {
 	evs := s.parseEvents(raw, "primary")
 	if len(evs) != 1 || !evs[0].AllDay || evs[0].Title != "Holiday" {
 		t.Fatalf("expected 1 all-day event, got %+v", evs)
+	}
+}
+
+// TestParseEvents_ResponseDataWrapper covers the real runtime shape: ExecuteTool
+// strips the outer "data", leaving events under a top-level "response_data".
+// Before the fix this returned nothing, so the agent reported an empty calendar
+// and the reconciler's dedup was blind (re-creating events every cycle).
+func TestParseEvents_ResponseDataWrapper(t *testing.T) {
+	s := testService()
+	raw := `{"response_data":{"items":[{"id":"e1","summary":"Standup","start":{"dateTime":"2026-03-10T09:00:00+07:00"},"end":{"dateTime":"2026-03-10T09:30:00+07:00"}}]}}`
+	evs := s.parseEvents(raw, "primary")
+	if len(evs) != 1 || evs[0].Title != "Standup" || evs[0].ID != "e1" {
+		t.Fatalf("expected 1 event from response_data wrapper, got %+v", evs)
 	}
 }
 
