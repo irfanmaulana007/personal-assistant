@@ -125,11 +125,18 @@ export interface UsageModel {
 
 export type IntegrationStatus = 'connected' | 'pending' | 'error' | 'disconnected';
 
+export interface IntegrationAccount {
+  connection_id: string;
+  status: IntegrationStatus;
+}
+
 export interface IntegrationToolkit {
   slug: string;
   name: string;
   status: IntegrationStatus;
   connection_id?: string;
+  multi?: boolean;
+  accounts?: IntegrationAccount[];
 }
 
 export interface Integrations {
