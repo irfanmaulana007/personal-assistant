@@ -39,6 +39,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/translate"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport/whatsapp"
 )
@@ -86,6 +87,10 @@ func main() {
 	personaSvc := persona.New(db)
 	llmClient := llm.NewClient()
 	composioClient := composio.NewClient()
+
+	// Normalize reminder/life-goal text to English before persisting, whatever
+	// language the user typed (REST or chat). Fail-soft: stores as-is on error.
+	db.SetTranslator(translate.New(settingsSvc, llmClient, log))
 
 	timezone := cfg.Owner.Location()
 
