@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -116,4 +117,158 @@ func (s *Service) CreateEvent(ctx context.Context, userID int64, ev Event) error
 	argsJSON, _ := json.Marshal(args)
 	_, err := s.client.ExecuteTool(ctx, s.apiKey(ctx), toolCreateEvent, string(argsJSON), strconv.FormatInt(userID, 10), conns[0].ID)
 	return err
+}
+
+// ListEvents returns events in [from, to) across every connected account and
+// every calendar in each, sorted by start. Fail-soft: unreachable accounts or
+// calendars are skipped (logged), never fatal.
+func (s *Service) ListEvents(ctx context.Context, userID int64, from, to time.Time) []Event {
+	conns := s.Connections(ctx, userID)
+	if len(conns) == 0 {
+		return nil
+	}
+	key := s.apiKey(ctx)
+	uid := strconv.FormatInt(userID, 10)
+
+	var out []Event
+	for _, c := range conns {
+		for _, cal := range s.calendarIDs(ctx, key, uid, c.ID) {
+			out = append(out, s.eventsFor(ctx, key, uid, c.ID, cal, from, to)...)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
+	return out
+}
+
+// calendarIDs lists the calendars in a connected account, defaulting to
+// ["primary"] when the account can't be enumerated.
+func (s *Service) calendarIDs(ctx context.Context, key, uid, connID string) []string {
+	raw, err := s.client.ExecuteTool(ctx, key, toolListCalendars, "{}", uid, connID)
+	if err != nil {
+		s.log.Warn("list calendars", "error", err)
+		return []string{"primary"}
+	}
+	var w struct {
+		Items []calItem `json:"items"`
+		Data  struct {
+			Items []calItem `json:"items"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(raw), &w)
+	items := w.Items
+	if len(items) == 0 {
+		items = w.Data.Items
+	}
+	ids := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.ID != "" {
+			ids = append(ids, it.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return []string{"primary"}
+	}
+	return ids
+}
+
+func (s *Service) eventsFor(ctx context.Context, key, uid, connID, calID string, from, to time.Time) []Event {
+	args, _ := json.Marshal(map[string]any{
+		"calendar_id":   calID,
+		"timeMin":       from.In(s.tz).Format(time.RFC3339),
+		"timeMax":       to.In(s.tz).Format(time.RFC3339),
+		"single_events": true,
+		"order_by":      "startTime",
+		"max_results":   50,
+		"timezone":      s.tz.String(),
+	})
+	raw, err := s.client.ExecuteTool(ctx, key, toolListEvents, string(args), uid, connID)
+	if err != nil {
+		s.log.Warn("list events", "calendar", calID, "error", err)
+		return nil
+	}
+	return s.parseEvents(raw, calID)
+}
+
+type calItem struct {
+	ID      string `json:"id"`
+	Summary string `json:"summary"`
+}
+
+type gEvent struct {
+	Summary  string `json:"summary"`
+	Location string `json:"location"`
+	Start    gTime  `json:"start"`
+	End      gTime  `json:"end"`
+}
+
+type gTime struct {
+	DateTime string `json:"dateTime"`
+	Date     string `json:"date"`
+}
+
+// parseEvents tolerantly extracts an events array from Composio's response,
+// which may nest under "items"/"events" and/or a "data" wrapper.
+func (s *Service) parseEvents(raw, calID string) []Event {
+	var w struct {
+		Items  []gEvent `json:"items"`
+		Events []gEvent `json:"events"`
+		Data   struct {
+			Items  []gEvent `json:"items"`
+			Events []gEvent `json:"events"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(raw), &w); err != nil {
+		s.log.Warn("parse events", "error", err)
+		return nil
+	}
+	items := firstNonEmptyEvents(w.Items, w.Events, w.Data.Items, w.Data.Events)
+	out := make([]Event, 0, len(items))
+	for _, it := range items {
+		start, allDay, ok := s.parseGTime(it.Start)
+		if !ok {
+			continue
+		}
+		end, _, _ := s.parseGTime(it.End)
+		out = append(out, Event{
+			Title:    strings.TrimSpace(firstNonEmpty(it.Summary, "(no title)")),
+			Location: it.Location,
+			Start:    start,
+			End:      end,
+			AllDay:   allDay,
+			Calendar: calID,
+		})
+	}
+	return out
+}
+
+func (s *Service) parseGTime(t gTime) (time.Time, bool, bool) {
+	if t.DateTime != "" {
+		if v, err := time.Parse(time.RFC3339, t.DateTime); err == nil {
+			return v.In(s.tz), false, true
+		}
+	}
+	if t.Date != "" {
+		if v, err := time.ParseInLocation("2006-01-02", t.Date, s.tz); err == nil {
+			return v, true, true
+		}
+	}
+	return time.Time{}, false, false
+}
+
+func firstNonEmptyEvents(lists ...[]gEvent) []gEvent {
+	for _, l := range lists {
+		if len(l) > 0 {
+			return l
+		}
+	}
+	return nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

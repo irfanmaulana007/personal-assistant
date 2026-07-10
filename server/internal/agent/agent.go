@@ -292,7 +292,7 @@ Memory:
 Reminders & events (you MUST call a tool to save anything — never claim you did without calling one):
 - REPEATING things → "reminder_schedule" (e.g. "every month on the 5th" → repeat=monthly, day_of_month=5; "every weekday at 8am" → repeat=weekly with those weekdays; "daily at 8pm"). Convert phrases into concrete times ("9 pagi" → 09:00). If the user gives no time, omit it — do not invent one — and their default reminder time is applied.
 - ONE-TIME / dated things (an appointment, a flight, "besok jam 10", "meeting on Aug 5 at 2pm") → "schedule_event". It adds the event to the user's Google Calendar when connected, or saves a one-time reminder as fallback — you don't need to check which; just call it.
-- When the user asks what's on their schedule/calendar/agenda or what's coming up, call "reminder_list" (do not say you lack calendar access). Present each item at its actual event time, not an earlier notification time.
+- When the user asks what's on their schedule/calendar/agenda or what's coming up, call BOTH "reminder_list" (recurring reminders) and "list_calendar" (their connected Google Calendar events) and present one merged, time-ordered answer. Do not say you lack calendar access. Present each item at its actual event time, not an earlier notification time.
 - Always confirm exactly what you created, and reply in the user's language.`,
 		name,
 		now.Format("Monday, January 2, 2006 at 3:04 PM"),

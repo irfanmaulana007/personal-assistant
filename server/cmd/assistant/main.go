@@ -117,7 +117,11 @@ func main() {
 		}
 	}
 
-	reminderHandler := reminder.New(db, settingsSvc, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
+	// Calendar service over the user's Composio-connected Google Calendar(s).
+	// Shared by the one-time-event handler and the reminder recap worker.
+	calSvc := calendarsvc.New(composioClient, settingsSvc, timezone, log)
+
+	reminderHandler := reminder.New(db, settingsSvc, calSvc, timezone, cfg.Capabilities.Reminders.CheckIntervalDuration(), cfg.Owner.WhatsAppJID, log)
 	if cfg.Capabilities.Reminders.Enabled {
 		handlers = append(handlers, reminderHandler)
 	}
@@ -130,7 +134,6 @@ func main() {
 
 	// One-time events → the user's Composio-connected Google Calendar, with a
 	// one-time-reminder fallback. Always registered (composio is optional).
-	calSvc := calendarsvc.New(composioClient, settingsSvc, timezone, log)
 	handlers = append(handlers, event.New(calSvc, db, timezone, log))
 
 	// Skill capabilities (gated per user via the skills framework; always

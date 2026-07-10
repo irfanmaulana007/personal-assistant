@@ -135,10 +135,17 @@ var toolSpecs = []toolSpec{
 	},
 	{
 		name:        "reminder_list",
-		description: "List the user's active reminders — their schedule, calendar, and agenda. Call this whenever the user asks what's on their schedule or calendar, what they have coming up, what's planned today/tomorrow/this week, or to see their reminders.",
+		description: "List the user's recurring reminders. Part of the user's schedule — pair it with list_calendar when the user asks what's on their schedule/calendar or what's coming up.",
 		capability:  intent.CapabilityReminder,
 		action:      intent.ActionReminderList,
 		parameters:  `{"type":"object","properties":{}}`,
+	},
+	{
+		name:        "list_calendar",
+		description: "List upcoming events from the user's connected Google Calendar(s), across all their accounts and calendars. Pair it with reminder_list when the user asks what's on their schedule/calendar/agenda or what's coming up.",
+		capability:  intent.CapabilityEvent,
+		action:      intent.ActionEventAgenda,
+		parameters:  `{"type":"object","properties":{"days":{"type":"integer","description":"How many days ahead to include (default 7)."}}}`,
 	},
 	{
 		name:        "reminder_cancel",
