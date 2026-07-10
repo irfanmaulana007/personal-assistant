@@ -128,10 +128,10 @@ var toolSpecs = []toolSpec{
 	},
 	{
 		name:        "reminder_schedule",
-		description: "Create a recurring or specific-date reminder with one or more times. Use this for anything that repeats — 'every month on the 5th', 'every weekday at 8am', 'every Monday and Wednesday', 'daily at 8pm' — or a specific future date. Prefer this over reminder_set whenever there is a repeat.",
+		description: "Create a RECURRING reminder with one or more times. Use this only for things that repeat — 'every month on the 5th', 'every weekday at 8am', 'every Monday and Wednesday', 'daily at 8pm'. For a one-time/dated event use schedule_event instead.",
 		capability:  intent.CapabilityReminder,
 		action:      intent.ActionReminderSchedule,
-		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["once","daily","weekly","monthly"],"description":"How often to repeat."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."},"date":{"type":"string","description":"For once: the date as YYYY-MM-DD."}},"required":["title","repeat"]}`,
+		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["daily","weekly","monthly"],"description":"How often to repeat."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."}},"required":["title","repeat"]}`,
 	},
 	{
 		name:        "reminder_list",
