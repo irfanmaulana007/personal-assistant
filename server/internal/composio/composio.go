@@ -145,18 +145,20 @@ func (c *Client) ListConnections(ctx context.Context, apiKey, userID string) ([]
 }
 
 // InitiateConnection starts a hosted OAuth connection and returns the redirect
-// URL the user must visit to authorize.
+// URL the user must visit to authorize. Composio-managed OAuth uses the
+// /connected_accounts/link endpoint (the old /connected_accounts create path
+// was retired for managed auth configs).
 func (c *Client) InitiateConnection(ctx context.Context, apiKey, authConfigID, userID, callbackURL string) (redirectURL, id string, err error) {
-	connection := map[string]any{"user_id": userID}
-	if callbackURL != "" {
-		connection["callback_url"] = callbackURL
-	}
 	body := map[string]any{
-		"auth_config": map[string]string{"id": authConfigID},
-		"connection":  connection,
+		"auth_config_id": authConfigID,
+		"user_id":        userID,
+	}
+	if callbackURL != "" {
+		body["callback_url"] = callbackURL
 	}
 	var resp struct {
 		ID               string `json:"id"`
+		ConnectedID      string `json:"connected_account_id"`
 		RedirectURL      string `json:"redirect_url"`
 		RedirectURLCamel string `json:"redirectUrl"`
 		ConnectionData   struct {
@@ -164,11 +166,11 @@ func (c *Client) InitiateConnection(ctx context.Context, apiKey, authConfigID, u
 			RedirectURLCamel string `json:"redirectUrl"`
 		} `json:"connectionData"`
 	}
-	if err := c.do(ctx, apiKey, http.MethodPost, "/connected_accounts", body, &resp); err != nil {
+	if err := c.do(ctx, apiKey, http.MethodPost, "/connected_accounts/link", body, &resp); err != nil {
 		return "", "", err
 	}
 	redirect := firstNonEmpty(resp.RedirectURL, resp.RedirectURLCamel, resp.ConnectionData.RedirectURL, resp.ConnectionData.RedirectURLCamel)
-	return redirect, resp.ID, nil
+	return redirect, firstNonEmpty(resp.ID, resp.ConnectedID), nil
 }
 
 // DeleteConnection removes a connection.
