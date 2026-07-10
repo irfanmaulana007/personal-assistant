@@ -448,60 +448,70 @@ function TraceDetail({
         </div>
       </div>
 
-      {trace.score && (
-        <Section title="Quality score">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreTone(
-                trace.score.overall,
-              )}`}
-            >
-              {trace.score.overall.toFixed(1)} / 5
-            </span>
-            {(
-              [
-                ['Accuracy', trace.score.accuracy],
-                ['Helpfulness', trace.score.helpfulness],
-                ['Safety', trace.score.safety],
-              ] as const
-            ).map(([label, val]) => (
+      <Section title="Quality score">
+        {trace.score ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
               <span
-                key={label}
-                className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600 dark:bg-gray-700/50 dark:text-gray-300"
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreTone(
+                  trace.score.overall,
+                )}`}
               >
-                <span className="text-gray-400 dark:text-gray-500">{label}</span>{' '}
-                <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
-                  {val}
-                </span>
+                {trace.score.overall.toFixed(1)} / 5
               </span>
-            ))}
-          </div>
-          {trace.score.rationale && (
-            <p className="mt-2.5 text-sm text-gray-700 dark:text-gray-300">
-              {trace.score.rationale}
-            </p>
-          )}
-          {trace.score.judge_model && (
-            <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-              Judged by {trace.score.judge_model}
-            </p>
-          )}
-        </Section>
-      )}
-
-      <Section title="Input">
-        <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">
-          {trace.input || '(none)'}
-        </p>
+              {(
+                [
+                  ['Accuracy', trace.score.accuracy],
+                  ['Helpfulness', trace.score.helpfulness],
+                  ['Safety', trace.score.safety],
+                ] as const
+              ).map(([label, val]) => (
+                <span
+                  key={label}
+                  className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600 dark:bg-gray-700/50 dark:text-gray-300"
+                >
+                  <span className="text-gray-400 dark:text-gray-500">{label}</span>{' '}
+                  <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                    {val}
+                  </span>
+                </span>
+              ))}
+            </div>
+            {trace.score.rationale && (
+              <p className="mt-2.5 text-sm text-gray-700 dark:text-gray-300">
+                {trace.score.rationale}
+              </p>
+            )}
+            {trace.score.judge_model && (
+              <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                Judged by {trace.score.judge_model}
+              </p>
+            )}
+          </>
+        ) : (
+          <EmptyState>This run has not been scored.</EmptyState>
+        )}
       </Section>
 
-      {trace.error && (
-        <Section title="Error">
+      <Section title="Input">
+        {trace.input ? (
+          <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">
+            {trace.input}
+          </p>
+        ) : (
+          <EmptyState>No input was recorded for this run.</EmptyState>
+        )}
+      </Section>
+
+      <Section title="Error">
+        {trace.error ? (
           <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-500/15 dark:text-red-300">
             {trace.error}
           </pre>
-        </Section>
-      )}
+        ) : (
+          <EmptyState>No errors in this run.</EmptyState>
+        )}
+      </Section>
 
       <Section
         title={
@@ -562,14 +572,16 @@ function TraceDetail({
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            No tools were used in this run.
-          </p>
+          <EmptyState>No tools were used in this run.</EmptyState>
         )}
       </Section>
 
-      {trace.steps && trace.steps.length > 0 && (
-        <Section title={`LLM calls (${trace.steps.length})`}>
+      <Section
+        title={
+          trace.steps && trace.steps.length > 0 ? `LLM calls (${trace.steps.length})` : 'LLM calls'
+        }
+      >
+        {trace.steps && trace.steps.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -611,8 +623,10 @@ function TraceDetail({
               </tbody>
             </table>
           </div>
-        </Section>
-      )}
+        ) : (
+          <EmptyState>No LLM calls were recorded for this run.</EmptyState>
+        )}
+      </Section>
 
       <Section title="Output">
         {trace.output ? (
@@ -620,7 +634,7 @@ function TraceDetail({
             <Markdown>{trace.output}</Markdown>
           </div>
         ) : (
-          <p className="text-sm text-gray-400 dark:text-gray-500">(none)</p>
+          <EmptyState>No output was produced for this run.</EmptyState>
         )}
       </Section>
     </div>
@@ -636,4 +650,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </div>
   );
+}
+
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-gray-400 dark:text-gray-500">{children}</p>;
 }

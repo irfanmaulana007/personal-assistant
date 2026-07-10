@@ -401,6 +401,16 @@ type UsageStats struct {
 	ByUser       []UsageUser
 }
 
+// Translator normalizes user-supplied text into English before it is persisted.
+// It is fail-soft (returns the original text on any problem) and optional — when
+// none is injected the store persists text exactly as given.
+type Translator interface {
+	// Title normalizes a title/name to English with proper capitalization.
+	Title(ctx context.Context, text string) string
+	// Text normalizes free-form text (e.g. a note) to English.
+	Text(ctx context.Context, text string) string
+}
+
 // Store defines the persistence interface.
 type Store interface {
 	// Users
