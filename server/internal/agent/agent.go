@@ -289,10 +289,10 @@ Memory:
 - Use the "recall" tool to look something up when needed. Rely on the "things you remember" below when present.
 - Never claim you have saved or will remember something unless you actually called the "remember" tool, and never claim you have no record without checking.
 
-Reminders & events (you MUST call a tool to save anything — never claim you did without calling one):
+Reminders & events (you MUST call a tool to save anything — never claim you did without calling one). Everything the user wants to be reminded of — one-time or recurring — is saved as a reminder (and mirrored to their Google Calendar automatically when connected):
 - REPEATING things → "reminder_schedule" (e.g. "every month on the 5th" → repeat=monthly, day_of_month=5; "every weekday at 8am" → repeat=weekly with those weekdays; "daily at 8pm"). Convert phrases into concrete times ("9 pagi" → 09:00). If the user gives no time, omit it — do not invent one — and their default reminder time is applied.
-- ONE-TIME / dated things (an appointment, a flight, "besok jam 10", "meeting on Aug 5 at 2pm") → "schedule_event". It adds the event to the user's Google Calendar when connected, or saves a one-time reminder as fallback — you don't need to check which; just call it.
-- When the user asks what's on their schedule/calendar/agenda or what's coming up, call BOTH "reminder_list" (recurring reminders) and "list_calendar" (their connected Google Calendar events) and present one merged, time-ordered answer. Do not say you lack calendar access. Present each item at its actual event time, not an earlier notification time.
+- ONE-TIME / dated things (an appointment, a flight, "besok jam 10", "meeting on Aug 5 at 2pm") → "schedule_event" with a natural date/time, or "reminder_schedule" with repeat=once and a date.
+- When the user asks what's on their schedule/calendar/agenda or what's coming up, call BOTH "reminder_list" (their reminders) and "list_calendar" (connected Google Calendar events) and present one merged, time-ordered answer. Do not say you lack calendar access. Present each item at its actual event time, not an earlier notification time.
 - Always confirm exactly what you created, and reply in the user's language.`,
 		name,
 		now.Format("Monday, January 2, 2006 at 3:04 PM"),

@@ -48,47 +48,18 @@ func createReq(title, datetime string) *intent.ParseResult {
 	}
 }
 
-func TestEvent_GoesToCalendarWhenConnected(t *testing.T) {
-	cal := &fakeCalendar{has: true}
-	h, st, ctx := newHandler(t, cal)
-
-	msg, err := h.create(ctx, createReq("Dentist", "tomorrow at 3pm"))
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if len(cal.created) != 1 || cal.created[0].Title != "Dentist" {
-		t.Fatalf("expected a calendar event, got %+v", cal.created)
-	}
-	if !strings.Contains(msg, "Google Calendar") {
-		t.Errorf("confirmation should mention the calendar: %q", msg)
-	}
-	// No reminder should be created.
-	rs, _ := st.ListReminders(ctx, 1, false)
-	if len(rs) != 0 {
-		t.Errorf("no reminder should be created when calendar is connected, got %d", len(rs))
-	}
-}
-
-func TestEvent_FallsBackToReminderWhenNoCalendar(t *testing.T) {
-	cal := &fakeCalendar{has: false}
-	h, st, ctx := newHandler(t, cal)
-
-	msg, err := h.create(ctx, createReq("Pay rent", "tomorrow at 9am"))
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if len(cal.created) != 0 {
-		t.Errorf("should not create a calendar event when not connected")
-	}
-	rs, _ := st.ListReminders(ctx, 1, false)
-	if len(rs) != 1 || rs[0].RepeatMode != "once" || rs[0].Title != "Pay rent" {
-		t.Fatalf("expected a one-time fallback reminder, got %+v", rs)
-	}
-	if len(rs[0].Times) != 1 {
-		t.Errorf("fallback reminder should carry a time: %+v", rs[0])
-	}
-	if !strings.Contains(msg, "reminder") {
-		t.Errorf("confirmation should explain the fallback: %q", msg)
+func TestEvent_AlwaysStoresOnceReminder(t *testing.T) {
+	// A one-time event is a one-time reminder in the DB regardless of calendar
+	// connection (the calendar mirror is handled by the reminder layer).
+	for _, connected := range []bool{true, false} {
+		h, st, ctx := newHandler(t, &fakeCalendar{has: connected})
+		if _, err := h.create(ctx, createReq("Pay rent", "tomorrow at 9am")); err != nil {
+			t.Fatalf("create (connected=%v): %v", connected, err)
+		}
+		rs, _ := st.ListReminders(ctx, 1, false)
+		if len(rs) != 1 || rs[0].RepeatMode != "once" || rs[0].Title != "Pay rent" || len(rs[0].Times) != 1 {
+			t.Fatalf("connected=%v: expected a one-time reminder, got %+v", connected, rs)
+		}
 	}
 }
 

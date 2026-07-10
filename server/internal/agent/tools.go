@@ -121,17 +121,17 @@ var toolSpecs = []toolSpec{
 	// user's schedule/calendar), so these tools are always available.
 	{
 		name:        "schedule_event",
-		description: "Add a ONE-TIME / dated event — an appointment, meeting, flight, or a specific-date thing (e.g. 'dentist tomorrow 3pm', 'meeting on Aug 5 at 2pm', 'besok jam 10 donor darah'). It goes to the user's Google Calendar when connected, otherwise it's saved as a one-time reminder. Use reminder_schedule instead for anything that repeats.",
+		description: "Save a ONE-TIME / dated reminder from a natural date/time — an appointment, meeting, flight, or specific-date thing (e.g. 'dentist tomorrow 3pm', 'meeting on Aug 5 at 2pm', 'besok jam 10 donor darah'). It's stored as a one-time reminder (and mirrored to Google Calendar when connected). Use reminder_schedule for anything that repeats.",
 		capability:  intent.CapabilityEvent,
 		action:      intent.ActionEventCreate,
 		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What the event is."},"datetime":{"type":"string","description":"When it happens, e.g. 'tomorrow at 3pm', 'Aug 5 at 2pm', '2026-08-05 14:00'."},"duration_minutes":{"type":"integer","description":"Event length in minutes (default 60)."},"location":{"type":"string","description":"Where it is, if given."}},"required":["title","datetime"]}`,
 	},
 	{
 		name:        "reminder_schedule",
-		description: "Create a RECURRING reminder with one or more times. Use this only for things that repeat — 'every month on the 5th', 'every weekday at 8am', 'every Monday and Wednesday', 'daily at 8pm'. For a one-time/dated event use schedule_event instead.",
+		description: "Create a reminder — one-time or recurring. Use this for repeats ('every month on the 5th', 'every weekday at 8am', 'daily at 8pm') and for a specific-date one-off ('on Aug 5'). For a one-off given as a natural date/time ('tomorrow 3pm') you can also use schedule_event.",
 		capability:  intent.CapabilityReminder,
 		action:      intent.ActionReminderSchedule,
-		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["daily","weekly","monthly"],"description":"How often to repeat."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."}},"required":["title","repeat"]}`,
+		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What to be reminded about."},"repeat":{"type":"string","enum":["once","daily","weekly","monthly"],"description":"How often to repeat. Use 'once' for a single specific date."},"times":{"type":"string","description":"One or more times of day in 24h HH:MM, comma-separated (e.g. '09:00' or '08:00,20:00'). Omit this if the user did not specify a time — the user's default reminder time is then used."},"day_of_month":{"type":"integer","description":"For monthly: day of the month 1-31 (e.g. 5)."},"weekdays":{"type":"string","description":"For weekly: comma-separated day names, e.g. 'Mon,Wed,Fri'."},"date":{"type":"string","description":"For once: the date as YYYY-MM-DD."}},"required":["title","repeat"]}`,
 	},
 	{
 		name:        "reminder_list",
