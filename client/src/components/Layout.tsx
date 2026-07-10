@@ -204,8 +204,8 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
   const items = navItems.filter((item) => isAdmin || !item.adminOnly);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
+      <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
         <div className="flex items-center gap-3 px-5 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15">
             <svg

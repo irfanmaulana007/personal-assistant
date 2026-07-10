@@ -29,11 +29,15 @@ export function Dashboard() {
   const { stats, loading, error } = useMetrics(from, to, channel);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Dashboard</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Your LLM usage and estimated cost.</p>
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Dashboard
+          </h1>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Your LLM usage and estimated cost.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
@@ -45,10 +49,10 @@ export function Dashboard() {
         </div>
       </div>
 
-      {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-6 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading && !stats ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       ) : stats ? (
         <div className="mt-6">
           <Outlet context={{ stats }} />

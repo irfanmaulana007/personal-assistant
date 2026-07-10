@@ -48,7 +48,7 @@ export function Usage() {
 
       <Card title="Tokens by model">
         {stats.by_model.length === 0 ? (
-          <p className="text-sm text-gray-400">No usage in this range yet.</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500">No usage in this range yet.</p>
         ) : (
           <ModelBarChart
             formatMoney={formatMoney}

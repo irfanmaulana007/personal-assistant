@@ -51,29 +51,35 @@ export function Skills() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <h1 className="text-xl font-semibold tracking-tight text-gray-900">Skills</h1>
-      <p className="mt-0.5 text-sm text-gray-500">
+    <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
+      <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+        Skills
+      </h1>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
         Turn skills on to give the assistant new abilities. Changes apply to your account.
       </p>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       ) : (
         <div className="mt-6 space-y-6">
           {groups.map((g) => (
             <div key={g.category}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                 {g.category}
               </h2>
-              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                 {g.skills.map((sk) => (
                   <div key={sk.id} className="flex items-start gap-4 p-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-gray-900">{sk.name}</div>
-                      <p className="mt-0.5 text-sm text-gray-500">{sk.description}</p>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                        {sk.name}
+                      </div>
+                      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                        {sk.description}
+                      </p>
                     </div>
                     <Toggle on={sk.enabled} busy={busyId === sk.id} onClick={() => toggle(sk)} />
                   </div>
