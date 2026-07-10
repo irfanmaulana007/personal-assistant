@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
@@ -45,44 +45,83 @@ export function Logs() {
   const channel = (searchParams.get('channel') as Channel) || '';
 
   const [traces, setTraces] = useState<Trace[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // initial / filter-change load
+  const [loadingMore, setLoadingMore] = useState(false); // appending a page
   const [error, setError] = useState('');
   const [nextCursor, setNextCursor] = useState(0);
-  const [cursor, setCursor] = useState(0);
-  const [prevStack, setPrevStack] = useState<number[]>([]);
 
   const [selected, setSelected] = useState<Trace | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Persist filters to the URL; changing a filter resets pagination.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false); // guards against overlapping fetches
+
+  // Persist filters to the URL; changing a filter resets the list.
   const patchParams = (patch: Record<string, string>) => {
     const sp = new URLSearchParams(searchParams);
     Object.entries(patch).forEach(([k, v]) => (v ? sp.set(k, v) : sp.delete(k)));
     setLoading(true);
     setSearchParams(sp);
-    setCursor(0);
-    setPrevStack([]);
   };
 
+  // Load the first page and reset the accumulated list whenever filters change.
   useEffect(() => {
     let active = true;
-    getLogs(from, to, channel, PAGE_SIZE, cursor)
+    loadingRef.current = true;
+    getLogs(from, to, channel, PAGE_SIZE, 0)
       .then((d) => {
         if (!active) return;
         setTraces(d.traces ?? []);
         setNextCursor(d.next_cursor ?? 0);
         setError('');
+        scrollRef.current?.scrollTo({ top: 0 });
       })
       .catch((e) => {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load logs');
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          loadingRef.current = false;
+        }
       });
     return () => {
       active = false;
     };
-  }, [from, to, channel, cursor]);
+  }, [from, to, channel]);
+
+  // Append the next page (cursor-based) for infinite scroll.
+  const loadMore = useCallback(() => {
+    if (loadingRef.current || nextCursor === 0) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    getLogs(from, to, channel, PAGE_SIZE, nextCursor)
+      .then((d) => {
+        setTraces((prev) => [...prev, ...(d.traces ?? [])]);
+        setNextCursor(d.next_cursor ?? 0);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load more logs'))
+      .finally(() => {
+        setLoadingMore(false);
+        loadingRef.current = false;
+      });
+  }, [from, to, channel, nextCursor]);
+
+  // Trigger loadMore when the sentinel scrolls into view.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!el || !root) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { root, rootMargin: '300px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMore]);
 
   // Close the drawer on Escape.
   useEffect(() => {
@@ -100,177 +139,155 @@ export function Logs() {
       .finally(() => setDetailLoading(false));
   };
 
-  const goNext = () => {
-    if (!nextCursor) return;
-    setLoading(true);
-    setPrevStack((s) => [...s, cursor]);
-    setCursor(nextCursor);
-  };
-  const goPrev = () => {
-    if (prevStack.length === 0) return;
-    setLoading(true);
-    setPrevStack((s) => {
-      const copy = [...s];
-      const prev = copy.pop() ?? 0;
-      setCursor(prev);
-      return copy;
-    });
-  };
-
-  const startIdx = prevStack.length * PAGE_SIZE;
-
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Logs</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Every assistant run — click a row for inputs, tools, and outputs.
-          </p>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-100">
+      {/* Sticky top: title + filters (outside the scroll area). */}
+      <div className="shrink-0 px-6 pb-4 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-gray-900">Logs</h1>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Every assistant run — click a row for inputs, tools, and outputs.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
+            <DateRangePicker
+              from={from}
+              to={to}
+              onChange={(f, t) => patchParams({ from: f, to: t })}
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
-          <DateRangePicker
-            from={from}
-            to={to}
-            onChange={(f, t) => patchParams({ from: f, to: t })}
-          />
-        </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
-                <th className="px-4 py-2.5 font-medium">Message</th>
-                <th className="px-4 py-2.5 font-medium">User</th>
-                <th className="px-4 py-2.5 font-medium">Channel</th>
-                <th className="px-4 py-2.5 font-medium">Model</th>
-                <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
-                <th className="px-4 py-2.5 text-right font-medium">Duration</th>
-                <th className="px-4 py-2.5 text-right font-medium">Est. cost</th>
-                <th className="px-4 py-2.5 text-right font-medium">Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-6 text-sm text-gray-500">
-                    Loading…
-                  </td>
+      <div className="min-h-0 flex-1 px-6 pb-6">
+        <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-white">
+                <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-2.5 font-medium">Message</th>
+                  <th className="px-4 py-2.5 font-medium">User</th>
+                  <th className="px-4 py-2.5 font-medium">Channel</th>
+                  <th className="px-4 py-2.5 font-medium">Model</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Duration</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Est. cost</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Time</th>
                 </tr>
-              ) : traces.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-6 text-sm text-gray-400">
-                    No runs in this range yet.
-                  </td>
-                </tr>
-              ) : (
-                traces.map((t) => (
-                  <tr
-                    key={t.id}
-                    onClick={() => openDetail(t)}
-                    className="cursor-pointer border-b border-gray-50 transition last:border-0 hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
-                        />
-                        <span className="block max-w-[22rem] truncate text-gray-800">
-                          {t.input || '(no input)'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      <span className="block max-w-[10rem] truncate">
-                        {t.user || `#${t.user_id}`}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500'}`}
-                      >
-                        {t.platform}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{t.model || '—'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
-                      {formatTokens(t.total_tokens)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
-                      {fmtLatency(t.latency_ms)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
-                      {formatMoney(t.estimated_cost_usd)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-400">
-                      {formatDate(t.created_at, { time: true })}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-500">
+                      Loading…
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : traces.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-400">
+                      No runs in this range yet.
+                    </td>
+                  </tr>
+                ) : (
+                  traces.map((t) => (
+                    <tr
+                      key={t.id}
+                      onClick={() => openDetail(t)}
+                      className="cursor-pointer border-b border-gray-50 transition last:border-0 hover:bg-gray-50"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
+                          />
+                          <span className="block max-w-[22rem] truncate text-gray-800">
+                            {t.input || '(no input)'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <span className="block max-w-[10rem] truncate">
+                          {t.user || `#${t.user_id}`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500'}`}
+                        >
+                          {t.platform}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{t.model || '—'}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                        {formatTokens(t.total_tokens)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                        {fmtLatency(t.latency_ms)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                        {formatMoney(t.estimated_cost_usd)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-400">
+                        {formatDate(t.created_at, { time: true })}
+                      </td>
+                    </tr>
+                  ))
+                )}
+                {loadingMore && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-3 text-center text-xs text-gray-400">
+                      Loading more…
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            {/* Infinite-scroll trigger. */}
+            <div ref={sentinelRef} className="h-px" />
+          </div>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
-          <span className="text-xs text-gray-400">
-            {traces.length > 0 ? `Showing ${startIdx + 1}–${startIdx + traces.length}` : '—'}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={goPrev}
-              disabled={prevStack.length === 0}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              onClick={goNext}
-              disabled={!nextCursor}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
+          <div className="shrink-0 border-t border-gray-100 px-4 py-2.5 text-xs text-gray-400">
+            {traces.length > 0
+              ? `${traces.length} run${traces.length === 1 ? '' : 's'} loaded${nextCursor ? '' : ' · end'}`
+              : '—'}
           </div>
         </div>
+
+        {selected && (
+          <>
+            <div
+              className="animate-fade-in fixed inset-0 z-40 bg-black/30"
+              onClick={() => setSelected(null)}
+              aria-hidden
+            />
+            <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl flex-col bg-white shadow-xl">
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
+                <h2 className="text-base font-semibold text-gray-900">Run detail</h2>
+                <button
+                  onClick={() => setSelected(null)}
+                  aria-label="Close"
+                  className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5">
+                <TraceDetail trace={selected} loading={detailLoading} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
-
-      {selected && (
-        <>
-          <div
-            className="animate-fade-in fixed inset-0 z-40 bg-black/30"
-            onClick={() => setSelected(null)}
-            aria-hidden
-          />
-          <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl flex-col bg-white shadow-xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
-              <h2 className="text-base font-semibold text-gray-900">Run detail</h2>
-              <button
-                onClick={() => setSelected(null)}
-                aria-label="Close"
-                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5">
-              <TraceDetail trace={selected} loading={detailLoading} />
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }
