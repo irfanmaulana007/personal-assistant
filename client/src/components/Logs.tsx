@@ -40,14 +40,14 @@ const channelBadge: Record<string, string> = {
 
 // scoreTone maps an overall 1–5 judge score to a traffic-light colour.
 function scoreTone(overall: number): string {
-  if (overall >= 4) return 'bg-green-100 text-green-700';
-  if (overall >= 3) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
+  if (overall >= 4) return 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300';
+  if (overall >= 3) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300';
+  return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300';
 }
 
 /** A compact pill showing the judge's overall score, or an em dash if unjudged. */
 function ScoreBadge({ score }: { score?: TraceScore }) {
-  if (!score) return <span className="text-gray-300">—</span>;
+  if (!score) return <span className="text-gray-300 dark:text-gray-600">—</span>;
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreTone(
@@ -468,18 +468,22 @@ function TraceDetail({
               ).map(([label, val]) => (
                 <span
                   key={label}
-                  className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600"
+                  className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600 dark:bg-gray-700/50 dark:text-gray-300"
                 >
-                  <span className="text-gray-400">{label}</span>{' '}
-                  <span className="font-semibold tabular-nums text-gray-800">{val}</span>
+                  <span className="text-gray-400 dark:text-gray-500">{label}</span>{' '}
+                  <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                    {val}
+                  </span>
                 </span>
               ))}
             </div>
             {trace.score.rationale && (
-              <p className="mt-2.5 text-sm text-gray-700">{trace.score.rationale}</p>
+              <p className="mt-2.5 text-sm text-gray-700 dark:text-gray-300">
+                {trace.score.rationale}
+              </p>
             )}
             {trace.score.judge_model && (
-              <p className="mt-1.5 text-[11px] text-gray-400">
+              <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                 Judged by {trace.score.judge_model}
               </p>
             )}

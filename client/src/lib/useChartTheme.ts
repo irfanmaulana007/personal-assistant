@@ -55,3 +55,9 @@ export function useChartTheme(): ChartTheme {
   const dark = useSyncExternalStore(subscribe, isDark, () => false);
   return dark ? DARK : LIGHT;
 }
+
+/** Tracks the `dark` class on <html> for SVG fills that can't use Tailwind's
+ *  `dark:` variant (colors passed as literal attributes). */
+export function useIsDark(): boolean {
+  return useSyncExternalStore(subscribe, isDark, () => false);
+}
