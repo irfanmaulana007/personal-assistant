@@ -67,7 +67,20 @@ change in both before considering it done.
 
 ## Pull requests
 
-- Always open a PR with a detailed description and merge it to `main`.
+- Always open a PR and merge it to `main`.
+- **The description must give the reader the bigger context — enough to review
+  without reading the diff first.** Write it for someone who has not seen the
+  change. Every PR description must cover:
+  - **What & why** — what the PR is for and the problem or goal behind it.
+  - **Before vs. after** — how things worked (or looked) before this change
+    versus after it, so the delta is explicit. Call out behaviour, UI, or
+    convention changes directly.
+  - **Why it matters** — the impact: who or what benefits, what it unblocks or
+    prevents, and any risk if it were not done.
+  - **Scope & notes** — what is intentionally *not* changed, follow-ups,
+    migrations, or anything a reviewer should watch for.
+  - Use headings and bullets; prefer before/after snippets, tables, or
+    screenshots (both light and dark theme for UI changes) over prose.
 - Every PR must have at least one label describing its type. Use one of:
   `feature`, `fix`, `docs`, `improvement`, `refactor`, `chore`
   (create the label with `gh label create` if it does not exist yet).
