@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getPersona, updatePersona } from '../../api/client';
+import { SkeletonFormCard } from '../ui/Skeleton';
 import type { Persona } from '../../types';
 
 const inputClass =
@@ -73,7 +74,7 @@ export function AgentSettings() {
     }
   };
 
-  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+  if (loading) return <SkeletonFormCard fields={6} />;
 
   const fields: { k: keyof Persona; label: string; hint: string }[] = [
     {

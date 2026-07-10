@@ -7,6 +7,7 @@ import {
   deleteLifeGoal,
 } from '../api/client';
 import type { LifeGoal } from '../types';
+import { Skeleton } from './ui/Skeleton';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
@@ -185,7 +186,20 @@ export function LifeGoals() {
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="mt-5 space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+            >
+              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-3.5 w-48 max-w-full" />
+                <Skeleton className="mt-2 h-3 w-64 max-w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : goals.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
           Your life list is empty. Add something you want to do above.

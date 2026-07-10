@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { listSkills, setSkillEnabled } from '../api/client';
 import type { Skill } from '../types';
 import { Toggle } from './ui/Toggle';
+import { Skeleton, SkeletonListRow } from './ui/Skeleton';
 
 export function Skills() {
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -62,7 +63,18 @@ export function Skills() {
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="mt-6 space-y-6">
+          {[3, 2].map((count, g) => (
+            <div key={g}>
+              <Skeleton className="mb-2 h-2.5 w-24" />
+              <div className="space-y-2">
+                {Array.from({ length: count }).map((_, i) => (
+                  <SkeletonListRow key={i} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="mt-6 space-y-6">
           {groups.map((g) => (

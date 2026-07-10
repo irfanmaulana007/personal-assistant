@@ -11,6 +11,7 @@ import type {
   IntegrationStatus,
 } from '../types';
 import { WhatsAppCard } from './WhatsAppCard';
+import { Skeleton, SkeletonCard } from './ui/Skeleton';
 
 const inputClass =
   'rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
@@ -123,7 +124,31 @@ export function Integrations() {
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <>
+          <SkeletonCard className="mt-6">
+            <div className="mb-3 flex items-center justify-between">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+            <Skeleton className="h-10 w-full rounded-xl" />
+          </SkeletonCard>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-xl" />
+                    <div>
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="mt-2 h-4 w-16 rounded-full" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-9 w-24 rounded-xl" />
+                </div>
+              </SkeletonCard>
+            ))}
+          </div>
+        </>
       ) : data ? (
         <>
           <ComposioKeyCard data={data} onSaved={setData} />

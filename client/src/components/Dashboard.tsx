@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useMetrics } from '../hooks/useMetrics';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
+import { Skeleton, SkeletonCard, SkeletonStatTile } from './ui/Skeleton';
 import type { Channel } from '../types';
 
 function defaultRange(): { from: string; to: string } {
@@ -52,7 +53,21 @@ export function Dashboard() {
       {error && <p className="mt-6 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading && !stats ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="mt-6 space-y-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <SkeletonCard key={i}>
+                <Skeleton className="mb-4 h-3.5 w-40" />
+                <Skeleton className="h-56 w-full rounded-xl" />
+              </SkeletonCard>
+            ))}
+          </div>
+        </div>
       ) : stats ? (
         <div className="mt-6">
           <Outlet context={{ stats }} />

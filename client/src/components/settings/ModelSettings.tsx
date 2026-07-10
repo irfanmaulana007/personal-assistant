@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSettings } from '../../hooks/useSettings';
+import { SkeletonFormCard } from '../ui/Skeleton';
 import type { LlmTestResult } from '../../types';
 
 const inputClass =
@@ -66,7 +67,7 @@ export function ModelSettings() {
     await save({ api_key: '' });
   };
 
-  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+  if (loading) return <SkeletonFormCard fields={4} />;
 
   return (
     <form
