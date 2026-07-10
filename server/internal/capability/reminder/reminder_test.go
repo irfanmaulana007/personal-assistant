@@ -318,6 +318,50 @@ func TestReminderEvents_RRULE(t *testing.T) {
 	}
 }
 
+// TestReminderEvents_AnchorsToNextOccurrence guards the fix for the duplicate
+// bug: a recurring event's DTSTART must land on a real occurrence of its rule
+// (not "today"), so it shows on the right calendar day and the reconciler's
+// dedup window matches it instead of re-creating it every cycle.
+func TestReminderEvents_AnchorsToNextOccurrence(t *testing.T) {
+	now := time.Now().In(testTZ)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, testTZ)
+	sameDate := func(a, b time.Time) bool {
+		return a.Year() == b.Year() && a.YearDay() == b.YearDay()
+	}
+
+	monthly := reminderEvents(store.Reminder{RepeatMode: "monthly", Title: "C", DayOfMonth: 5, Times: []string{"07:00"}}, testTZ)
+	if len(monthly) != 1 {
+		t.Fatalf("monthly: %+v", monthly)
+	}
+	start := monthly[0].ev.Start
+	if start.Day() != 5 {
+		t.Errorf("monthly DTSTART should be on day 5, got %v", start)
+	}
+	if start.Before(today) {
+		t.Errorf("monthly DTSTART should not be in the past, got %v (today %v)", start, today)
+	}
+	if start.Hour() != 7 || start.Minute() != 0 {
+		t.Errorf("monthly DTSTART time wrong: %v", start)
+	}
+
+	weekly := reminderEvents(store.Reminder{RepeatMode: "weekly", Title: "B", Weekdays: []int{1, 3}, Times: []string{"09:00"}}, testTZ)
+	if len(weekly) != 1 {
+		t.Fatalf("weekly: %+v", weekly)
+	}
+	if wd := weekly[0].ev.Start.Weekday(); wd != time.Monday && wd != time.Wednesday {
+		t.Errorf("weekly DTSTART should be Mon or Wed, got %v", wd)
+	}
+	if weekly[0].ev.Start.Before(today) {
+		t.Errorf("weekly DTSTART should not be in the past, got %v", weekly[0].ev.Start)
+	}
+
+	// Daily always qualifies today.
+	daily := reminderEvents(store.Reminder{RepeatMode: "daily", Title: "A", Times: []string{"08:00"}}, testTZ)
+	if len(daily) != 1 || !sameDate(daily[0].ev.Start, today) {
+		t.Errorf("daily DTSTART should be today, got %+v", daily)
+	}
+}
+
 func TestCalendarHash_ChangesWithSchedule(t *testing.T) {
 	base := store.Reminder{RepeatMode: "daily", Title: "X", Times: []string{"09:00"}}
 	if calendarHash(base) != calendarHash(base) {
