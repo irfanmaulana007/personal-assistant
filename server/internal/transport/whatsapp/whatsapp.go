@@ -63,12 +63,14 @@ func (t *Transport) SetAllowedSenders(jids []string) {
 	defer t.mu.Unlock()
 	if len(jids) == 0 {
 		t.allowed = nil
+		t.log.Info("whatsapp reply mode: paired account only (no OWNER_JID allowlist)")
 		return
 	}
 	t.allowed = make(map[string]bool, len(jids))
 	for _, j := range jids {
 		t.allowed[j] = true
 	}
+	t.log.Info("whatsapp allowlist configured", "senders", jids)
 }
 
 func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
@@ -279,7 +281,11 @@ func (t *Transport) handleMessage(evt *events.Message) {
 		permitted = ownerJID == "" || senderJID == ownerJID
 	}
 	if !permitted {
-		t.log.Debug("ignoring message from non-allowed sender", "sender", senderJID)
+		// Logged at info so a mismatch is visible without debug logging — compare
+		// this sender to your OWNER_JID (e.g. a "@lid" sender won't match a
+		// "@s.whatsapp.net" allowlist entry).
+		t.log.Info("ignoring WhatsApp message: sender not in OWNER_JID allowlist",
+			"sender", senderJID, "allowlist_size", len(allowed), "paired", ownerJID)
 		return
 	}
 
