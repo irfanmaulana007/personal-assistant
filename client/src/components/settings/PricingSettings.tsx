@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getPricing, setPricing, deletePricing } from '../../api/client';
+import { Skeleton } from '../ui/Skeleton';
 import type { ModelPrice } from '../../types';
 
 const inputClass =
@@ -68,7 +69,17 @@ export function PricingSettings() {
       </p>
 
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <Skeleton className="h-4 w-40 max-w-full" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="h-6 w-12 rounded-lg" />
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

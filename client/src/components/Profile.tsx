@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getMe, getMyStats, updateProfile, changePassword } from '../api/client';
 import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
+import { Skeleton, SkeletonCard, SkeletonStatTile } from './ui/Skeleton';
 import type { User, MyStats } from '../types';
 
 const inputClass =
@@ -40,7 +41,34 @@ export function Profile() {
       </p>
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="mt-6 space-y-6">
+          <SkeletonCard className="flex flex-wrap items-center gap-4 !p-5">
+            <Skeleton className="h-16 w-16 rounded-2xl" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="mt-2 h-3.5 w-64 max-w-full" />
+              <Skeleton className="mt-2 h-3 w-32" />
+            </div>
+          </SkeletonCard>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {[0, 1].map((c) => (
+              <SkeletonCard key={c}>
+                <Skeleton className="mb-4 h-3.5 w-24" />
+                <div className="space-y-3">
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                </div>
+                <Skeleton className="mt-4 h-10 w-36 rounded-xl" />
+              </SkeletonCard>
+            ))}
+          </div>
+        </div>
       ) : user ? (
         <div className="mt-6 space-y-6">
           <ProfileHeader user={user} />

@@ -6,6 +6,7 @@ import { ChannelFilter } from './ChannelFilter';
 import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
+import { Skeleton } from './ui/Skeleton';
 import type { Trace, Channel } from '../types';
 
 const PAGE_SIZE = 25;
@@ -182,11 +183,40 @@ export function Logs() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
-                      Loading…
-                    </td>
-                  </tr>
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <tr
+                      key={i}
+                      className="border-b border-gray-50 last:border-0 dark:border-gray-800"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Skeleton className="h-2 w-2 shrink-0 rounded-full" />
+                          <Skeleton className="h-3.5 w-56 max-w-full" />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-3.5 w-20" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-14 rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-3.5 w-24" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="ml-auto h-3.5 w-12" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="ml-auto h-3.5 w-12" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="ml-auto h-3.5 w-12" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="ml-auto h-3.5 w-16" />
+                      </td>
+                    </tr>
+                  ))
                 ) : traces.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">
@@ -383,7 +413,19 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
       )}
 
       {loading ? (
-        <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">Loading tool calls…</p>
+        <div className="mt-4 space-y-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+                <Skeleton className="h-3.5 w-32" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+              <div className="px-3 py-2.5">
+                <Skeleton className="h-3 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         trace.tools &&
         trace.tools.length > 0 && (
