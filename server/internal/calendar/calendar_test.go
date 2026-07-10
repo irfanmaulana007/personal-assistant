@@ -26,6 +26,36 @@ func TestParseCreatedEventID(t *testing.T) {
 	}
 }
 
+func TestMatchEventID(t *testing.T) {
+	tz := time.FixedZone("WIB", 7*3600)
+	at := func(h, m int) time.Time { return time.Date(2026, 3, 10, h, m, 0, 0, tz) }
+	existing := []Event{
+		{ID: "e1", Title: "Take medicine", Start: at(8, 0)},
+		{ID: "e2", Title: "Standup", Start: at(9, 0)},
+	}
+
+	// Same title + start (case/whitespace-insensitive) matches.
+	if got := matchEventID(existing, Event{Title: "  take MEDICINE ", Start: at(8, 0)}); got != "e1" {
+		t.Errorf("expected e1, got %q", got)
+	}
+	// Seconds differ but the minute is the same -> still a match.
+	if got := matchEventID(existing, Event{Title: "Standup", Start: at(9, 0).Add(30 * time.Second)}); got != "e2" {
+		t.Errorf("expected e2 within the minute, got %q", got)
+	}
+	// Different time -> no match (would legitimately create a new event).
+	if got := matchEventID(existing, Event{Title: "Standup", Start: at(10, 0)}); got != "" {
+		t.Errorf("expected no match for different time, got %q", got)
+	}
+	// Different title -> no match.
+	if got := matchEventID(existing, Event{Title: "Lunch", Start: at(8, 0)}); got != "" {
+		t.Errorf("expected no match for different title, got %q", got)
+	}
+	// A candidate with an empty id is never adopted (can't reference it later).
+	if got := matchEventID([]Event{{ID: "", Title: "Standup", Start: at(9, 0)}}, Event{Title: "Standup", Start: at(9, 0)}); got != "" {
+		t.Errorf("expected no match for empty-id event, got %q", got)
+	}
+}
+
 func TestParseEvents_TimedTopLevelItems(t *testing.T) {
 	s := testService()
 	raw := `{"items":[{"summary":"Standup","location":"Zoom","start":{"dateTime":"2026-03-10T15:00:00+07:00"},"end":{"dateTime":"2026-03-10T15:30:00+07:00"}}]}`

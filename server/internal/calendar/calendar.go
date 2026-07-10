@@ -106,7 +106,17 @@ func (s *Service) PrimaryConnection(ctx context.Context, userID int64) (string, 
 // CreateEvent adds an event to the given connection's primary calendar and
 // returns its event id. rrule, when non-empty, makes it recurring (e.g.
 // "RRULE:FREQ=WEEKLY;BYDAY=MO,WE").
+//
+// Before inserting, it checks the calendar for an identical event (same title
+// and start time) and, if one already exists, returns that event's id instead
+// of creating a duplicate. This is the safety net that keeps a flaky create
+// response (where the new id can't be parsed) from re-creating the same event
+// on every reconcile cycle.
 func (s *Service) CreateEvent(ctx context.Context, userID int64, connID string, ev Event, rrule string) (string, error) {
+	if id := s.existingEventID(ctx, userID, connID, ev); id != "" {
+		s.log.Info("skip duplicate calendar event", "title", ev.Title, "start", ev.Start, "existing_id", id)
+		return id, nil
+	}
 	dur := ev.End.Sub(ev.Start)
 	if dur <= 0 {
 		dur = time.Hour
@@ -131,6 +141,44 @@ func (s *Service) CreateEvent(ctx context.Context, userID int64, connID string, 
 		return "", err
 	}
 	return parseCreatedEventID(raw), nil
+}
+
+// existingEventID looks for an event on the connection's primary calendar that
+// matches ev by title and start time (to the minute) and returns its id, or ""
+// if none is found. Recurring reminders are expanded (single_events) so the
+// instance that falls on ev.Start is matched. Fail-soft: any lookup error
+// returns "" (treated as "no duplicate found"), so a transient list failure
+// never blocks a legitimate create.
+func (s *Service) existingEventID(ctx context.Context, userID int64, connID string, ev Event) string {
+	if ev.Title == "" || ev.Start.IsZero() {
+		return ""
+	}
+	key := s.apiKey(ctx)
+	if key == "" {
+		return ""
+	}
+	// Narrow window centered on the target start so single_events expansion
+	// returns the specific instance we're about to (re)create.
+	from := ev.Start.Add(-time.Minute)
+	to := ev.Start.Add(2 * time.Minute)
+	uid := strconv.FormatInt(userID, 10)
+	return matchEventID(s.eventsFor(ctx, key, uid, connID, "primary", from, to), ev)
+}
+
+// matchEventID returns the id of the first event in existing that has the same
+// title (case-insensitive, trimmed) and start time (to the minute) as ev, or ""
+// if none match.
+func matchEventID(existing []Event, ev Event) string {
+	want := strings.ToLower(strings.TrimSpace(ev.Title))
+	for _, e := range existing {
+		if strings.ToLower(strings.TrimSpace(e.Title)) != want {
+			continue
+		}
+		if e.ID != "" && e.Start.Truncate(time.Minute).Equal(ev.Start.Truncate(time.Minute)) {
+			return e.ID
+		}
+	}
+	return ""
 }
 
 // DeleteEvent removes a mirrored event from a connection's primary calendar.
