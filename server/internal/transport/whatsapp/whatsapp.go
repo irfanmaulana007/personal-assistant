@@ -268,24 +268,40 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	ownerJID := t.ownerJID
 	allowed := t.allowed
 	handler := t.handler
+	client := t.client
 	t.mu.RUnlock()
 
+	// WhatsApp may address the sender by LID (e.g. "…@lid") rather than their
+	// phone number. Collect every known identity so an OWNER_JID allowlist of
+	// phone JIDs still matches: the sender itself, the alternate address the
+	// event carries, and the LID→phone mapping from the store.
+	candidates := []string{senderJID}
+	if alt := evt.Info.SenderAlt.ToNonAD(); alt.User != "" {
+		candidates = append(candidates, alt.String())
+	}
+	if evt.Info.Sender.Server == types.HiddenUserServer && client != nil {
+		if pn, err := client.Store.LIDs.GetPNForLID(context.Background(), evt.Info.Sender.ToNonAD()); err == nil && pn.User != "" {
+			candidates = append(candidates, pn.ToNonAD().String())
+		}
+	}
+
 	// Decide who the assistant answers:
-	//  - allowlist configured → only those numbers (assistant on its own account,
-	//    you message it from your personal/work numbers);
+	//  - allowlist configured → any of the sender's identities must be listed;
 	//  - otherwise → the paired account's own messages ("message yourself" mode).
 	permitted := false
 	if len(allowed) > 0 {
-		permitted = allowed[senderJID]
+		for _, c := range candidates {
+			if allowed[c] {
+				permitted = true
+				break
+			}
+		}
 	} else {
 		permitted = ownerJID == "" || senderJID == ownerJID
 	}
 	if !permitted {
-		// Logged at info so a mismatch is visible without debug logging — compare
-		// this sender to your OWNER_JID (e.g. a "@lid" sender won't match a
-		// "@s.whatsapp.net" allowlist entry).
 		t.log.Info("ignoring WhatsApp message: sender not in OWNER_JID allowlist",
-			"sender", senderJID, "allowlist_size", len(allowed), "paired", ownerJID)
+			"sender", senderJID, "candidates", candidates, "allowlist_size", len(allowed))
 		return
 	}
 
