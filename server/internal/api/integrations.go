@@ -37,6 +37,7 @@ var multiToolkits = map[string]bool{"googlecalendar": true, "gmail": true}
 type integrationAccount struct {
 	ConnectionID string `json:"connection_id"`
 	Status       string `json:"status"`
+	Label        string `json:"label,omitempty"` // the account's email, when known
 }
 
 type integrationToolkit struct {
@@ -100,6 +101,7 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 				accountsBySlug[c.ToolkitSlug] = append(accountsBySlug[c.ToolkitSlug], integrationAccount{
 					ConnectionID: c.ID,
 					Status:       statusFromComposio(c.Status),
+					Label:        c.Label,
 				})
 			}
 		}

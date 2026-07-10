@@ -128,6 +128,7 @@ export type IntegrationStatus = 'connected' | 'pending' | 'error' | 'disconnecte
 export interface IntegrationAccount {
   connection_id: string;
   status: IntegrationStatus;
+  label?: string; // the account's email, when known
 }
 
 export interface IntegrationToolkit {
