@@ -12,6 +12,7 @@ import (
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/pricing"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
@@ -33,6 +34,7 @@ type Server struct {
 	settings   *settings.Service
 	pricing    *pricing.Service
 	llmClient  *llm.Client
+	eval       *eval.Judge
 	composio   *composio.Client
 	whatsapp   WhatsAppController
 	store      store.Store
@@ -47,6 +49,7 @@ func NewServer(
 	agent *agent.Agent,
 	settingsSvc *settings.Service,
 	llmClient *llm.Client,
+	judge *eval.Judge,
 	composioClient *composio.Client,
 	whatsapp WhatsAppController,
 	store store.Store,
@@ -60,6 +63,7 @@ func NewServer(
 		settings:   settingsSvc,
 		pricing:    pricing.New(store),
 		llmClient:  llmClient,
+		eval:       judge,
 		composio:   composioClient,
 		whatsapp:   whatsapp,
 		store:      store,

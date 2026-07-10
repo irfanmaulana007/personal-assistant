@@ -259,6 +259,21 @@ type Trace struct {
 	Status           string           // "ok" or "error"
 	Error            string
 	CreatedAt        time.Time
+	Score            *TraceScore // LLM-as-judge verdict; nil until judged
+}
+
+// TraceScore is an LLM-as-judge quality verdict for a single trace. Each
+// dimension is rated 1–5; Overall is their average. A trace has at most one
+// score (keyed by TraceID); re-judging overwrites it.
+type TraceScore struct {
+	TraceID     int64
+	Accuracy    int     // did the reply correctly answer / act on the input
+	Helpfulness int     // was it useful, complete, well-formed
+	Safety      int     // free of harmful, wrong, or fabricated content
+	Overall     float64 // average of the three dimensions
+	Rationale   string  // the judge's short explanation
+	JudgeModel  string  // model that produced this score
+	CreatedAt   time.Time
 }
 
 // TraceFilter narrows a trace listing. Pagination is cursor-based: Cursor is
@@ -270,7 +285,14 @@ type TraceFilter struct {
 	To       time.Time
 	Limit    int
 	Cursor   int64
+	// ScoreState filters by judge verdict: "" = all, "scored", "unscored", or
+	// "low" (judged and overall below lowScoreThreshold).
+	ScoreState string
 }
+
+// LowScoreThreshold is the overall rating below which a judged trace is
+// considered "low" and surfaced by the ScoreState="low" filter.
+const LowScoreThreshold = 3.0
 
 // UsageTotals aggregates token usage over a period.
 type UsageTotals struct {
@@ -490,6 +512,11 @@ type Store interface {
 	ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error)
 	GetTrace(ctx context.Context, id int64) (*Trace, error)
 	LogToolUsage(ctx context.Context, userID int64, tool, platform string) error
+
+	// Trace scores (LLM-as-judge quality signal).
+	SaveTraceScore(ctx context.Context, sc *TraceScore) error
+	GetTraceScore(ctx context.Context, traceID int64) (*TraceScore, error)
+	ListUnscoredTraces(ctx context.Context, since time.Time, limit int) ([]Trace, error)
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
 	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
 	UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error)

@@ -278,6 +278,18 @@ func (s *SQLiteStore) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_traces_created ON traces(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_traces_user ON traces(user_id)`,
 
+		`CREATE TABLE IF NOT EXISTS trace_scores (
+			trace_id INTEGER PRIMARY KEY,
+			accuracy INTEGER NOT NULL DEFAULT 0,
+			helpfulness INTEGER NOT NULL DEFAULT 0,
+			safety INTEGER NOT NULL DEFAULT 0,
+			overall REAL NOT NULL DEFAULT 0,
+			rationale TEXT NOT NULL DEFAULT '',
+			judge_model TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_trace_scores_overall ON trace_scores(overall)`,
+
 		`CREATE TABLE IF NOT EXISTS model_prices (
 			model TEXT PRIMARY KEY,
 			input_per_1m REAL NOT NULL DEFAULT 0,
@@ -964,23 +976,37 @@ func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, p
 }
 
 func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error) {
-	q := `SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
-	             total_tokens, latency_ms, tool_count, status, error, created_at
-	      FROM traces WHERE created_at >= ? AND created_at < ?`
+	q := `SELECT t.id, t.user_id, t.platform, t.input, t.output, t.model, t.prompt_tokens,
+	             t.completion_tokens, t.total_tokens, t.latency_ms, t.tool_count, t.status, t.error, t.created_at,
+	             sc.accuracy, sc.helpfulness, sc.safety, sc.overall, sc.rationale, sc.judge_model
+	      FROM traces t
+	      LEFT JOIN trace_scores sc ON sc.trace_id = t.id
+	      WHERE t.created_at >= ? AND t.created_at < ?`
 	args := []any{f.From.UTC(), f.To.UTC()}
 	if f.Platform != "" {
-		q += ` AND platform = ?`
+		q += ` AND t.platform = ?`
 		args = append(args, f.Platform)
 	}
+	switch f.ScoreState {
+	case "scored":
+		q += ` AND sc.trace_id IS NOT NULL`
+	case "unscored":
+		// Only judgeable replies (successful, non-empty) count as "unscored" —
+		// error traces are never judged, so surfacing them here would be noise.
+		q += ` AND sc.trace_id IS NULL AND t.status = 'ok' AND t.output != ''`
+	case "low":
+		q += ` AND sc.trace_id IS NOT NULL AND sc.overall < ?`
+		args = append(args, LowScoreThreshold)
+	}
 	if f.Cursor > 0 {
-		q += ` AND id < ?`
+		q += ` AND t.id < ?`
 		args = append(args, f.Cursor)
 	}
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	q += ` ORDER BY id DESC LIMIT ?`
+	q += ` ORDER BY t.id DESC LIMIT ?`
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -992,10 +1018,25 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 	var traces []Trace
 	for rows.Next() {
 		var t Trace
+		var acc, help, safe sql.NullInt64
+		var overall sql.NullFloat64
+		var rationale, judgeModel sql.NullString
 		if err := rows.Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
 			&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
-			&t.Status, &t.Error, &t.CreatedAt); err != nil {
+			&t.Status, &t.Error, &t.CreatedAt,
+			&acc, &help, &safe, &overall, &rationale, &judgeModel); err != nil {
 			return nil, fmt.Errorf("scan trace: %w", err)
+		}
+		if overall.Valid {
+			t.Score = &TraceScore{
+				TraceID:     t.ID,
+				Accuracy:    int(acc.Int64),
+				Helpfulness: int(help.Int64),
+				Safety:      int(safe.Int64),
+				Overall:     overall.Float64,
+				Rationale:   rationale.String,
+				JudgeModel:  judgeModel.String,
+			}
 		}
 		traces = append(traces, t)
 	}
@@ -1048,7 +1089,77 @@ func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	if skills != "" {
 		t.Skills = strings.Split(skills, ",")
 	}
+	if sc, err := s.GetTraceScore(ctx, t.ID); err == nil {
+		t.Score = sc
+	}
 	return &t, nil
+}
+
+// --- Trace scores (LLM-as-judge) ---
+
+// SaveTraceScore upserts the judge verdict for a trace (one score per trace).
+func (s *SQLiteStore) SaveTraceScore(ctx context.Context, sc *TraceScore) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO trace_scores (trace_id, accuracy, helpfulness, safety, overall, rationale, judge_model, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(trace_id) DO UPDATE SET
+		   accuracy=excluded.accuracy, helpfulness=excluded.helpfulness, safety=excluded.safety,
+		   overall=excluded.overall, rationale=excluded.rationale, judge_model=excluded.judge_model,
+		   created_at=excluded.created_at`,
+		sc.TraceID, sc.Accuracy, sc.Helpfulness, sc.Safety, sc.Overall, sc.Rationale, sc.JudgeModel, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("save trace score: %w", err)
+	}
+	return nil
+}
+
+// GetTraceScore returns the score for a trace, or nil if it hasn't been judged.
+func (s *SQLiteStore) GetTraceScore(ctx context.Context, traceID int64) (*TraceScore, error) {
+	var sc TraceScore
+	err := s.db.QueryRowContext(ctx,
+		`SELECT trace_id, accuracy, helpfulness, safety, overall, rationale, judge_model, created_at
+		 FROM trace_scores WHERE trace_id = ?`, traceID,
+	).Scan(&sc.TraceID, &sc.Accuracy, &sc.Helpfulness, &sc.Safety, &sc.Overall, &sc.Rationale, &sc.JudgeModel, &sc.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get trace score: %w", err)
+	}
+	return &sc, nil
+}
+
+// ListUnscoredTraces returns successful traces created at/after since that have
+// no score yet, oldest first, capped at limit. Error traces are skipped — there
+// is no useful reply to judge.
+func (s *SQLiteStore) ListUnscoredTraces(ctx context.Context, since time.Time, limit int) ([]Trace, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT t.id, t.user_id, t.platform, t.input, t.output, t.model, t.prompt_tokens,
+		        t.completion_tokens, t.total_tokens, t.latency_ms, t.tool_count, t.status, t.error, t.created_at
+		 FROM traces t
+		 LEFT JOIN trace_scores sc ON sc.trace_id = t.id
+		 WHERE sc.trace_id IS NULL AND t.status = 'ok' AND t.output != '' AND t.created_at >= ?
+		 ORDER BY t.id ASC LIMIT ?`, since.UTC(), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list unscored traces: %w", err)
+	}
+	defer rows.Close()
+	var traces []Trace
+	for rows.Next() {
+		var t Trace
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
+			&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
+			&t.Status, &t.Error, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan unscored trace: %w", err)
+		}
+		traces = append(traces, t)
+	}
+	return traces, rows.Err()
 }
 
 // UsageStatsBetween aggregates traces in the half-open interval [from, to),
