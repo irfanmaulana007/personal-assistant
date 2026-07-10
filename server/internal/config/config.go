@@ -38,6 +38,28 @@ func (o OwnerConfig) Location() *time.Location {
 	return loc
 }
 
+// AllowedJIDs are the WhatsApp numbers permitted to talk to the assistant.
+// WhatsAppJID may be a comma-separated list (e.g. your personal + work numbers);
+// the assistant replies to whichever of them messages it.
+func (o OwnerConfig) AllowedJIDs() []string {
+	var out []string
+	for _, part := range strings.Split(o.WhatsAppJID, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// PrimaryJID is the first allowed number — where reminders and the daily recap
+// are delivered. Empty when none is configured.
+func (o OwnerConfig) PrimaryJID() string {
+	if j := o.AllowedJIDs(); len(j) > 0 {
+		return j[0]
+	}
+	return ""
+}
+
 type WhatsAppConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Database string `yaml:"database"`

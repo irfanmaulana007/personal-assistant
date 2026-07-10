@@ -41,6 +41,7 @@ type Transport struct {
 	status   string
 	qr       string
 	ownerJID string
+	allowed  map[string]bool // senders permitted to talk to the assistant
 	handler  transport.MessageHandler
 }
 
@@ -51,6 +52,24 @@ func New(dbPath string, log *slog.Logger) *Transport {
 }
 
 func (t *Transport) Name() string { return "whatsapp" }
+
+// SetAllowedSenders restricts which sender JIDs the assistant responds to. When
+// non-empty, only these numbers are answered (e.g. your personal + work
+// numbers, while the assistant runs on a separate paired account). When empty,
+// it falls back to the paired account's own messages (the "message yourself"
+// mode).
+func (t *Transport) SetAllowedSenders(jids []string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(jids) == 0 {
+		t.allowed = nil
+		return
+	}
+	t.allowed = make(map[string]bool, len(jids))
+	for _, j := range jids {
+		t.allowed[j] = true
+	}
+}
 
 func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
 	t.mu.Lock()
@@ -245,12 +264,22 @@ func (t *Transport) handleMessage(evt *events.Message) {
 
 	t.mu.RLock()
 	ownerJID := t.ownerJID
+	allowed := t.allowed
 	handler := t.handler
 	t.mu.RUnlock()
 
-	// Only respond to the owner (the paired account's own messages).
-	if ownerJID != "" && senderJID != ownerJID {
-		t.log.Debug("ignoring message from non-owner", "sender", senderJID)
+	// Decide who the assistant answers:
+	//  - allowlist configured → only those numbers (assistant on its own account,
+	//    you message it from your personal/work numbers);
+	//  - otherwise → the paired account's own messages ("message yourself" mode).
+	permitted := false
+	if len(allowed) > 0 {
+		permitted = allowed[senderJID]
+	} else {
+		permitted = ownerJID == "" || senderJID == ownerJID
+	}
+	if !permitted {
+		t.log.Debug("ignoring message from non-allowed sender", "sender", senderJID)
 		return
 	}
 
