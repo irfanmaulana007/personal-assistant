@@ -217,7 +217,10 @@ func (t *Transport) SendMessage(ctx context.Context, to, text string) error {
 		return fmt.Errorf("parse JID %q: %w", to, err)
 	}
 
-	msg := &waE2E.Message{Conversation: proto.String(text)}
+	// The reply is authored in Markdown (for the web channel). Rewrite it to
+	// WhatsApp's native markup so the formatting renders instead of leaking
+	// literal "*", "#" and "-" characters into the chat.
+	msg := &waE2E.Message{Conversation: proto.String(toWhatsAppMarkup(text))}
 	if _, err := client.SendMessage(ctx, jid, msg); err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}

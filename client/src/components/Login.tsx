@@ -20,15 +20,15 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
   };
 
   const inputClass =
-    'w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition text-gray-900 placeholder-gray-400';
+    'w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30 outline-none transition text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="w-full max-w-sm p-8 bg-white rounded-2xl border border-gray-200">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <div className="w-full max-w-sm p-8 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-8 h-8 text-indigo-600"
+              className="w-8 h-8 text-indigo-600 dark:text-indigo-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -41,10 +41,10 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-50">
             {isSetup ? 'Create admin account' : 'Personal Assistant'}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {isSetup ? 'Set up the first account to get started' : 'Sign in to continue'}
           </p>
         </div>
@@ -68,12 +68,12 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
             className={inputClass}
           />
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
           <button
             type="submit"
             disabled={loading || !canSubmit}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="w-full py-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-xl font-medium hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading
               ? isSetup

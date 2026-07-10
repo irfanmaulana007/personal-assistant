@@ -3,7 +3,7 @@ import { getPersona, updatePersona } from '../../api/client';
 import type { Persona } from '../../types';
 
 const inputClass =
-  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
 
 const OPTIONS: Record<string, { value: string; label: string }[]> = {
   tone: [
@@ -73,7 +73,7 @@ export function AgentSettings() {
     }
   };
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
 
   const fields: { k: keyof Persona; label: string; hint: string }[] = [
     {
@@ -99,16 +99,23 @@ export function AgentSettings() {
   ];
 
   return (
-    <form onSubmit={save} className="rounded-2xl border border-gray-200 bg-white p-6">
-      <h2 className="mb-1 text-base font-semibold text-gray-900">Agent preference</h2>
-      <p className="mb-5 text-sm text-gray-500">
+    <form
+      onSubmit={save}
+      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+    >
+      <h2 className="mb-1 text-base font-semibold text-gray-900 dark:text-gray-50">
+        Agent preference
+      </h2>
+      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Shape how the assistant talks to you. These apply to your account only.
       </p>
 
       <div className="space-y-4">
         {fields.map((f) => (
           <div key={f.k}>
-            <label className="mb-1 block text-sm font-medium text-gray-700">{f.label}</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              {f.label}
+            </label>
             <select
               value={persona[f.k]}
               onChange={(e) => set(f.k, e.target.value)}
@@ -120,26 +127,28 @@ export function AgentSettings() {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">{f.hint}</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{f.hint}</p>
           </div>
         ))}
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Assistant name</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Assistant name
+          </label>
           <input
             value={persona.name}
             onChange={(e) => set('name', e.target.value)}
             placeholder="e.g. My Assistant"
             className={inputClass}
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             What the assistant calls itself when it refers to itself. Leave blank to keep the
             default.
           </p>
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
             Custom instructions
           </label>
           <textarea
@@ -149,20 +158,24 @@ export function AgentSettings() {
             placeholder="e.g. Always answer in bullet points; call me by my first name…"
             className={`${inputClass} resize-none`}
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Any other guidance, in your own words, for how the assistant should behave.
           </p>
         </div>
       </div>
 
       {msg && (
-        <p className={`mt-4 text-sm ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>
+        <p
+          className={`mt-4 text-sm ${msg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+        >
+          {msg.text}
+        </p>
       )}
 
       <button
         type="submit"
         disabled={saving}
-        className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+        className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
       >
         {saving ? 'Saving…' : 'Save'}
       </button>

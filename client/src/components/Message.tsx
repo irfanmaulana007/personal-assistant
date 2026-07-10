@@ -24,14 +24,14 @@ export function Message({ message }: { message: ChatMessage }) {
   return (
     <div className={`mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
       <div className={`mb-1 flex items-baseline gap-2 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
-        <span className="text-sm font-semibold text-gray-700">{name}</span>
-        {time && <span className="text-xs text-gray-400">{time}</span>}
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{name}</span>
+        {time && <span className="text-xs text-gray-400 dark:text-gray-500">{time}</span>}
       </div>
       <div
         className={`max-w-[80%] break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? 'whitespace-pre-wrap rounded-tr-sm bg-indigo-100 text-gray-900'
-            : 'rounded-tl-sm bg-gray-100 text-gray-900'
+            ? 'whitespace-pre-wrap rounded-tr-sm bg-indigo-100 text-gray-900 dark:bg-indigo-500/15 dark:text-gray-50'
+            : 'rounded-tl-sm bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50'
         }`}
       >
         {message.image && (
@@ -42,8 +42,10 @@ export function Message({ message }: { message: ChatMessage }) {
         ) : (
           <>
             {grammar && (
-              <div className="mb-2 border-b border-gray-200 pb-2">
-                <Markdown className="text-xs italic text-gray-400">{grammar}</Markdown>
+              <div className="mb-2 border-b border-gray-200 pb-2 dark:border-gray-700">
+                <Markdown className="text-xs italic text-gray-400 dark:text-gray-500">
+                  {grammar}
+                </Markdown>
               </div>
             )}
             <Markdown>{reply}</Markdown>

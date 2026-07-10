@@ -43,11 +43,13 @@ export function UserMenu({ user, onLogout }: { user: User | null; onLogout: () =
           side="top"
           align="start"
           sideOffset={8}
-          className="z-50 w-[228px] rounded-xl border border-gray-200 bg-white p-1 shadow-lg"
+          className="z-50 w-[228px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1 shadow-lg"
         >
-          <div className="border-b border-gray-100 px-3 py-2">
-            <div className="truncate text-sm font-medium text-gray-900">{displayName}</div>
-            <div className="truncate text-xs capitalize text-gray-400">
+          <div className="border-b border-gray-100 dark:border-gray-800 px-3 py-2">
+            <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-50">
+              {displayName}
+            </div>
+            <div className="truncate text-xs capitalize text-gray-400 dark:text-gray-500">
               {user?.email}
               {user?.role ? ` · ${user.role}` : ''}
             </div>
@@ -56,10 +58,10 @@ export function UserMenu({ user, onLogout }: { user: User | null; onLogout: () =
             <Popover.Close asChild>
               <button
                 onClick={() => navigate('/profile')}
-                className={`${itemClass} text-gray-700 hover:bg-gray-100`}
+                className={`${itemClass} text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800`}
               >
                 <svg
-                  className="h-4 w-4 text-gray-400"
+                  className="h-4 w-4 text-gray-400 dark:text-gray-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -75,7 +77,10 @@ export function UserMenu({ user, onLogout }: { user: User | null; onLogout: () =
               </button>
             </Popover.Close>
             <Popover.Close asChild>
-              <button onClick={onLogout} className={`${itemClass} text-red-600 hover:bg-red-50`}>
+              <button
+                onClick={onLogout}
+                className={`${itemClass} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15`}
+              >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
