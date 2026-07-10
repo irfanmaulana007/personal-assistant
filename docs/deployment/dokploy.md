@@ -40,6 +40,12 @@ Set these on the Application (values are read at container start):
 
 > The **LLM provider, API key, model, and base URL are NOT env vars** — they are set
 > from the **Settings page** after first boot and stored encrypted in the database.
+> The same is true for the **Composio API key** (used for Gmail / Google Calendar /
+> GitHub / Sentry integrations): it's entered on the **Integrations page**, not via env.
+
+> `DB_PATH` and the WhatsApp DB default to the `/app/data` volume — leave them alone so
+> your data persists. Only `OWNER_JID` needs a real value even if you don't use WhatsApp
+> (config validation requires it).
 
 ## Step 1 — Create the project and application
 
@@ -102,9 +108,16 @@ Verify: `https://assistant.example.com/api/health` should return `{"status":"ok"
 3. Optional: **Settings → Display** to pick your timezone (UTC / GMT+7) and currency
    (USD / IDR).
 4. Optional: **Skills** — enable the skills you want.
-5. Optional: **Integrations** — link **WhatsApp** by scanning the QR with your phone
-   (WhatsApp → Linked Devices). The session persists in the `/app/data` volume, so you
-   only pair once. Connect Google (Composio) here too if you use it.
+5. Optional: **WhatsApp** — go to **Integrations** and link WhatsApp by scanning the QR
+   with your phone (WhatsApp → Linked Devices). The session persists in the `/app/data`
+   volume, so you only pair once. Reminders and the daily schedule recap are delivered to
+   this paired account.
+6. Optional: **Integrations (Composio)** — to use Gmail, **Google Calendar**, GitHub, or
+   Sentry, first paste your **Composio API key** on the Integrations page, then click
+   **Connect** on each app and complete the hosted OAuth. For Google Calendar you can
+   **Add account** more than once to connect several Google accounts — one-time events
+   are created there and all connected calendars are merged into your schedule/recap.
+   (One-time events fall back to a reminder if no calendar is connected.)
 
 ## Updating
 
