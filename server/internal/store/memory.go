@@ -19,11 +19,16 @@ func (s *SQLiteStore) CreateMemory(ctx context.Context, userID int64, content, k
 	return &Memory{ID: id, Content: content, Kind: kind, CreatedAt: now}, nil
 }
 
-// SearchMemories returns the user's memories matching an FTS5 query, best-match
-// first. The caller must pass a sanitized FTS query.
-func (s *SQLiteStore) SearchMemories(ctx context.Context, userID int64, ftsQuery string, limit int) ([]Memory, error) {
+// SearchMemories returns the user's memories matching arbitrary query text,
+// best-match first. The raw text is sanitized into an FTS5 query here; an empty
+// or all-noise query returns no results.
+func (s *SQLiteStore) SearchMemories(ctx context.Context, userID int64, query string, limit int) ([]Memory, error) {
 	if limit <= 0 {
 		limit = 6
+	}
+	ftsQuery := sqliteFTS5Query(query)
+	if ftsQuery == "" {
+		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT m.id, m.content, m.kind, m.created_at

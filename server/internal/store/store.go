@@ -482,9 +482,11 @@ type DataStore interface {
 	GetUserPersona(ctx context.Context, userID int64) (UserPersona, error)
 	SetUserPersona(ctx context.Context, userID int64, p UserPersona) error
 
-	// Memories (agent long-term memory, scoped to a user; FTS-backed)
+	// Memories (agent long-term memory, scoped to a user; full-text backed).
+	// SearchMemories takes raw query text; the backend sanitizes it for its own
+	// search dialect (SQLite FTS5 / Postgres tsquery).
 	CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error)
-	SearchMemories(ctx context.Context, userID int64, ftsQuery string, limit int) ([]Memory, error)
+	SearchMemories(ctx context.Context, userID int64, query string, limit int) ([]Memory, error)
 	ListMemories(ctx context.Context, userID int64, limit int) ([]Memory, error)
 	DeleteMemory(ctx context.Context, userID, id int64) error
 
@@ -524,6 +526,8 @@ type DataStore interface {
 	UpdateNote(ctx context.Context, userID, id int64, title, content, tags string) error
 	DeleteNote(ctx context.Context, userID, id int64) error
 	ListNotes(ctx context.Context, userID int64, tag string) ([]Note, error)
+	// SearchNotes takes raw query text; the backend sanitizes it for its own
+	// full-text search dialect.
 	SearchNotes(ctx context.Context, userID int64, query string) ([]Note, error)
 
 	// OAuth tokens
