@@ -411,8 +411,29 @@ type Translator interface {
 	Text(ctx context.Context, text string) string
 }
 
-// Store defines the persistence interface.
+// Store defines the full persistence interface. It is the union of DataStore
+// (operational/main data) and LogStore (append-only logs & usage analytics),
+// plus GetUserActivity, which is deliberately in neither sub-interface because
+// it spans both — it reads traces (a log) together with reminders and notes
+// (main data). A single backend (e.g. *SQLiteStore) implements Store directly;
+// a split backend composes a DataStore and a LogStore and supplies
+// GetUserActivity by hand (see HybridStore).
 type Store interface {
+	DataStore
+	LogStore
+
+	// GetUserActivity is cross-cutting: it aggregates trace-derived usage (a
+	// LogStore concern) with the user's reminders and notes (a DataStore
+	// concern). Because no single sub-store owns all of its inputs, it lives
+	// only here and a hybrid backend must implement it by fanning out to both.
+	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
+}
+
+// DataStore is the operational/main-data half of the persistence interface:
+// users, skills, reminders, persona, memories, contacts, life goals, hiking,
+// travel, notes, OAuth tokens, settings, and model prices. In the hybrid
+// backend this is served by PostgreSQL.
+type DataStore interface {
 	// Users
 	CountUsers(ctx context.Context) (int, error)
 	CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error)
@@ -474,10 +495,6 @@ type Store interface {
 	SetLifeGoalDone(ctx context.Context, userID, id int64, done bool) error
 	DeleteLifeGoal(ctx context.Context, userID, id int64) error
 
-	// Activities (scoped to a user)
-	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
-	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
-
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)
 	CreateMountain(ctx context.Context, userID int64, name string) (*Mountain, error)
@@ -504,10 +521,6 @@ type Store interface {
 	ListNotes(ctx context.Context, userID int64, tag string) ([]Note, error)
 	SearchNotes(ctx context.Context, userID int64, query string) ([]Note, error)
 
-	// Message log (scoped to a user)
-	LogMessage(ctx context.Context, log *MessageLog) error
-	GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error)
-
 	// OAuth tokens
 	SaveToken(ctx context.Context, service string, tokenData []byte) error
 	GetToken(ctx context.Context, service string) ([]byte, error)
@@ -516,6 +529,29 @@ type Store interface {
 	GetSetting(ctx context.Context, key string) ([]byte, error)
 	SetSetting(ctx context.Context, key string, value []byte) error
 	GetAllSettings(ctx context.Context) (map[string][]byte, error)
+
+	// Model prices (per-model cost overrides)
+	ListModelPrices(ctx context.Context) ([]ModelPrice, error)
+	UpsertModelPrice(ctx context.Context, p ModelPrice) error
+	DeleteModelPrice(ctx context.Context, model string) error
+
+	// Lifecycle
+	Close() error
+}
+
+// LogStore is the append-only-logs half of the persistence interface: message
+// logs, agent traces, tool-usage records, trace scores, activities, and the
+// usage-analytics aggregates computed over them. These are write-mostly, have
+// no foreign keys into the main data, and are read back only by user/time
+// filters — in the hybrid backend this is served by MongoDB.
+type LogStore interface {
+	// Activities (scoped to a user)
+	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
+	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
+
+	// Message log (scoped to a user)
+	LogMessage(ctx context.Context, log *MessageLog) error
+	GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error)
 
 	// Traces & usage (source of truth for dashboard + logs)
 	CreateTrace(ctx context.Context, t *Trace) (int64, error)
@@ -527,15 +563,11 @@ type Store interface {
 	SaveTraceScore(ctx context.Context, sc *TraceScore) error
 	GetTraceScore(ctx context.Context, traceID int64) (*TraceScore, error)
 	ListUnscoredTraces(ctx context.Context, since time.Time, limit int) ([]Trace, error)
+
+	// Usage analytics (aggregates over traces & tool_usage)
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
 	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
 	UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error)
-	GetUserActivity(ctx context.Context, userID int64) (*UserActivity, error)
-
-	// Model prices (per-model cost overrides)
-	ListModelPrices(ctx context.Context) ([]ModelPrice, error)
-	UpsertModelPrice(ctx context.Context, p ModelPrice) error
-	DeleteModelPrice(ctx context.Context, model string) error
 
 	// Lifecycle
 	Close() error

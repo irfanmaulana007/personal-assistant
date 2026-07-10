@@ -13,6 +13,16 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// SQLiteStore is the single-file backend that implements the full Store
+// interface (both DataStore and LogStore halves) on its own. The hybrid backend
+// splits these across PostgreSQL and MongoDB; this assertion keeps SQLite honest
+// as the reference implementation.
+var (
+	_ Store     = (*SQLiteStore)(nil)
+	_ DataStore = (*SQLiteStore)(nil)
+	_ LogStore  = (*SQLiteStore)(nil)
+)
+
 type SQLiteStore struct {
 	db *sql.DB
 	// translator, when set, normalizes user text to English before persisting
