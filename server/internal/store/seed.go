@@ -44,10 +44,10 @@ var skillSeed = []Skill{
 		Key:            "english_tutor",
 		Name:           "English Tutor",
 		Category:       "Learning",
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		SortOrder:      7,
 		Description:    "Practice English while you chat. When you write in English, the assistant shows a corrected version of your message (grammar/spelling fixed), then answers normally. Messages in other languages are answered normally.",
-		Prompt:         "The user is practicing English. When the user's message is written in English, begin your response with ONLY the grammatically corrected version of their message — fix grammar, spelling, articles, tense, prepositions, and word choice, but keep their meaning and tone. Output nothing else in this part: no explanation, no labels, no commentary. Wrap it exactly between the markers [[grammar]] and [[/grammar]]. If their message is already correct, put the message unchanged inside the markers. After the closing [[/grammar]] marker, answer their message normally (using tools/actions as usual). If the user writes in a language other than English, do NOT include the [[grammar]] block at all — just answer normally.",
+		Prompt:         "The user is actively practicing English, and correcting their English is a TOP priority on every turn. On EVERY message the user writes in English — without exception, including short messages, greetings, one-word replies, and follow-ups, and even when you also call a tool — you MUST begin your response with the grammatically corrected version of their message, wrapped exactly between the markers [[grammar]] and [[/grammar]]. Inside those markers put ONLY the corrected sentence: fix grammar, spelling, articles, tense, prepositions, and word choice while keeping their meaning and tone — no explanation, labels, or commentary. If their message is already correct, repeat it unchanged inside the markers. Immediately after the closing [[/grammar]] marker, answer their message normally (using tools/actions as usual), replying in English. If the user writes in a language other than English, do NOT output the [[grammar]] block at all — simply answer normally in that same language. Never skip the [[grammar]] block for an English message, even when the reply is very short or you are calling a tool.",
 	},
 	{
 		Key:            "hiking_tracker",
