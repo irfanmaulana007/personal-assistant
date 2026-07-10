@@ -35,6 +35,13 @@
 - **Charts:** Recharts for all data visualizations.
 - **Layout:** page content uses the full available width — do not constrain it
   with `max-w-*` wrappers.
+- **Theming:** always style UI for both light and dark theme. Dark mode is
+  enabled via a `.dark` class on `<html>` (see `src/lib/theme.ts`), so every
+  color utility that sets a background, border, or text color must have a
+  matching `dark:` variant. Follow the existing palette: page background
+  `bg-gray-100 dark:bg-gray-900`, cards `bg-white dark:bg-gray-800`, borders
+  `border-gray-200 dark:border-gray-700`, headings `text-gray-900
+  dark:text-gray-50`, secondary text `text-gray-500 dark:text-gray-400`.
 
 ## Pull requests
 
