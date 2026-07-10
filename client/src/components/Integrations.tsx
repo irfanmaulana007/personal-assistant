@@ -248,7 +248,9 @@ function ToolkitCard({
               className="flex items-center justify-between gap-3 px-3 py-2"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm text-gray-700">Account {i + 1}</div>
+                <div className="truncate text-sm text-gray-700">
+                  {a.label || `Account ${i + 1}`}
+                </div>
                 <span
                   className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[a.status].cls}`}
                 >

@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -76,6 +77,7 @@ type Connection struct {
 	ID          string
 	Status      string // ACTIVE, INITIATED, FAILED, INACTIVE
 	ToolkitSlug string
+	Label       string // the connected account's email/identifier, when discoverable
 }
 
 type authConfig struct {
@@ -122,14 +124,7 @@ func (c *Client) EnsureAuthConfig(ctx context.Context, apiKey, toolkitSlug strin
 // ListConnections returns a user's connections.
 func (c *Client) ListConnections(ctx context.Context, apiKey, userID string) ([]Connection, error) {
 	var resp struct {
-		Items []struct {
-			ID      string `json:"id"`
-			Status  string `json:"status"`
-			Toolkit struct {
-				Slug string `json:"slug"`
-			} `json:"toolkit"`
-			ToolkitSlug string `json:"toolkit_slug"`
-		} `json:"items"`
+		Items []json.RawMessage `json:"items"`
 	}
 	q := url.Values{}
 	q.Set("user_ids", userID)
@@ -137,11 +132,74 @@ func (c *Client) ListConnections(ctx context.Context, apiKey, userID string) ([]
 		return nil, err
 	}
 	out := make([]Connection, 0, len(resp.Items))
-	for _, it := range resp.Items {
+	for _, raw := range resp.Items {
+		var it struct {
+			ID      string `json:"id"`
+			Status  string `json:"status"`
+			Toolkit struct {
+				Slug string `json:"slug"`
+			} `json:"toolkit"`
+			ToolkitSlug string `json:"toolkit_slug"`
+		}
+		if err := json.Unmarshal(raw, &it); err != nil {
+			continue
+		}
 		slug := firstNonEmpty(it.Toolkit.Slug, it.ToolkitSlug)
-		out = append(out, Connection{ID: it.ID, Status: it.Status, ToolkitSlug: strings.ToLower(slug)})
+		out = append(out, Connection{
+			ID:          it.ID,
+			Status:      it.Status,
+			ToolkitSlug: strings.ToLower(slug),
+			Label:       connectionLabel(raw),
+		})
 	}
 	return out, nil
+}
+
+var emailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+
+// connectionLabel extracts the connected account's email from Composio's
+// (provider-shaped) connection payload — first from any key containing "email",
+// then any email-looking value anywhere. Returns "" when none is found.
+func connectionLabel(raw json.RawMessage) string {
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return ""
+	}
+	if e := findEmail(v, true); e != "" {
+		return e
+	}
+	return findEmail(v, false)
+}
+
+func findEmail(v any, preferEmailKey bool) string {
+	switch t := v.(type) {
+	case map[string]any:
+		if preferEmailKey {
+			for k, val := range t {
+				if s, ok := val.(string); ok && strings.Contains(strings.ToLower(k), "email") {
+					if m := emailRe.FindString(s); m != "" {
+						return m
+					}
+				}
+			}
+		}
+		for _, val := range t {
+			if e := findEmail(val, preferEmailKey); e != "" {
+				return e
+			}
+		}
+	case []any:
+		for _, val := range t {
+			if e := findEmail(val, preferEmailKey); e != "" {
+				return e
+			}
+		}
+	case string:
+		if !preferEmailKey {
+			return emailRe.FindString(t)
+		}
+	}
+	return ""
 }
 
 // InitiateConnection starts a hosted OAuth connection and returns the redirect
