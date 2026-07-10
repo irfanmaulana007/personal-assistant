@@ -155,6 +155,9 @@ func main() {
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
 		wa = whatsapp.New(cfg.WhatsApp.Database, log)
+		// Answer the owner's configured number(s) — set OWNER_JID to your
+		// personal (and work) numbers when the assistant runs on its own account.
+		wa.SetAllowedSenders(cfg.Owner.AllowedJIDs())
 		wa.SetMessageHandler(func(msg *transport.Message) {
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.
@@ -244,11 +247,16 @@ func main() {
 		// Reminders are delivered to the paired WhatsApp account (derived from
 		// pairing), regardless of the reminder's stored recipient.
 		reminderHandler.SetSendFunc(func(ctx context.Context, _ string, text string) error {
-			owner := wa.OwnerJID()
-			if owner == "" {
+			// Deliver to the owner's primary number (OWNER_JID). Fall back to the
+			// paired account itself ("message yourself" mode) when none is set.
+			to := cfg.Owner.PrimaryJID()
+			if to == "" {
+				to = wa.OwnerJID()
+			}
+			if to == "" {
 				return fmt.Errorf("whatsapp not connected")
 			}
-			return wa.SendMessage(ctx, owner, text)
+			return wa.SendMessage(ctx, to, text)
 		})
 
 		if err := wa.Init(ctx); err != nil {

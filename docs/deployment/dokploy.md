@@ -35,7 +35,7 @@ Set these on the Application (values are read at container start):
 | ----------------- | -------- | --------------------------------------------------------------------------- |
 | `ENCRYPTION_KEY`  | **yes**  | 32 bytes, base64. Encrypts stored secrets. **Generate once and never change it** — rotating it makes previously stored secrets unreadable. Generate with `openssl rand -base64 32`. |
 | `WEB_PASSWORD`    | **yes**  | Password gate for the web app (required because `web.enabled` is true).      |
-| `OWNER_JID`       | **yes**  | Your WhatsApp JID, e.g. `6281234567890@s.whatsapp.net` (config validation requires it; used to match your inbound messages). |
+| `OWNER_JID`       | **yes**  | WhatsApp number(s) allowed to talk to the assistant, as JIDs, e.g. `6281234567890@s.whatsapp.net`. **Comma-separate several** to allow more than one (e.g. your personal + work numbers). The assistant runs on the account you pair via the Integrations QR and answers these numbers; the **first** one also receives reminders and the daily recap. |
 | `LOG_LEVEL`       | no       | `debug` \| `info` \| `warn` \| `error` (default `info`).                     |
 
 > The **LLM provider, API key, model, and base URL are NOT env vars** — they are set
@@ -108,10 +108,13 @@ Verify: `https://assistant.example.com/api/health` should return `{"status":"ok"
 3. Optional: **Settings → Display** to pick your timezone (UTC / GMT+7) and currency
    (USD / IDR).
 4. Optional: **Skills** — enable the skills you want.
-5. Optional: **WhatsApp** — go to **Integrations** and link WhatsApp by scanning the QR
-   with your phone (WhatsApp → Linked Devices). The session persists in the `/app/data`
-   volume, so you only pair once. Reminders and the daily schedule recap are delivered to
-   this paired account.
+5. Optional: **WhatsApp** — go to **Integrations** and scan the QR (WhatsApp → Linked
+   Devices) with the account the **assistant should run as**. A dedicated assistant number
+   works well: pair that number, then set `OWNER_JID` to the number(s) that should be able
+   to chat with it (your personal, and/or work — comma-separated). The assistant answers
+   those numbers and replies to whoever wrote; the first `OWNER_JID` number gets reminders
+   and the daily recap. (If you leave `OWNER_JID` as the paired number itself, it works in
+   "Message Yourself" mode instead.) The session persists in `/app/data`, so you pair once.
 6. Optional: **Integrations (Composio)** — to use Gmail, **Google Calendar**, GitHub, or
    Sentry, first paste your **Composio API key** on the Integrations page, then click
    **Connect** on each app and complete the hosted OAuth. For Google Calendar you can
