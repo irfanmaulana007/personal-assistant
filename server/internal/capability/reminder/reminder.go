@@ -886,7 +886,6 @@ func reminderEvents(r store.Reminder, tz *time.Location) []mirrorEvent {
 		var rrule string
 		switch r.RepeatMode {
 		case "daily":
-			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
 			rrule = "RRULE:FREQ=DAILY"
 		case "weekly":
 			days := make([]string, 0, len(r.Weekdays))
@@ -898,13 +897,11 @@ func reminderEvents(r store.Reminder, tz *time.Location) []mirrorEvent {
 			if len(days) == 0 {
 				continue
 			}
-			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
 			rrule = "RRULE:FREQ=WEEKLY;BYDAY=" + strings.Join(days, ",")
 		case "monthly":
 			if r.DayOfMonth < 1 || r.DayOfMonth > 31 {
 				continue
 			}
-			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
 			rrule = fmt.Sprintf("RRULE:FREQ=MONTHLY;BYMONTHDAY=%d", r.DayOfMonth)
 		default: // once
 			day, err := time.ParseInLocation("2006-01-02", r.OnceDate, tz)
@@ -913,12 +910,38 @@ func reminderEvents(r store.Reminder, tz *time.Location) []mirrorEvent {
 			}
 			start = time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, tz)
 		}
+		// For recurring reminders anchor DTSTART to the next real occurrence (not
+		// "today"), so the event lands on the correct day in Google Calendar and
+		// the reconciler's dedup window — centered on the start — matches the
+		// existing recurring instance instead of re-creating it every cycle.
+		if rrule != "" {
+			var ok bool
+			if start, ok = nextRecurrenceStart(r, hh, mm, now, tz); !ok {
+				continue
+			}
+		}
 		out = append(out, mirrorEvent{
 			ev:    calendar.Event{Title: reminderBody(r), Start: start, End: start.Add(time.Hour)},
 			rrule: rrule,
 		})
 	}
 	return out
+}
+
+// nextRecurrenceStart returns the start instant of the next occurrence of a
+// recurring reminder at or after today, at the given time-of-day. It reuses
+// dayQualifies so the calendar anchor matches the reminder's own firing rule
+// (including monthly day-of-month clamping). ok is false if no day qualifies
+// within a year (shouldn't happen for valid daily/weekly/monthly reminders).
+func nextRecurrenceStart(r store.Reminder, hh, mm int, now time.Time, tz *time.Location) (time.Time, bool) {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz)
+	for i := 0; i < 366; i++ {
+		day := today.AddDate(0, 0, i)
+		if dayQualifies(r, day) {
+			return time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, tz), true
+		}
+	}
+	return time.Time{}, false
 }
 
 // calendarHash fingerprints the fields that define a reminder's calendar mirror,

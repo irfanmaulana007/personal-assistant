@@ -189,19 +189,22 @@ func (s *Service) DeleteEvent(ctx context.Context, userID int64, connID, eventID
 }
 
 // parseCreatedEventID tolerantly pulls the new event's id out of Composio's
-// create response (top-level, or under a "data"/"response_data" wrapper).
+// create response. ExecuteTool already unwraps the outer "data" envelope, so at
+// runtime the id sits at the top level or under "response_data"; the extra
+// "data.*" fallbacks tolerate a response that wasn't unwrapped.
 func parseCreatedEventID(raw string) string {
+	type idHolder struct {
+		ID           string `json:"id"`
+		ResponseData struct {
+			ID string `json:"id"`
+		} `json:"response_data"`
+	}
 	var w struct {
-		ID   string `json:"id"`
-		Data struct {
-			ID           string `json:"id"`
-			ResponseData struct {
-				ID string `json:"id"`
-			} `json:"response_data"`
-		} `json:"data"`
+		idHolder
+		Data idHolder `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(raw), &w)
-	return firstNonEmpty(w.ID, w.Data.ID, w.Data.ResponseData.ID)
+	return firstNonEmpty(w.ID, w.ResponseData.ID, w.Data.ID, w.Data.ResponseData.ID)
 }
 
 // ListEvents returns events in [from, to) across every connected account and
@@ -233,17 +236,18 @@ func (s *Service) calendarIDs(ctx context.Context, key, uid, connID string) []st
 		s.log.Warn("list calendars", "error", err)
 		return []string{"primary"}
 	}
-	var w struct {
-		Items []calItem `json:"items"`
-		Data  struct {
+	type calHolder struct {
+		Items        []calItem `json:"items"`
+		ResponseData struct {
 			Items []calItem `json:"items"`
-		} `json:"data"`
+		} `json:"response_data"`
+	}
+	var w struct {
+		calHolder
+		Data calHolder `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(raw), &w)
-	items := w.Items
-	if len(items) == 0 {
-		items = w.Data.Items
-	}
+	items := firstNonEmptyCalItems(w.Items, w.ResponseData.Items, w.Data.Items, w.Data.ResponseData.Items)
 	ids := make([]string, 0, len(items))
 	for _, it := range items {
 		if it.ID != "" {
@@ -292,22 +296,31 @@ type gTime struct {
 	Date     string `json:"date"`
 }
 
-// parseEvents tolerantly extracts an events array from Composio's response,
-// which may nest under "items"/"events" and/or a "data" wrapper.
+// parseEvents tolerantly extracts an events array from Composio's response.
+// ExecuteTool already unwraps the outer "data" envelope, so at runtime the array
+// sits at the top level or under "response_data"; the extra "data.*" fallbacks
+// tolerate a response that wasn't unwrapped.
 func (s *Service) parseEvents(raw, calID string) []Event {
-	var w struct {
-		Items  []gEvent `json:"items"`
-		Events []gEvent `json:"events"`
-		Data   struct {
+	type eventsHolder struct {
+		Items        []gEvent `json:"items"`
+		Events       []gEvent `json:"events"`
+		ResponseData struct {
 			Items  []gEvent `json:"items"`
 			Events []gEvent `json:"events"`
-		} `json:"data"`
+		} `json:"response_data"`
+	}
+	var w struct {
+		eventsHolder
+		Data eventsHolder `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(raw), &w); err != nil {
 		s.log.Warn("parse events", "error", err)
 		return nil
 	}
-	items := firstNonEmptyEvents(w.Items, w.Events, w.Data.Items, w.Data.Events)
+	items := firstNonEmptyEvents(
+		w.Items, w.Events, w.ResponseData.Items, w.ResponseData.Events,
+		w.Data.Items, w.Data.Events, w.Data.ResponseData.Items, w.Data.ResponseData.Events,
+	)
 	out := make([]Event, 0, len(items))
 	for _, it := range items {
 		start, allDay, ok := s.parseGTime(it.Start)
@@ -343,6 +356,15 @@ func (s *Service) parseGTime(t gTime) (time.Time, bool, bool) {
 }
 
 func firstNonEmptyEvents(lists ...[]gEvent) []gEvent {
+	for _, l := range lists {
+		if len(l) > 0 {
+			return l
+		}
+	}
+	return nil
+}
+
+func firstNonEmptyCalItems(lists ...[]calItem) []calItem {
 	for _, l := range lists {
 		if len(l) > 0 {
 			return l

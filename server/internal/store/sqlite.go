@@ -15,6 +15,34 @@ import (
 
 type SQLiteStore struct {
 	db *sql.DB
+	// translator, when set, normalizes user text to English before persisting
+	// reminders and life goals. Optional — nil means store text as-is.
+	translator Translator
+}
+
+// SetTranslator injects the English-normalization translator. It is wired after
+// construction (in main) because the translator itself depends on settings,
+// which read from this store.
+func (s *SQLiteStore) SetTranslator(t Translator) {
+	s.translator = t
+}
+
+// enTitle normalizes a title/name to English, or returns it unchanged when no
+// translator is configured (e.g. in tests).
+func (s *SQLiteStore) enTitle(ctx context.Context, text string) string {
+	if s.translator == nil {
+		return text
+	}
+	return s.translator.Title(ctx, text)
+}
+
+// enText normalizes free-form text to English, or returns it unchanged when no
+// translator is configured.
+func (s *SQLiteStore) enText(ctx context.Context, text string) string {
+	if s.translator == nil {
+		return text
+	}
+	return s.translator.Text(ctx, text)
 }
 
 func NewSQLite(dbPath string) (*SQLiteStore, error) {
@@ -478,6 +506,7 @@ func (s *SQLiteStore) DeleteUser(ctx context.Context, id int64) error {
 const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, last_fired_at, calendar_conn, calendar_event_ids, calendar_hash, remind_at, created_at, notified, cancelled`
 
 func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error) {
+	in.Title = s.enTitle(ctx, in.Title)
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO reminders (user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, remind_at, created_at)
@@ -497,6 +526,7 @@ func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, in Remin
 // path (no wall-clock recurrence semantics). Times stays empty so the scheduler
 // uses the legacy remind_at branch.
 func (s *SQLiteStore) CreateLegacyReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error) {
+	message = s.enTitle(ctx, message)
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO reminders (user_id, title, message, repeat_mode, remind_at, created_at) VALUES (?, ?, ?, 'once', ?, ?)`,
@@ -548,6 +578,7 @@ func (s *SQLiteStore) ListEnabledForOwner(ctx context.Context, ownerID int64) ([
 }
 
 func (s *SQLiteStore) UpdateReminder(ctx context.Context, userID, id int64, in ReminderInput) error {
+	in.Title = s.enTitle(ctx, in.Title)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE reminders SET title = ?, message = ?, repeat_mode = ?, times = ?, weekdays = ?, day_of_month = ?, once_date = ?, event_at = ?, offsets = ?, enabled = ?
 		 WHERE id = ? AND user_id = ?`,
