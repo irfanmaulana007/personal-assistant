@@ -44,6 +44,16 @@ func validPlatform(p string) string {
 	}
 }
 
+// validScoreState whitelists the logs judge-score filter values.
+func validScoreState(s string) string {
+	switch s {
+	case "scored", "unscored", "low":
+		return s
+	default:
+		return ""
+	}
+}
+
 type usagePlatformResp struct {
 	Platform    string `json:"platform"`
 	Requests    int    `json:"requests"`

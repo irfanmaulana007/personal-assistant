@@ -263,8 +263,22 @@ export interface Trace {
   status: string;
   error?: string;
   estimated_cost_usd: number;
+  score?: TraceScore;
   created_at: string;
 }
+
+/** LLM-as-judge quality verdict for a trace (each dimension 1–5). */
+export interface TraceScore {
+  accuracy: number;
+  helpfulness: number;
+  safety: number;
+  overall: number;
+  rationale?: string;
+  judge_model?: string;
+}
+
+/** Judge-score filter for the logs list. */
+export type ScoreState = '' | 'scored' | 'unscored' | 'low';
 
 export interface LogsResponse {
   traces: Trace[];

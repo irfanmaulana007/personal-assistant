@@ -3,10 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
+import { ScoreFilter } from './ScoreFilter';
 import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
-import type { Trace, Channel } from '../types';
+import type { Trace, TraceScore, Channel, ScoreState } from '../types';
 
 const PAGE_SIZE = 25;
 
@@ -36,6 +37,28 @@ const channelBadge: Record<string, string> = {
   whatsapp: 'bg-green-100 text-green-700',
 };
 
+// scoreTone maps an overall 1–5 judge score to a traffic-light colour.
+function scoreTone(overall: number): string {
+  if (overall >= 4) return 'bg-green-100 text-green-700';
+  if (overall >= 3) return 'bg-amber-100 text-amber-700';
+  return 'bg-red-100 text-red-700';
+}
+
+/** A compact pill showing the judge's overall score, or an em dash if unjudged. */
+function ScoreBadge({ score }: { score?: TraceScore }) {
+  if (!score) return <span className="text-gray-300">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreTone(
+        score.overall,
+      )}`}
+      title={score.rationale}
+    >
+      {score.overall.toFixed(1)}
+    </span>
+  );
+}
+
 export function Logs() {
   const { formatDate, formatMoney } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,6 +66,7 @@ export function Logs() {
   const from = searchParams.get('from') || def.from;
   const to = searchParams.get('to') || def.to;
   const channel = (searchParams.get('channel') as Channel) || '';
+  const score = (searchParams.get('score') as ScoreState) || '';
 
   const [traces, setTraces] = useState<Trace[]>([]);
   const [loading, setLoading] = useState(true); // initial / filter-change load
@@ -69,7 +93,7 @@ export function Logs() {
   useEffect(() => {
     let active = true;
     loadingRef.current = true;
-    getLogs(from, to, channel, PAGE_SIZE, 0)
+    getLogs(from, to, channel, PAGE_SIZE, 0, score)
       .then((d) => {
         if (!active) return;
         setTraces(d.traces ?? []);
@@ -89,14 +113,14 @@ export function Logs() {
     return () => {
       active = false;
     };
-  }, [from, to, channel]);
+  }, [from, to, channel, score]);
 
   // Append the next page (cursor-based) for infinite scroll.
   const loadMore = useCallback(() => {
     if (loadingRef.current || nextCursor === 0) return;
     loadingRef.current = true;
     setLoadingMore(true);
-    getLogs(from, to, channel, PAGE_SIZE, nextCursor)
+    getLogs(from, to, channel, PAGE_SIZE, nextCursor, score)
       .then((d) => {
         setTraces((prev) => [...prev, ...(d.traces ?? [])]);
         setNextCursor(d.next_cursor ?? 0);
@@ -106,7 +130,7 @@ export function Logs() {
         setLoadingMore(false);
         loadingRef.current = false;
       });
-  }, [from, to, channel, nextCursor]);
+  }, [from, to, channel, score, nextCursor]);
 
   // Trigger loadMore when the sentinel scrolls into view.
   useEffect(() => {
@@ -151,6 +175,7 @@ export function Logs() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <ScoreFilter value={score} onChange={(s) => patchParams({ score: s })} />
             <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
             <DateRangePicker
               from={from}
@@ -172,6 +197,7 @@ export function Logs() {
                   <th className="px-4 py-2.5 font-medium">User</th>
                   <th className="px-4 py-2.5 font-medium">Channel</th>
                   <th className="px-4 py-2.5 font-medium">Model</th>
+                  <th className="px-4 py-2.5 text-center font-medium">Quality</th>
                   <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
                   <th className="px-4 py-2.5 text-right font-medium">Duration</th>
                   <th className="px-4 py-2.5 text-right font-medium">Est. cost</th>
@@ -181,13 +207,13 @@ export function Logs() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-500">
+                    <td colSpan={9} className="px-4 py-6 text-sm text-gray-500">
                       Loading…
                     </td>
                   </tr>
                 ) : traces.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-400">
+                    <td colSpan={9} className="px-4 py-6 text-sm text-gray-400">
                       No runs in this range yet.
                     </td>
                   </tr>
@@ -221,6 +247,9 @@ export function Logs() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500">{t.model || '—'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <ScoreBadge score={t.score} />
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600">
                         {formatTokens(t.total_tokens)}
                       </td>
@@ -238,7 +267,7 @@ export function Logs() {
                 )}
                 {loadingMore && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-3 text-center text-xs text-gray-400">
+                    <td colSpan={9} className="px-4 py-3 text-center text-xs text-gray-400">
                       Loading more…
                     </td>
                   </tr>
@@ -351,6 +380,38 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
           )}
         </div>
       </div>
+
+      {trace.score && (
+        <Section title="Quality score">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreTone(
+                trace.score.overall,
+              )}`}
+            >
+              {trace.score.overall.toFixed(1)} / 5
+            </span>
+            {(
+              [
+                ['Accuracy', trace.score.accuracy],
+                ['Helpfulness', trace.score.helpfulness],
+                ['Safety', trace.score.safety],
+              ] as const
+            ).map(([label, val]) => (
+              <span key={label} className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600">
+                <span className="text-gray-400">{label}</span>{' '}
+                <span className="font-semibold tabular-nums text-gray-800">{val}</span>
+              </span>
+            ))}
+          </div>
+          {trace.score.rationale && (
+            <p className="mt-2.5 text-sm text-gray-700">{trace.score.rationale}</p>
+          )}
+          {trace.score.judge_model && (
+            <p className="mt-1.5 text-[11px] text-gray-400">Judged by {trace.score.judge_model}</p>
+          )}
+        </Section>
+      )}
 
       <Section title="Input">
         <p className="whitespace-pre-wrap text-sm text-gray-800">{trace.input || '(none)'}</p>

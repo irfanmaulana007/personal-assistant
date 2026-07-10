@@ -109,7 +109,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Record the full trace (dashboard + logs) and per-tool usage.
-	_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
+	traceID, _ := s.store.CreateTrace(r.Context(), &store.Trace{
 		UserID:           userID,
 		Platform:         "web",
 		Input:            inputBody,
@@ -127,6 +127,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 	for _, tool := range res.Tools {
 		_ = s.store.LogToolUsage(r.Context(), userID, tool.Name, "web")
+	}
+	// Judge a sampled fraction of live replies out of band (never blocks).
+	if s.eval != nil {
+		s.eval.JudgeInline(r.Context(), traceID)
 	}
 
 	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply})

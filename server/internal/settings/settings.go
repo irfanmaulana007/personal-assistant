@@ -6,6 +6,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
@@ -28,6 +29,18 @@ const (
 	KeyReminderDefaultTime = "reminder_default_time" // local "HH:MM" used when a reminder has no time
 
 	KeyWhatsAppAllowlist = "whatsapp_allowlist" // comma-joined JIDs allowed to chat with the assistant
+
+	KeyEvalEnabled          = "eval_enabled"            // "true"/"false"; absent ⇒ enabled
+	KeyEvalJudgeModel       = "eval_judge_model"        // model id for the judge; empty ⇒ reuse the agent model
+	KeyEvalJudgeTime        = "eval_judge_time"         // local "HH:MM" for the nightly batch pass
+	KeyEvalInlineSampleRate = "eval_inline_sample_rate" // "0.0".."1.0"; fraction of live replies judged inline
+	KeyEvalLastRun          = "eval_last_run"           // "YYYY-MM-DD" of the last nightly batch
+)
+
+// Defaults for the response-evaluation (LLM-as-judge) loop.
+const (
+	DefaultEvalJudgeTime        = "02:00"
+	DefaultEvalInlineSampleRate = 0.2
 )
 
 // DefaultReminderTime is used when the user hasn't configured one.
@@ -274,6 +287,95 @@ func (s *Service) ReminderDigestLastSent(ctx context.Context) string {
 // SetReminderDigestLastSent records the date a recap was last sent.
 func (s *Service) SetReminderDigestLastSent(ctx context.Context, date string) error {
 	return s.store.SetSetting(ctx, KeyReminderDigestLast, []byte(date))
+}
+
+// --- Response evaluation (LLM-as-judge) ---
+
+// EvalEnabled reports whether response scoring is globally enabled. On by
+// default; only an explicit "false" disables it.
+func (s *Service) EvalEnabled(ctx context.Context) bool {
+	v, err := s.getString(ctx, KeyEvalEnabled)
+	if err != nil {
+		return true
+	}
+	return v != "false"
+}
+
+// SetEvalEnabled persists the global response-scoring on/off toggle.
+func (s *Service) SetEvalEnabled(ctx context.Context, enabled bool) error {
+	val := "true"
+	if !enabled {
+		val = "false"
+	}
+	return s.store.SetSetting(ctx, KeyEvalEnabled, []byte(val))
+}
+
+// EvalJudgeModel returns the model id to use for the judge, or "" to reuse the
+// configured agent model.
+func (s *Service) EvalJudgeModel(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyEvalJudgeModel)
+	return v
+}
+
+// SetEvalJudgeModel persists the judge model override ("" reuses the agent model).
+func (s *Service) SetEvalJudgeModel(ctx context.Context, model string) error {
+	return s.store.SetSetting(ctx, KeyEvalJudgeModel, []byte(model))
+}
+
+// EvalJudgeTime returns the local "HH:MM" at which the nightly batch pass runs.
+func (s *Service) EvalJudgeTime(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyEvalJudgeTime)
+	if v == "" {
+		return DefaultEvalJudgeTime
+	}
+	return v
+}
+
+// SetEvalJudgeTime persists the nightly batch time ("HH:MM").
+func (s *Service) SetEvalJudgeTime(ctx context.Context, hhmm string) error {
+	return s.store.SetSetting(ctx, KeyEvalJudgeTime, []byte(hhmm))
+}
+
+// EvalInlineSampleRate returns the fraction (0.0–1.0) of live replies to judge
+// inline, right after they are sent. 0 disables inline judging.
+func (s *Service) EvalInlineSampleRate(ctx context.Context) float64 {
+	v, _ := s.getString(ctx, KeyEvalInlineSampleRate)
+	if v == "" {
+		return DefaultEvalInlineSampleRate
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return DefaultEvalInlineSampleRate
+	}
+	if f < 0 {
+		f = 0
+	}
+	if f > 1 {
+		f = 1
+	}
+	return f
+}
+
+// SetEvalInlineSampleRate persists the inline sampling fraction (clamped 0–1).
+func (s *Service) SetEvalInlineSampleRate(ctx context.Context, rate float64) error {
+	if rate < 0 {
+		rate = 0
+	}
+	if rate > 1 {
+		rate = 1
+	}
+	return s.store.SetSetting(ctx, KeyEvalInlineSampleRate, []byte(strconv.FormatFloat(rate, 'f', -1, 64)))
+}
+
+// EvalLastRun returns the "YYYY-MM-DD" of the last nightly batch, or "".
+func (s *Service) EvalLastRun(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyEvalLastRun)
+	return v
+}
+
+// SetEvalLastRun records the date the nightly batch last ran.
+func (s *Service) SetEvalLastRun(ctx context.Context, date string) error {
+	return s.store.SetSetting(ctx, KeyEvalLastRun, []byte(date))
 }
 
 func (s *Service) getString(ctx context.Context, key string) (string, error) {

@@ -30,6 +30,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composiotools"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
@@ -151,6 +152,10 @@ func main() {
 	// LLM tool-calling agent (replaces the regex parser).
 	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, personaSvc, router, cfg.Owner, composioTools, log)
 
+	// LLM-as-judge that scores the assistant's own replies (inline sample +
+	// nightly batch). Shared by the web and WhatsApp ingress paths.
+	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, timezone, log)
+
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
@@ -250,7 +255,9 @@ func main() {
 					})
 				}
 			}
-			_, _ = db.CreateTrace(ctx, trace)
+			traceID, _ := db.CreateTrace(ctx, trace)
+			// Judge a sampled fraction of live replies out of band.
+			evalJudge.JudgeInline(ctx, traceID)
 		})
 
 		// Reminders are delivered to the paired WhatsApp account (derived from
@@ -300,6 +307,7 @@ func main() {
 			assistant,
 			settingsSvc,
 			llmClient,
+			evalJudge,
 			composioClient,
 			waCtl,
 			db,
@@ -322,6 +330,9 @@ func main() {
 		go reminderHandler.StartScheduler(ctx)
 		log.Info("reminder scheduler started")
 	}
+
+	// Start the response-evaluation scheduler (nightly LLM-as-judge batch).
+	go evalJudge.StartScheduler(ctx)
 
 	log.Info("personal assistant is running — press Ctrl+C to stop")
 
