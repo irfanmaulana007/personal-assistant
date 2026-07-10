@@ -23,6 +23,15 @@ var skillSeed = []Skill{
 		Prompt:         "You can look up saved contacts with the contact_search tool and save new ones with contact_add. When the user asks about a person (their phone, email, or a note), search for them. When the user shares contact details (\"save John's number 0812…\", \"Sarah's email is …\"), save them. Always confirm what you found or saved, and never invent contact details.",
 	},
 	{
+		Key:            "life_goals",
+		Name:           "Life Goals",
+		Category:       "Personal",
+		DefaultEnabled: true,
+		SortOrder:      1,
+		Description:    "Keep a checklist of things you want to do in life — \"take a swimming course\", \"get a gym membership\", \"visit Japan\". Add them just by mentioning them, ask to see your list, and check them off as you go. Also manageable from the Life Goals page.",
+		Prompt:         "The user keeps a life list — a checklist of things they want to do in life. Use lifegoal_add when they mention wanting to do or achieve something someday, lifegoal_list to show the checklist and its progress, lifegoal_check to mark an item done when they've achieved it, and lifegoal_delete to remove one. Identify an item to check or delete by its number from the last listing or by its title. Confirm what you added or checked off, and be encouraging when they complete something.",
+	},
+	{
 		Key:            "travel_control",
 		Name:           "Travel Control",
 		Category:       "Finance",
@@ -44,10 +53,10 @@ var skillSeed = []Skill{
 		Key:            "english_tutor",
 		Name:           "English Tutor",
 		Category:       "Learning",
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		SortOrder:      7,
 		Description:    "Practice English while you chat. When you write in English, the assistant shows a corrected version of your message (grammar/spelling fixed), then answers normally. Messages in other languages are answered normally.",
-		Prompt:         "The user is practicing English. When the user's message is written in English, begin your response with ONLY the grammatically corrected version of their message — fix grammar, spelling, articles, tense, prepositions, and word choice, but keep their meaning and tone. Output nothing else in this part: no explanation, no labels, no commentary. Wrap it exactly between the markers [[grammar]] and [[/grammar]]. If their message is already correct, put the message unchanged inside the markers. After the closing [[/grammar]] marker, answer their message normally (using tools/actions as usual). If the user writes in a language other than English, do NOT include the [[grammar]] block at all — just answer normally.",
+		Prompt:         "The user is actively practicing English, and correcting their English is a TOP priority on every turn. On EVERY message the user writes in English — without exception, including short messages, greetings, one-word replies, and follow-ups, and even when you also call a tool — you MUST begin your response with the grammatically corrected version of their message, wrapped exactly between the markers [[grammar]] and [[/grammar]]. Inside those markers put ONLY the corrected sentence: fix grammar, spelling, articles, tense, prepositions, and word choice while keeping their meaning and tone — no explanation, labels, or commentary. If their message is already correct, repeat it unchanged inside the markers. Immediately after the closing [[/grammar]] marker, answer their message normally (using tools/actions as usual), replying in English. If the user writes in a language other than English, do NOT output the [[grammar]] block at all — simply answer normally in that same language. Never skip the [[grammar]] block for an English message, even when the reply is very short or you are calling a tool.",
 	},
 	{
 		Key:            "hiking_tracker",

@@ -13,13 +13,22 @@ import type {
 import { WhatsAppCard } from './WhatsAppCard';
 
 const inputClass =
-  'rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
 
 const statusStyles: Record<IntegrationStatus, { label: string; cls: string }> = {
-  connected: { label: 'Connected', cls: 'bg-green-100 text-green-700' },
-  pending: { label: 'Pending', cls: 'bg-amber-100 text-amber-700' },
-  error: { label: 'Error', cls: 'bg-red-100 text-red-700' },
-  disconnected: { label: 'Not connected', cls: 'bg-gray-100 text-gray-500' },
+  connected: {
+    label: 'Connected',
+    cls: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
+  },
+  pending: {
+    label: 'Pending',
+    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  },
+  error: { label: 'Error', cls: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' },
+  disconnected: {
+    label: 'Not connected',
+    cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  },
 };
 
 // Brand marks for each supported toolkit, keyed by Composio slug. Single-path
@@ -93,24 +102,28 @@ export function Integrations() {
   }, [refreshKey]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Integrations</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Connect your apps through Composio.</p>
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Integrations
+          </h1>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Connect your apps through Composio.
+          </p>
         </div>
         <button
           onClick={reload}
-          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
         >
           Refresh
         </button>
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       ) : data ? (
         <>
           <ComposioKeyCard data={data} onSaved={setData} />
@@ -155,15 +168,18 @@ function ComposioKeyCard({
   };
 
   return (
-    <form onSubmit={save} className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
+    <form
+      onSubmit={save}
+      className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+    >
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Composio API key</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">Composio API key</h2>
         {data.configured ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+          <span className="rounded-full bg-green-100 dark:bg-green-500/15 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300">
             Configured
           </span>
         ) : (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+          <span className="rounded-full bg-amber-100 dark:bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
             Not configured
           </span>
         )}
@@ -184,13 +200,13 @@ function ComposioKeyCard({
         <button
           type="submit"
           disabled={busy}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
         >
           Save
         </button>
-        {msg && <span className="text-sm text-gray-500">{msg}</span>}
+        {msg && <span className="text-sm text-gray-500 dark:text-gray-400">{msg}</span>}
       </div>
-      <p className="mt-2 text-xs text-gray-400">
+      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
         Stored encrypted on the server. Get a key from the Composio dashboard.
       </p>
     </form>
@@ -237,12 +253,14 @@ function ToolkitCard({
   const accounts = toolkit.accounts ?? [];
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ToolkitIcon slug={toolkit.slug} name={toolkit.name} />
           <div>
-            <div className="text-sm font-semibold text-gray-900">{toolkit.name}</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+              {toolkit.name}
+            </div>
             <span
               className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}
             >
@@ -257,7 +275,7 @@ function ToolkitCard({
           <button
             onClick={connect}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
           >
             {busy ? 'Opening…' : accounts.length > 0 ? 'Add account' : 'Connect'}
           </button>
@@ -265,7 +283,7 @@ function ToolkitCard({
           <button
             onClick={() => disconnect()}
             disabled={busy}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            className="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-500/15 disabled:opacity-50"
           >
             Disconnect
           </button>
@@ -273,7 +291,7 @@ function ToolkitCard({
           <button
             onClick={connect}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
           >
             {busy ? 'Opening…' : 'Connect'}
           </button>
@@ -281,14 +299,14 @@ function ToolkitCard({
       </div>
 
       {toolkit.multi && accounts.length > 0 && (
-        <div className="mt-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
+        <div className="mt-4 divide-y divide-gray-100 dark:divide-gray-800 rounded-xl border border-gray-100 dark:border-gray-800">
           {accounts.map((a, i) => (
             <div
               key={a.connection_id}
               className="flex items-center justify-between gap-3 px-3 py-2"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm text-gray-700">
+                <div className="truncate text-sm text-gray-700 dark:text-gray-200">
                   {a.label || `Account ${i + 1}`}
                 </div>
                 <span
@@ -300,7 +318,7 @@ function ToolkitCard({
               <button
                 onClick={() => disconnect(a.connection_id)}
                 disabled={busy}
-                className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                className="shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-500/15 disabled:opacity-50"
               >
                 Disconnect
               </button>
@@ -310,17 +328,17 @@ function ToolkitCard({
       )}
 
       {toolkit.multi && accounts.length === 0 && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
           Connect one or more Google accounts — events from all of them show up in your schedule.
         </p>
       )}
 
       {toolkit.status === 'pending' && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
           Authorization started — finish in the opened tab, then click Refresh.
         </p>
       )}
-      {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
+      {err && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{err}</p>}
     </div>
   );
 }

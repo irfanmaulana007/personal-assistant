@@ -12,7 +12,7 @@ import type { Reminder, ReminderPayload, RepeatMode, RemindersConfig } from '../
 import { Toggle } from './ui/Toggle';
 
 const inputClass =
-  'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30';
 
 const MODES: { value: RepeatMode; label: string }[] = [
   { value: 'once', label: 'Once' },
@@ -140,27 +140,35 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-gray-900">Reminders</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+          Reminders
+        </h1>
+        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
           Schedule reminders delivered over WhatsApp. Set them to repeat and add one or more times.
         </p>
       </div>
 
       {/* Reminder settings — a section distinct from the reminder list. */}
-      <div className="mt-4 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white">
+      <div className="mt-4 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-start justify-between gap-4 p-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">All reminders</div>
-            <p className="mt-0.5 text-sm text-gray-500">Turn every reminder on or off at once.</p>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+              All reminders
+            </div>
+            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+              Turn every reminder on or off at once.
+            </p>
           </div>
           <Toggle on={config.enabled} disabled={!isAdmin} onClick={toggleGlobal} />
         </div>
         <div className="flex items-start justify-between gap-4 p-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">Default reminder time</div>
-            <p className="mt-0.5 text-sm text-gray-500">
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+              Default reminder time
+            </div>
+            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
               Used when you create a reminder without saying a time.
             </p>
           </div>
@@ -169,13 +177,13 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
             value={config.default_time}
             disabled={!isAdmin}
             onChange={(e) => setDefaultTime(e.target.value)}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30"
           />
         </div>
         <div className="flex items-start justify-between gap-4 p-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">Daily recap</div>
-            <p className="mt-0.5 text-sm text-gray-500">
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">Daily recap</div>
+            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
               Send one WhatsApp message at a set time with your upcoming reminders (today &amp;
               tomorrow).
             </p>
@@ -187,26 +195,26 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
                 value={config.digest_time}
                 disabled={!isAdmin}
                 onChange={(e) => setDigestTime(e.target.value)}
-                className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+                className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30"
               />
             )}
             <Toggle on={!!config.digest_time} disabled={!isAdmin} onClick={toggleDigest} />
           </div>
         </div>
         {!isAdmin && (
-          <p className="px-4 py-2 text-xs text-gray-400">
+          <p className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500">
             Only an admin can change these settings.
           </p>
         )}
       </div>
 
       {!config.enabled && (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
           Reminders are paused. Nothing will be delivered until they’re turned back on.
         </div>
       )}
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="mt-5">
         {editing ? (
@@ -225,7 +233,7 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
           <button
             type="button"
             onClick={() => setEditing({ id: null, form: emptyForm() })}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
           >
             + New reminder
           </button>
@@ -233,25 +241,27 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       ) : reminders.length === 0 && !editing ? (
-        <p className="mt-6 text-sm text-gray-500">No reminders yet.</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No reminders yet.</p>
       ) : (
         <div className="mt-5 space-y-2">
           {reminders.map((r) => (
             <div
               key={r.id}
-              className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4"
+              className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
             >
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-gray-900">{r.title}</div>
-                <p className="mt-0.5 text-sm text-gray-500">{summarize(r)}</p>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                  {r.title}
+                </div>
+                <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{summarize(r)}</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setEditing({ id: r.id, form: toPayload(r) })}
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                  className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
                 >
                   Edit
                 </button>
@@ -259,7 +269,7 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
                   type="button"
                   disabled={busyId === r.id}
                   onClick={() => remove(r)}
-                  className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                  className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
                 >
                   Delete
                 </button>
@@ -341,14 +351,19 @@ function ReminderForm({
   };
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-5">
-      <h2 className="mb-4 text-base font-semibold text-gray-900">
+    <form
+      onSubmit={submit}
+      className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+    >
+      <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-gray-50">
         {editing ? 'Edit reminder' : 'New reminder'}
       </h2>
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Title</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Title
+          </label>
           <input
             value={form.title}
             onChange={(e) => set('title', e.target.value)}
@@ -358,7 +373,9 @@ function ReminderForm({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Repeat</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Repeat
+          </label>
           <div className="flex flex-wrap gap-2">
             {MODES.map((m) => (
               <button
@@ -367,8 +384,8 @@ function ReminderForm({
                 onClick={() => setMode(m.value)}
                 className={`rounded-xl border px-3 py-1.5 text-sm transition ${
                   form.repeat_mode === m.value
-                    ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/60'
                 }`}
               >
                 {m.label}
@@ -379,7 +396,9 @@ function ReminderForm({
 
         {form.repeat_mode === 'once' && (
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Date
+            </label>
             <input
               type="date"
               value={form.once_date}
@@ -391,7 +410,9 @@ function ReminderForm({
 
         {form.repeat_mode === 'weekly' && (
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">On days</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              On days
+            </label>
             <div className="flex flex-wrap gap-2">
               {WEEKDAYS.map((label, d) => (
                 <button
@@ -400,8 +421,8 @@ function ReminderForm({
                   onClick={() => toggleWeekday(d)}
                   className={`h-9 w-11 rounded-xl border text-sm transition ${
                     form.weekdays.includes(d)
-                      ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/60'
                   }`}
                 >
                   {label.slice(0, 2)}
@@ -413,7 +434,9 @@ function ReminderForm({
 
         {form.repeat_mode === 'monthly' && (
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Day of month</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Day of month
+            </label>
             <input
               type="number"
               min={1}
@@ -422,14 +445,16 @@ function ReminderForm({
               onChange={(e) => set('day_of_month', Number(e.target.value))}
               className={`${inputClass} max-w-[8rem]`}
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
               A day past the month’s length (e.g. 31 in February) fires on the last day.
             </p>
           </div>
         )}
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Times</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Times
+          </label>
           <div className="space-y-2">
             {form.times.map((t, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -443,7 +468,7 @@ function ReminderForm({
                   <button
                     type="button"
                     onClick={() => removeTime(i)}
-                    className="text-sm font-medium text-gray-400 hover:text-red-600"
+                    className="text-sm font-medium text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
                     aria-label="Remove time"
                   >
                     Remove
@@ -455,7 +480,7 @@ function ReminderForm({
           <button
             type="button"
             onClick={addTime}
-            className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+            className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
           >
             + Add time
           </button>
@@ -463,24 +488,24 @@ function ReminderForm({
 
         <div className="flex items-center gap-2">
           <Toggle on={form.enabled} onClick={() => set('enabled', !form.enabled)} />
-          <span className="text-sm text-gray-600">Active</span>
+          <span className="text-sm text-gray-600 dark:text-gray-300">Active</span>
         </div>
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="mt-5 flex items-center gap-3">
         <button
           type="submit"
           disabled={saving}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+          className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           Cancel
         </button>

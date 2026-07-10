@@ -22,16 +22,16 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-indigo-600 underline underline-offset-2 hover:text-indigo-700"
+      className="text-indigo-600 underline underline-offset-2 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
     >
       {children}
     </a>
   ),
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
-  hr: () => <hr className="my-3 border-gray-200" />,
+  hr: () => <hr className="my-3 border-gray-200 dark:border-gray-700" />,
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-gray-300 pl-3 text-gray-600">
+    <blockquote className="my-2 border-l-2 border-gray-300 pl-3 text-gray-600 dark:border-gray-600 dark:text-gray-300">
       {children}
     </blockquote>
   ),
@@ -39,13 +39,13 @@ const components: Components = {
     const isBlock = (className ?? '').includes('language-');
     if (isBlock) {
       return (
-        <code className="block overflow-x-auto rounded-lg bg-black/[0.06] p-3 font-mono text-xs">
+        <code className="block overflow-x-auto rounded-lg bg-black/[0.06] p-3 font-mono text-xs dark:bg-white/10">
           {children}
         </code>
       );
     }
     return (
-      <code className="rounded bg-black/[0.06] px-1 py-0.5 font-mono text-[0.85em]">
+      <code className="rounded bg-black/[0.06] px-1 py-0.5 font-mono text-[0.85em] dark:bg-white/10">
         {children}
       </code>
     );
@@ -56,16 +56,22 @@ const components: Components = {
       <table className="w-full border-collapse text-sm">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-black/[0.04]">{children}</thead>,
-  th: ({ children }) => (
-    <th className="border border-gray-200 px-3 py-2 text-left font-semibold">{children}</th>
+  thead: ({ children }) => (
+    <thead className="bg-black/[0.04] dark:bg-white/[0.06]">{children}</thead>
   ),
-  td: ({ children }) => <td className="border border-gray-200 px-3 py-2 align-top">{children}</td>,
+  th: ({ children }) => (
+    <th className="border border-gray-200 px-3 py-2 text-left font-semibold dark:border-gray-700">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="border border-gray-200 px-3 py-2 align-top dark:border-gray-700">{children}</td>
+  ),
 };
 
 export function Markdown({
   children,
-  className = 'text-sm text-gray-900',
+  className = 'text-sm text-gray-900 dark:text-gray-50',
 }: {
   children: string;
   className?: string;
