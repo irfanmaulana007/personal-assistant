@@ -5,6 +5,7 @@ type Capability string
 
 const (
 	CapabilityCalendar  Capability = "calendar"
+	CapabilityEvent     Capability = "event"
 	CapabilityEmail     Capability = "email"
 	CapabilityReminder  Capability = "reminder"
 	CapabilityKnowledge Capability = "knowledge"
@@ -26,6 +27,12 @@ const (
 	ActionCalendarCreate Action = "calendar.create"
 	ActionCalendarUpdate Action = "calendar.update"
 	ActionCalendarDelete Action = "calendar.delete"
+)
+
+// Event actions (one-time events → Google Calendar, with a reminder fallback)
+const (
+	ActionEventCreate Action = "event.create"
+	ActionEventAgenda Action = "event.agenda"
 )
 
 // Email actions

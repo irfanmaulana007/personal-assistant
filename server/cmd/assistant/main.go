@@ -14,11 +14,13 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/api"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
+	calendarsvc "github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/activity"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/contacts"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/event"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
@@ -125,6 +127,11 @@ func main() {
 
 	// Long-term memory is always on (remember/recall).
 	handlers = append(handlers, memorycap.New(memSvc, log))
+
+	// One-time events → the user's Composio-connected Google Calendar, with a
+	// one-time-reminder fallback. Always registered (composio is optional).
+	calSvc := calendarsvc.New(composioClient, settingsSvc, timezone, log)
+	handlers = append(handlers, event.New(calSvc, db, timezone, log))
 
 	// Skill capabilities (gated per user via the skills framework; always
 	// registered so the router can serve them when the skill is enabled).

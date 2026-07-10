@@ -7,7 +7,7 @@ func TestReminderToolsAreAlwaysOn(t *testing.T) {
 	for _, tl := range toolSchemas() {
 		base[tl.Function.Name] = true
 	}
-	for _, n := range []string{"reminder_set", "reminder_schedule", "reminder_list", "reminder_cancel"} {
+	for _, n := range []string{"reminder_schedule", "reminder_list", "reminder_cancel", "schedule_event"} {
 		if !base[n] {
 			t.Errorf("%s should be an always-on base tool", n)
 		}
