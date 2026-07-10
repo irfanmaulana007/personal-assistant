@@ -10,7 +10,7 @@ import type { LifeGoal } from '../types';
 import { Skeleton } from './ui/Skeleton';
 
 const inputClass =
-  'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
 
 // A circular check control used for each life-list item.
 function CheckCircle({
@@ -31,8 +31,8 @@ function CheckCircle({
       onClick={onClick}
       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-50 ${
         done
-          ? 'border-indigo-600 bg-indigo-600 text-white'
-          : 'border-gray-300 bg-white text-transparent hover:border-indigo-400'
+          ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
+          : 'border-gray-300 bg-white text-transparent hover:border-indigo-400 dark:border-gray-600 dark:bg-gray-900 dark:hover:border-indigo-400'
       }`}
     >
       <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,10 +123,12 @@ export function LifeGoals() {
   const pct = goals.length ? Math.round((doneCount / goals.length) * 100) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-gray-900">Life Goals</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+          Life Goals
+        </h1>
+        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
           A checklist of things you want to do in life. Add them here or just tell the assistant —
           then check them off as you go.
         </p>
@@ -134,16 +136,16 @@ export function LifeGoals() {
 
       {/* Progress */}
       {goals.length > 0 && (
-        <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="mt-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="font-semibold text-gray-900">
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
               {doneCount} of {goals.length} done
             </span>
-            <span className="text-gray-500">{pct}%</span>
+            <span className="text-gray-500 dark:text-gray-400">{pct}%</span>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
             <div
-              className="h-full rounded-full bg-indigo-600 transition-all"
+              className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500 transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -151,8 +153,13 @@ export function LifeGoals() {
       )}
 
       {/* Add form */}
-      <form onSubmit={add} className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">Add something</label>
+      <form
+        onSubmit={add}
+        className="mt-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+      >
+        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Add something
+        </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={newTitle}
@@ -163,7 +170,7 @@ export function LifeGoals() {
           <button
             type="submit"
             disabled={adding || !newTitle.trim()}
-            className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
           >
             {adding ? 'Adding…' : '+ Add'}
           </button>
@@ -176,14 +183,14 @@ export function LifeGoals() {
         />
       </form>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
         <div className="mt-5 space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+              className="flex items-start gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
             >
               <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
               <div className="min-w-0 flex-1">
@@ -194,7 +201,7 @@ export function LifeGoals() {
           ))}
         </div>
       ) : goals.length === 0 ? (
-        <p className="mt-6 text-sm text-gray-500">
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
           Your life list is empty. Add something you want to do above.
         </p>
       ) : (
@@ -210,19 +217,27 @@ export function LifeGoals() {
             ) : (
               <div
                 key={g.id}
-                className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+                className="flex items-start gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
               >
                 <CheckCircle done={g.done} busy={busyId === g.id} onClick={() => toggle(g)} />
                 <div className="min-w-0 flex-1">
                   <div
                     className={`text-sm font-semibold ${
-                      g.done ? 'text-gray-400 line-through' : 'text-gray-900'
+                      g.done
+                        ? 'text-gray-400 dark:text-gray-500 line-through'
+                        : 'text-gray-900 dark:text-gray-100'
                     }`}
                   >
                     {g.title}
                   </div>
                   {g.note && (
-                    <p className={`mt-0.5 text-sm ${g.done ? 'text-gray-300' : 'text-gray-500'}`}>
+                    <p
+                      className={`mt-0.5 text-sm ${
+                        g.done
+                          ? 'text-gray-300 dark:text-gray-600'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}
+                    >
                       {g.note}
                     </p>
                   )}
@@ -231,7 +246,7 @@ export function LifeGoals() {
                   <button
                     type="button"
                     onClick={() => setEditingId(g.id)}
-                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
                   >
                     Edit
                   </button>
@@ -239,7 +254,7 @@ export function LifeGoals() {
                     type="button"
                     disabled={busyId === g.id}
                     onClick={() => remove(g)}
-                    className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                    className="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
                   >
                     Delete
                   </button>
@@ -281,7 +296,10 @@ function EditRow({
   };
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-4">
+    <form
+      onSubmit={submit}
+      className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+    >
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -295,19 +313,19 @@ function EditRow({
         placeholder="Note (optional)"
         className={`${inputClass} mt-2`}
       />
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       <div className="mt-3 flex items-center gap-3">
         <button
           type="submit"
           disabled={saving || !title.trim()}
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+          className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           Cancel
         </button>

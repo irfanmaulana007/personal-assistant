@@ -28,6 +28,15 @@ type llmCallResp struct {
 	EstimatedCostUSD float64  `json:"estimated_cost_usd"`
 }
 
+type scoreResp struct {
+	Accuracy    int     `json:"accuracy"`
+	Helpfulness int     `json:"helpfulness"`
+	Safety      int     `json:"safety"`
+	Overall     float64 `json:"overall"`
+	Rationale   string  `json:"rationale,omitempty"`
+	JudgeModel  string  `json:"judge_model,omitempty"`
+}
+
 type traceResp struct {
 	ID               int64                `json:"id"`
 	UserID           int64                `json:"user_id"`
@@ -47,6 +56,7 @@ type traceResp struct {
 	Status           string               `json:"status"`
 	Error            string               `json:"error,omitempty"`
 	EstimatedCostUSD float64              `json:"estimated_cost_usd"`
+	Score            *scoreResp           `json:"score,omitempty"`
 	CreatedAt        string               `json:"created_at"`
 }
 
@@ -69,6 +79,16 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 		Error:            t.Error,
 		EstimatedCostUSD: cost,
 		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
+	}
+	if t.Score != nil {
+		r.Score = &scoreResp{
+			Accuracy:    t.Score.Accuracy,
+			Helpfulness: t.Score.Helpfulness,
+			Safety:      t.Score.Safety,
+			Overall:     t.Score.Overall,
+			Rationale:   t.Score.Rationale,
+			JudgeModel:  t.Score.JudgeModel,
+		}
 	}
 	// Resolve the user's display name (shown in the logs list and detail).
 	if u, err := s.store.GetUserByID(ctx, t.UserID); err == nil && u != nil {
@@ -132,11 +152,12 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch one extra row to know whether a further page exists.
 	traces, err := s.store.ListTraces(r.Context(), store.TraceFilter{
-		Platform: validPlatform(r.URL.Query().Get("platform")),
-		From:     from,
-		To:       to.AddDate(0, 0, 1),
-		Limit:    limit + 1,
-		Cursor:   cursor,
+		Platform:   validPlatform(r.URL.Query().Get("platform")),
+		From:       from,
+		To:         to.AddDate(0, 0, 1),
+		Limit:      limit + 1,
+		Cursor:     cursor,
+		ScoreState: validScoreState(r.URL.Query().Get("score")),
 	})
 	if err != nil {
 		s.log.Error("list traces", "error", err)

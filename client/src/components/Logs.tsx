@@ -3,11 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
+import { ScoreFilter } from './ScoreFilter';
 import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
 import { Skeleton } from './ui/Skeleton';
-import type { Trace, Channel } from '../types';
+import type { Trace, TraceScore, Channel, ScoreState } from '../types';
 
 const PAGE_SIZE = 25;
 
@@ -37,6 +38,28 @@ const channelBadge: Record<string, string> = {
   whatsapp: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
 };
 
+// scoreTone maps an overall 1–5 judge score to a traffic-light colour.
+function scoreTone(overall: number): string {
+  if (overall >= 4) return 'bg-green-100 text-green-700';
+  if (overall >= 3) return 'bg-amber-100 text-amber-700';
+  return 'bg-red-100 text-red-700';
+}
+
+/** A compact pill showing the judge's overall score, or an em dash if unjudged. */
+function ScoreBadge({ score }: { score?: TraceScore }) {
+  if (!score) return <span className="text-gray-300">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreTone(
+        score.overall,
+      )}`}
+      title={score.rationale}
+    >
+      {score.overall.toFixed(1)}
+    </span>
+  );
+}
+
 export function Logs() {
   const { formatDate, formatMoney } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,6 +67,7 @@ export function Logs() {
   const from = searchParams.get('from') || def.from;
   const to = searchParams.get('to') || def.to;
   const channel = (searchParams.get('channel') as Channel) || '';
+  const score = (searchParams.get('score') as ScoreState) || '';
 
   const [traces, setTraces] = useState<Trace[]>([]);
   const [loading, setLoading] = useState(true); // initial / filter-change load
@@ -53,6 +77,7 @@ export function Logs() {
 
   const [selected, setSelected] = useState<Trace | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -70,7 +95,7 @@ export function Logs() {
   useEffect(() => {
     let active = true;
     loadingRef.current = true;
-    getLogs(from, to, channel, PAGE_SIZE, 0)
+    getLogs(from, to, channel, PAGE_SIZE, 0, score)
       .then((d) => {
         if (!active) return;
         setTraces(d.traces ?? []);
@@ -90,14 +115,14 @@ export function Logs() {
     return () => {
       active = false;
     };
-  }, [from, to, channel]);
+  }, [from, to, channel, score]);
 
   // Append the next page (cursor-based) for infinite scroll.
   const loadMore = useCallback(() => {
     if (loadingRef.current || nextCursor === 0) return;
     loadingRef.current = true;
     setLoadingMore(true);
-    getLogs(from, to, channel, PAGE_SIZE, nextCursor)
+    getLogs(from, to, channel, PAGE_SIZE, nextCursor, score)
       .then((d) => {
         setTraces((prev) => [...prev, ...(d.traces ?? [])]);
         setNextCursor(d.next_cursor ?? 0);
@@ -107,7 +132,7 @@ export function Logs() {
         setLoadingMore(false);
         loadingRef.current = false;
       });
-  }, [from, to, channel, nextCursor]);
+  }, [from, to, channel, score, nextCursor]);
 
   // Trigger loadMore when the sentinel scrolls into view.
   useEffect(() => {
@@ -133,10 +158,19 @@ export function Logs() {
 
   const openDetail = (t: Trace) => {
     setSelected(t);
+    setDetailError('');
     setDetailLoading(true);
     getLog(t.id)
-      .then(setSelected)
-      .catch(() => {})
+      .then((full) => {
+        setSelected(full);
+        setDetailError('');
+      })
+      .catch((e) =>
+        // The list row (t) has no tool calls or LLM steps — those are
+        // detail-only. Surface the failure instead of silently showing a
+        // drawer that looks complete but is missing the tool-call section.
+        setDetailError(e instanceof Error ? e.message : 'Failed to load full run detail'),
+      )
       .finally(() => setDetailLoading(false));
   };
 
@@ -154,6 +188,7 @@ export function Logs() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <ScoreFilter value={score} onChange={(s) => patchParams({ score: s })} />
             <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
             <DateRangePicker
               from={from}
@@ -175,6 +210,7 @@ export function Logs() {
                   <th className="px-4 py-2.5 font-medium">User</th>
                   <th className="px-4 py-2.5 font-medium">Channel</th>
                   <th className="px-4 py-2.5 font-medium">Model</th>
+                  <th className="px-4 py-2.5 text-center font-medium">Quality</th>
                   <th className="px-4 py-2.5 text-right font-medium">Tokens</th>
                   <th className="px-4 py-2.5 text-right font-medium">Duration</th>
                   <th className="px-4 py-2.5 text-right font-medium">Est. cost</th>
@@ -204,6 +240,9 @@ export function Logs() {
                         <Skeleton className="h-3.5 w-24" />
                       </td>
                       <td className="px-4 py-3">
+                        <Skeleton className="mx-auto h-4 w-10 rounded" />
+                      </td>
+                      <td className="px-4 py-3">
                         <Skeleton className="ml-auto h-3.5 w-12" />
                       </td>
                       <td className="px-4 py-3">
@@ -219,7 +258,7 @@ export function Logs() {
                   ))
                 ) : traces.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">
+                    <td colSpan={9} className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">
                       No runs in this range yet.
                     </td>
                   </tr>
@@ -255,6 +294,9 @@ export function Logs() {
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {t.model || '—'}
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <ScoreBadge score={t.score} />
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
                         {formatTokens(t.total_tokens)}
                       </td>
@@ -273,7 +315,7 @@ export function Logs() {
                 {loadingMore && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-4 py-3 text-center text-xs text-gray-400 dark:text-gray-500"
                     >
                       Loading more…
@@ -321,7 +363,7 @@ export function Logs() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5 dark:bg-gray-900">
-                <TraceDetail trace={selected} loading={detailLoading} />
+                <TraceDetail trace={selected} loading={detailLoading} detailError={detailError} />
               </div>
             </div>
           </>
@@ -331,7 +373,15 @@ export function Logs() {
   );
 }
 
-function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
+function TraceDetail({
+  trace,
+  loading,
+  detailError,
+}: {
+  trace: Trace;
+  loading: boolean;
+  detailError?: string;
+}) {
   const { formatDate, formatMoney } = usePreferences();
   const meta = [
     { k: 'Model', v: trace.model || '—' },
@@ -398,6 +448,38 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
         </div>
       </div>
 
+      {trace.score && (
+        <Section title="Quality score">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums ${scoreTone(
+                trace.score.overall,
+              )}`}
+            >
+              {trace.score.overall.toFixed(1)} / 5
+            </span>
+            {(
+              [
+                ['Accuracy', trace.score.accuracy],
+                ['Helpfulness', trace.score.helpfulness],
+                ['Safety', trace.score.safety],
+              ] as const
+            ).map(([label, val]) => (
+              <span key={label} className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-600">
+                <span className="text-gray-400">{label}</span>{' '}
+                <span className="font-semibold tabular-nums text-gray-800">{val}</span>
+              </span>
+            ))}
+          </div>
+          {trace.score.rationale && (
+            <p className="mt-2.5 text-sm text-gray-700">{trace.score.rationale}</p>
+          )}
+          {trace.score.judge_model && (
+            <p className="mt-1.5 text-[11px] text-gray-400">Judged by {trace.score.judge_model}</p>
+          )}
+        </Section>
+      )}
+
       <Section title="Input">
         <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">
           {trace.input || '(none)'}
@@ -412,59 +494,70 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
         </Section>
       )}
 
-      {loading ? (
-        <div className="mt-4 space-y-3">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
-              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                <Skeleton className="h-3.5 w-32" />
-                <Skeleton className="h-3 w-10" />
+      <Section
+        title={
+          !loading && trace.tools && trace.tools.length > 0
+            ? `Tool calls (${trace.tools.length})`
+            : 'Tool calls'
+        }
+      >
+        {loading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
+                <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-10" />
+                </div>
+                <div className="px-3 py-2.5">
+                  <Skeleton className="h-3 w-full" />
+                </div>
               </div>
-              <div className="px-3 py-2.5">
-                <Skeleton className="h-3 w-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        trace.tools &&
-        trace.tools.length > 0 && (
-          <Section title={`Tool calls (${trace.tools.length})`}>
-            <div className="space-y-3">
-              {trace.tools.map((t, i) => (
-                <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700 dark:border-gray-800 dark:text-indigo-400">
-                    <span>{t.name}</span>
-                    {t.latency_ms != null && (
-                      <span className="text-xs font-normal text-gray-400 tabular-nums dark:text-gray-500">
-                        {fmtLatency(t.latency_ms)}
-                      </span>
-                    )}
+            ))}
+          </div>
+        ) : detailError ? (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            Couldn't load tool calls: {detailError}
+          </p>
+        ) : trace.tools && trace.tools.length > 0 ? (
+          <div className="space-y-3">
+            {trace.tools.map((t, i) => (
+              <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
+                <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700 dark:border-gray-800 dark:text-indigo-400">
+                  <span>{t.name}</span>
+                  {t.latency_ms != null && (
+                    <span className="text-xs font-normal text-gray-400 tabular-nums dark:text-gray-500">
+                      {fmtLatency(t.latency_ms)}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2 p-3">
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      Arguments
+                    </div>
+                    <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                      {pretty(t.arguments) || '{}'}
+                    </pre>
                   </div>
-                  <div className="space-y-2 p-3">
-                    <div>
-                      <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        Arguments
-                      </div>
-                      <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                        {pretty(t.arguments) || '{}'}
-                      </pre>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      Result
                     </div>
-                    <div>
-                      <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        Result
-                      </div>
-                      <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                        {pretty(t.result)}
-                      </pre>
-                    </div>
+                    <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                      {pretty(t.result)}
+                    </pre>
                   </div>
                 </div>
-              ))}
-            </div>
-          </Section>
-        )
-      )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            No tools were used in this run.
+          </p>
+        )}
+      </Section>
 
       {trace.steps && trace.steps.length > 0 && (
         <Section title={`LLM calls (${trace.steps.length})`}>

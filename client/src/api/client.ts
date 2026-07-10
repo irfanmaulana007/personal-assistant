@@ -22,6 +22,7 @@ import type {
   WhatsAppStatus,
   Channel,
   LogsResponse,
+  ScoreState,
   Trace,
 } from '../types';
 
@@ -283,10 +284,12 @@ export async function getLogs(
   platform: Channel = '',
   limit = 25,
   cursor = 0,
+  score: ScoreState = '',
 ): Promise<LogsResponse> {
   const p = platform ? `&platform=${platform}` : '';
   const c = cursor ? `&cursor=${cursor}` : '';
-  return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}${c}`);
+  const s = score ? `&score=${score}` : '';
+  return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}${c}${s}`);
 }
 
 export async function getLog(id: number): Promise<Trace> {
