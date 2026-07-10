@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -247,7 +248,7 @@ func TestBuildDigest(t *testing.T) {
 		// Specific event far away → excluded.
 		{RepeatMode: "specific", Title: "Faraway", EventAt: "2026-04-01T10:00", Offsets: []int{60}, Enabled: true},
 	}
-	msg := buildDigest(reminders, now, testTZ)
+	msg := buildDigest(reminders, nil, now, testTZ)
 	if msg == "" {
 		t.Fatal("expected a non-empty digest")
 	}
@@ -266,12 +267,33 @@ func TestBuildDigest(t *testing.T) {
 	}
 }
 
+func TestBuildDigest_MergesCalendarEvents(t *testing.T) {
+	now := at(2026, time.March, 10, 7, 0)
+	cal := []calendar.Event{
+		{Title: "Client call", Start: at(2026, time.March, 10, 14, 0)}, // today, in window
+		{Title: "Far meeting", Start: at(2026, time.March, 20, 9, 0)},  // out of window
+	}
+	reminders := []store.Reminder{
+		{RepeatMode: "daily", Title: "Stretch", Times: []string{"20:00"}, Enabled: true},
+	}
+	msg := buildDigest(reminders, cal, now, testTZ)
+	if !strings.Contains(msg, "Client call") {
+		t.Errorf("digest should include the in-window calendar event; got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "Stretch") {
+		t.Errorf("digest should still include reminders; got:\n%s", msg)
+	}
+	if strings.Contains(msg, "Far meeting") {
+		t.Errorf("digest should exclude out-of-window calendar events; got:\n%s", msg)
+	}
+}
+
 func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
 	now := at(2026, time.March, 10, 7, 0)
 	reminders := []store.Reminder{
 		{RepeatMode: "weekly", Title: "Sat only", Weekdays: []int{6}, Times: []string{"09:00"}, Enabled: true},
 	}
-	if got := buildDigest(reminders, now, testTZ); got != "" {
+	if got := buildDigest(reminders, nil, now, testTZ); got != "" {
 		t.Errorf("expected empty digest, got: %q", got)
 	}
 }

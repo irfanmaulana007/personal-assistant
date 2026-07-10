@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
@@ -18,10 +19,11 @@ import (
 )
 
 // Calendar is the subset of the calendar service this handler needs (an
-// interface so the fallback logic is unit-testable without Composio).
+// interface so the logic is unit-testable without Composio).
 type Calendar interface {
 	HasCalendar(ctx context.Context, userID int64) bool
 	CreateEvent(ctx context.Context, userID int64, ev calendar.Event) error
+	ListEvents(ctx context.Context, userID int64, from, to time.Time) []calendar.Event
 }
 
 // Handler creates one-time events (calendar-first, reminder-fallback).
@@ -47,9 +49,43 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	switch result.Action {
 	case intent.ActionEventCreate:
 		return h.create(ctx, result)
+	case intent.ActionEventAgenda:
+		return h.agenda(ctx, result)
 	default:
 		return "I can add a one-time event to your calendar.", nil
 	}
+}
+
+// agenda lists upcoming Google Calendar events across all connected accounts and
+// calendars (the calendar half of the user's schedule; reminders come from
+// reminder_list).
+func (h *Handler) agenda(ctx context.Context, result *intent.ParseResult) (string, error) {
+	if h.calendar == nil {
+		return "No Google Calendar is connected.", nil
+	}
+	userID := authctx.UserID(ctx)
+	days := 7
+	if d, err := strconv.Atoi(result.Entities["days"]); err == nil && d > 0 && d <= 60 {
+		days = d
+	}
+	now := time.Now().In(h.timezone)
+	from := now
+	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, h.timezone).AddDate(0, 0, days)
+
+	events := h.calendar.ListEvents(ctx, userID, from, to)
+	if len(events) == 0 {
+		return "No calendar events in that window (or no Google Calendar connected).", nil
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("*Calendar* (next %d days):\n", days))
+	for _, ev := range events {
+		when := ev.Start.Format("Mon, Jan 2 at 3:04 PM")
+		if ev.AllDay {
+			when = ev.Start.Format("Mon, Jan 2") + " (all day)"
+		}
+		b.WriteString(fmt.Sprintf("\n• %s — %s", when, ev.Title))
+	}
+	return b.String(), nil
 }
 
 func (h *Handler) create(ctx context.Context, result *intent.ParseResult) (string, error) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
@@ -22,10 +23,16 @@ import (
 // blasting stale reminders on boot. Must be well above the tick interval.
 const graceWindow = 15 * time.Minute
 
+// CalendarReader supplies the owner's calendar events for the daily recap.
+type CalendarReader interface {
+	ListEvents(ctx context.Context, userID int64, from, to time.Time) []calendar.Event
+}
+
 // Handler handles reminder-related commands and runs the background scheduler.
 type Handler struct {
 	store         store.Store
 	settings      *settings.Service
+	calendar      CalendarReader
 	timezone      *time.Location
 	checkInterval time.Duration
 	sendFunc      transport.SendFunc
@@ -33,11 +40,12 @@ type Handler struct {
 	log           *slog.Logger
 }
 
-// New creates a new reminder handler.
-func New(s store.Store, settingsSvc *settings.Service, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
+// New creates a new reminder handler. cal may be nil (recap then omits calendar events).
+func New(s store.Store, settingsSvc *settings.Service, cal CalendarReader, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
 	return &Handler{
 		store:         s,
 		settings:      settingsSvc,
+		calendar:      cal,
 		timezone:      timezone,
 		checkInterval: checkInterval,
 		ownerJID:      ownerJID,
@@ -397,7 +405,16 @@ func (h *Handler) maybeSendDigest(ctx context.Context, reminders []store.Reminde
 		return
 	}
 
-	msg := buildDigest(reminders, now, h.timezone)
+	// Merge in the owner's Google Calendar events for the same window (fail-soft).
+	var calEvents []calendar.Event
+	if h.calendar != nil {
+		end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, h.timezone).AddDate(0, 0, 2)
+		if owner, err := h.store.FirstAdmin(ctx); err == nil && owner != nil {
+			calEvents = h.calendar.ListEvents(ctx, owner.ID, now, end)
+		}
+	}
+
+	msg := buildDigest(reminders, calEvents, now, h.timezone)
 	if msg == "" {
 		markSent()
 		return // nothing upcoming — no empty recap
@@ -417,14 +434,20 @@ type digestItem struct {
 	title string
 }
 
-// buildDigest composes the recap body for reminders with an occurrence in the
-// window [now, end of tomorrow), or "" when there are none.
-func buildDigest(reminders []store.Reminder, now time.Time, tz *time.Location) string {
+// buildDigest composes the recap body for reminders and calendar events with an
+// occurrence in the window [now, end of tomorrow), or "" when there are none.
+func buildDigest(reminders []store.Reminder, calEvents []calendar.Event, now time.Time, tz *time.Location) string {
 	start := now
 	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz).AddDate(0, 0, 2)
 
 	var items []digestItem
 	inWindow := func(t time.Time) bool { return !t.Before(start) && t.Before(end) }
+
+	for _, ev := range calEvents {
+		if inWindow(ev.Start) {
+			items = append(items, digestItem{ev.Start, ev.Title})
+		}
+	}
 
 	for _, r := range reminders {
 		switch {
@@ -464,7 +487,7 @@ func buildDigest(reminders []store.Reminder, now time.Time, tz *time.Location) s
 	sort.Slice(items, func(i, j int) bool { return items[i].when.Before(items[j].when) })
 
 	var b strings.Builder
-	b.WriteString("🗓 *Upcoming reminders* (today & tomorrow):")
+	b.WriteString("🗓 *Upcoming* (today & tomorrow):")
 	for _, it := range items {
 		b.WriteString(fmt.Sprintf("\n• %s — %s", digestWhen(it.when, now, tz), it.title))
 	}

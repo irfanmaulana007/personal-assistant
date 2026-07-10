@@ -25,6 +25,9 @@ func (f *fakeCalendar) CreateEvent(_ context.Context, _ int64, ev calendar.Event
 	f.created = append(f.created, ev)
 	return nil
 }
+func (f *fakeCalendar) ListEvents(context.Context, int64, time.Time, time.Time) []calendar.Event {
+	return nil
+}
 
 func newHandler(t *testing.T, cal Calendar) (*Handler, store.Store, context.Context) {
 	t.Helper()
