@@ -63,7 +63,10 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4">
+    <form
+      onSubmit={handleSubmit}
+      className="border-t border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+    >
       <div>
         {image && (
           <div className="mb-2 flex items-center gap-2">
@@ -80,7 +83,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
             </div>
           </div>
         )}
-        {imageError && <p className="mb-2 text-xs text-red-600">{imageError}</p>}
+        {imageError && <p className="mb-2 text-xs text-red-600 dark:text-red-400">{imageError}</p>}
 
         <div className="flex items-end gap-2">
           <input
@@ -96,7 +99,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
             disabled={disabled}
             aria-label="Attach image"
             title="Attach an image"
-            className="rounded-xl border border-gray-200 p-2.5 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
+            className="rounded-xl border border-gray-200 p-2.5 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-50"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -115,12 +118,12 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
             placeholder="Type a message..."
             rows={1}
             disabled={disabled}
-            className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+            className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
           />
           <button
             type="submit"
             disabled={!canSend}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

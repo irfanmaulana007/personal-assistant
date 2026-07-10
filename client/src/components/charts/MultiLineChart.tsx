@@ -8,6 +8,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
+import { useChartTheme } from '../../lib/useChartTheme';
 
 export interface LineSeries {
   key: string;
@@ -37,8 +38,8 @@ function MLTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm">
-      <div className="mb-0.5 text-gray-400">{label}</div>
+    <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="mb-0.5 text-gray-400 dark:text-gray-500">{label}</div>
       {payload.map((p) => (
         <div key={p.dataKey} className="font-medium" style={{ color: p.color }}>
           {p.name}: {format(p.value)}
@@ -57,9 +58,11 @@ export function MultiLineChart({
   series: LineSeries[];
   format?: (v: number) => string;
 }) {
+  const t = useChartTheme();
+
   if (data.length === 0) {
     return (
-      <div className="flex h-[240px] items-center justify-center text-sm text-gray-400">
+      <div className="flex h-[240px] items-center justify-center text-sm text-gray-400 dark:text-gray-500">
         No data in this range yet.
       </div>
     );
@@ -68,16 +71,16 @@ export function MultiLineChart({
   return (
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={t.grid} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 11, fill: t.axis }}
           tickLine={false}
           axisLine={false}
           minTickGap={28}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 11, fill: t.axis }}
           tickLine={false}
           axisLine={false}
           width={48}
@@ -86,7 +89,7 @@ export function MultiLineChart({
         />
         <Tooltip
           content={<MLTooltip format={format} />}
-          cursor={{ stroke: '#c7c7c7', strokeWidth: 1 }}
+          cursor={{ stroke: t.cursorStroke, strokeWidth: 1 }}
         />
         <Legend
           verticalAlign="top"
@@ -104,7 +107,7 @@ export function MultiLineChart({
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
-            activeDot={{ r: 4, fill: sr.color, stroke: '#fff', strokeWidth: 2 }}
+            activeDot={{ r: 4, fill: sr.color, stroke: t.activeDotStroke, strokeWidth: 2 }}
           />
         ))}
       </LineChart>

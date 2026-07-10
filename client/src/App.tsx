@@ -68,7 +68,7 @@ function App() {
             <Route index element={<AgentSettings />} />
             {isAdmin && <Route path="model" element={<ModelSettings />} />}
             {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
-            {isAdmin && <Route path="display" element={<DisplaySettings />} />}
+            <Route path="display" element={<DisplaySettings />} />
             {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
           </Route>
           {isAdmin && [

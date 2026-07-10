@@ -15,7 +15,6 @@ const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 // Compact, app-scale styling for react-day-picker (its defaults are oversized).
 const rdpStyle = {
   '--rdp-accent-color': '#4f46e5',
-  '--rdp-accent-background-color': '#eef2ff',
   '--rdp-day-width': '2rem',
   '--rdp-day-height': '2rem',
   '--rdp-day_button-width': '2rem',
@@ -96,9 +95,9 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
       }}
     >
       <Popover.Trigger asChild>
-        <button className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+        <button className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-800/60">
           <svg
-            className="h-4 w-4 text-gray-400"
+            className="h-4 w-4 text-gray-400 dark:text-gray-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -112,7 +111,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
           </svg>
           {labelFor(from, to)}
           <svg
-            className="h-4 w-4 text-gray-400"
+            className="h-4 w-4 text-gray-400 dark:text-gray-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -126,9 +125,9 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
         <Popover.Content
           align="end"
           sideOffset={8}
-          className="z-50 flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg"
+          className="z-50 flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
         >
-          <div className="w-36 shrink-0 border-r border-gray-100 p-1.5">
+          <div className="w-36 shrink-0 border-r border-gray-100 p-1.5 dark:border-gray-800">
             {presets.map((p) => {
               const active = activePreset?.label === p.label;
               return (
@@ -136,7 +135,9 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
                   key={p.label}
                   onClick={() => applyPreset(p)}
                   className={`block w-full rounded-lg px-3 py-1.5 text-left text-[13px] font-medium transition ${
-                    active ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
+                    active
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+                      : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                   }`}
                 >
                   {p.label}
@@ -145,7 +146,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             })}
           </div>
 
-          <div className="p-3">
+          <div className="p-3 text-gray-700 dark:text-gray-200">
             <DayPicker
               mode="range"
               selected={draft}
@@ -154,10 +155,11 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
               defaultMonth={parseISO(from)}
               captionLayout="label"
               showOutsideDays={false}
+              className="rdp-theme"
               style={rdpStyle}
             />
-            <div className="mt-1 flex items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
-              <span className="text-xs text-gray-400">
+            <div className="mt-1 flex items-center justify-between gap-2 border-t border-gray-100 pt-2.5 dark:border-gray-800">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {draft?.from && draft?.to
                   ? `${format(draft.from, 'MMM d')} – ${format(draft.to, 'MMM d, yyyy')}`
                   : 'Pick a start and end date'}
@@ -165,14 +167,14 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
               <div className="flex gap-2">
                 <button
                   onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-gray-600 hover:bg-gray-100"
+                  className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={applyDraft}
                   disabled={!draft?.from || !draft?.to}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
                 >
                   Apply
                 </button>

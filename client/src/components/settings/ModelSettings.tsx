@@ -3,7 +3,7 @@ import { useSettings } from '../../hooks/useSettings';
 import type { LlmTestResult } from '../../types';
 
 const inputClass =
-  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
 
 export function ModelSettings() {
   const { settings, loading, error, save, test } = useSettings();
@@ -66,18 +66,21 @@ export function ModelSettings() {
     await save({ api_key: '' });
   };
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
 
   return (
-    <form onSubmit={handleSave} className="rounded-2xl border border-gray-200 bg-white p-6">
+    <form
+      onSubmit={handleSave}
+      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+    >
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">LLM Provider</h2>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">LLM Provider</h2>
         {settings?.configured ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-300">
             Configured
           </span>
         ) : (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
             Not configured
           </span>
         )}
@@ -85,7 +88,9 @@ export function ModelSettings() {
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Provider</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Provider
+          </label>
           <select
             value={provider}
             onChange={(e) => handleProviderChange(e.target.value)}
@@ -97,14 +102,16 @@ export function ModelSettings() {
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             All providers use an OpenAI-compatible API. Choosing one fills in its default endpoint
             and model.
           </p>
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">API Key</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            API Key
+          </label>
           <input
             type="password"
             value={apiKey}
@@ -117,13 +124,15 @@ export function ModelSettings() {
             className={inputClass}
             autoComplete="off"
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Stored encrypted on the server. Leave blank to keep the existing key.
           </p>
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Model</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Model
+          </label>
           <input
             type="text"
             value={model}
@@ -134,7 +143,9 @@ export function ModelSettings() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Base URL</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Base URL
+          </label>
           <input
             type="text"
             value={baseURL}
@@ -142,16 +153,18 @@ export function ModelSettings() {
             placeholder="https://api.deepseek.com"
             className={inputClass}
           />
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Any OpenAI-compatible endpoint works (DeepSeek, OpenAI, …).
           </p>
         </div>
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {testResult && (
-        <p className={`mt-4 text-sm ${testResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+        <p
+          className={`mt-4 text-sm ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+        >
           {testResult.ok
             ? `Connection OK${testResult.model ? ` (${testResult.model})` : ''}`
             : `Connection failed: ${testResult.error}`}
@@ -162,7 +175,7 @@ export function ModelSettings() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -170,7 +183,7 @@ export function ModelSettings() {
           type="button"
           onClick={handleTest}
           disabled={testing || !settings?.configured}
-          className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           {testing ? 'Testing…' : 'Test connection'}
         </button>
@@ -178,12 +191,12 @@ export function ModelSettings() {
           <button
             type="button"
             onClick={handleClearKey}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50"
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/15"
           >
             Clear key
           </button>
         )}
-        {saved && <span className="text-sm text-green-600">Saved</span>}
+        {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved</span>}
       </div>
     </form>
   );
