@@ -6,6 +6,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
@@ -25,6 +26,8 @@ const (
 	KeyReminderDigestTime  = "reminder_digest_time"  // local "HH:MM"; empty ⇒ no daily recap
 	KeyReminderDigestLast  = "reminder_digest_last"  // "YYYY-MM-DD" of the last recap sent
 	KeyReminderDefaultTime = "reminder_default_time" // local "HH:MM" used when a reminder has no time
+
+	KeyWhatsAppAllowlist = "whatsapp_allowlist" // comma-joined JIDs allowed to chat with the assistant
 )
 
 // DefaultReminderTime is used when the user hasn't configured one.
@@ -227,6 +230,24 @@ func (s *Service) ReminderDigestTime(ctx context.Context) string {
 // SetReminderDigestTime persists the daily-recap time ("HH:MM" or "" to disable).
 func (s *Service) SetReminderDigestTime(ctx context.Context, hhmm string) error {
 	return s.store.SetSetting(ctx, KeyReminderDigestTime, []byte(hhmm))
+}
+
+// WhatsAppAllowedJIDs returns the WhatsApp numbers (JIDs) allowed to talk to the
+// assistant. The first entry is the primary (receives reminders / the recap).
+func (s *Service) WhatsAppAllowedJIDs(ctx context.Context) []string {
+	v, _ := s.getString(ctx, KeyWhatsAppAllowlist)
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// SetWhatsAppAllowedJIDs persists the WhatsApp allowlist.
+func (s *Service) SetWhatsAppAllowedJIDs(ctx context.Context, jids []string) error {
+	return s.store.SetSetting(ctx, KeyWhatsAppAllowlist, []byte(strings.Join(jids, ",")))
 }
 
 // ReminderDefaultTime returns the local "HH:MM" to use for reminders created
