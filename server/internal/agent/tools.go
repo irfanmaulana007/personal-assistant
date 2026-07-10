@@ -175,6 +175,36 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"Name, phone, email, or keyword to search for. Empty lists all contacts."}}}`,
 		},
 	},
+	"life_goals": {
+		{
+			name:        "lifegoal_add",
+			description: "Add an item to the user's life list — something they want to do in life (e.g. 'Take a swimming course', 'Get a gym membership', 'Visit Japan'). Use this when the user says they want to do/achieve something someday.",
+			capability:  intent.CapabilityLifeGoal,
+			action:      intent.ActionLifeGoalAdd,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"The thing the user wants to do."},"note":{"type":"string","description":"Any extra detail, optional."}},"required":["title"]}`,
+		},
+		{
+			name:        "lifegoal_list",
+			description: "List the user's life list — the checklist of things they want to do in life, with which are done.",
+			capability:  intent.CapabilityLifeGoal,
+			action:      intent.ActionLifeGoalList,
+			parameters:  `{"type":"object","properties":{}}`,
+		},
+		{
+			name:        "lifegoal_check",
+			description: "Mark a life-list item as done/achieved. Identify it by its number from the last listing or by its title.",
+			capability:  intent.CapabilityLifeGoal,
+			action:      intent.ActionLifeGoalCheck,
+			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its title."}},"required":["item"]}`,
+		},
+		{
+			name:        "lifegoal_delete",
+			description: "Remove an item from the user's life list. Identify it by its number from the last listing or by its title.",
+			capability:  intent.CapabilityLifeGoal,
+			action:      intent.ActionLifeGoalDelete,
+			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its title."}},"required":["item"]}`,
+		},
+	},
 	"activity_summary": {
 		{
 			name:        "activity_log",
