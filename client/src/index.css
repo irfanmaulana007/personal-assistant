@@ -1,5 +1,21 @@
 @import 'tailwindcss';
 
+/* Enable the `dark:` variant via a class on <html> (toggled by src/lib/theme.ts)
+   instead of Tailwind v4's default prefers-color-scheme, so the app honours the
+   user's explicit light/dark/auto choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Flip native UI (form controls, scrollbars) and provide a base surface colour
+   so the page background follows the theme even before component styles load. */
+html {
+  color-scheme: light;
+  background-color: #f3f4f6; /* gray-100 */
+}
+html.dark {
+  color-scheme: dark;
+  background-color: #111827; /* gray-900 */
+}
+
 /* Drawer/overlay entrance animations (e.g. the Logs run-detail panel). */
 @keyframes slideInRight {
   from {
@@ -22,6 +38,15 @@
 }
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
+}
+
+/* react-day-picker range-highlight colour. Defined here (not inline) so the
+   dark override can win — inline styles can't be beaten by a `.dark` selector. */
+.rdp-theme {
+  --rdp-accent-background-color: #eef2ff; /* indigo-50 */
+}
+.dark .rdp-theme {
+  --rdp-accent-background-color: rgba(99, 102, 241, 0.22); /* indigo-500 @ 22% */
 }
 
 /* react-day-picker: selection is already conveyed by the cell background, so

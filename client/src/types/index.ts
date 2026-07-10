@@ -223,6 +223,20 @@ export interface RemindersConfig {
   default_time: string; // 'HH:MM' used when a reminder has no explicit time
 }
 
+export interface LifeGoal {
+  id: number;
+  title: string;
+  note: string;
+  done: boolean;
+  done_at: string; // RFC3339, or '' when not done
+  created_at: string;
+}
+
+export interface LifeGoalPayload {
+  title: string;
+  note: string;
+}
+
 export type Channel = '' | 'web' | 'whatsapp';
 
 export interface ToolInvocation {

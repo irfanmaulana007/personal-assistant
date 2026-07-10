@@ -23,6 +23,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/event"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/lifegoal"
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
@@ -140,6 +141,7 @@ func main() {
 	// Skill capabilities (gated per user via the skills framework; always
 	// registered so the router can serve them when the skill is enabled).
 	handlers = append(handlers, contacts.New(db, log))
+	handlers = append(handlers, lifegoal.New(db, log))
 	handlers = append(handlers, activity.New(db, timezone, log))
 	handlers = append(handlers, travel.New(db, timezone, log))
 	handlers = append(handlers, hiking.New(db, timezone, log))

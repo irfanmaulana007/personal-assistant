@@ -70,6 +70,17 @@ func (s *SQLiteStore) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, occurred_at)`,
 
+		`CREATE TABLE IF NOT EXISTS life_goals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			note TEXT NOT NULL DEFAULT '',
+			done INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			done_at DATETIME
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_life_goals_user ON life_goals(user_id, done)`,
+
 		`CREATE TABLE IF NOT EXISTS trips (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,

@@ -66,7 +66,7 @@ export function Overview() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Top tools">
           {stats.top_tools.length === 0 ? (
-            <p className="text-sm text-gray-400">No tool calls yet.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No tool calls yet.</p>
           ) : (
             <HorizontalBar
               data={stats.top_tools.slice(0, 5).map((t) => ({
@@ -79,7 +79,7 @@ export function Overview() {
         </Card>
         <Card title="Top users">
           {stats.by_user.length === 0 ? (
-            <p className="text-sm text-gray-400">No usage in this range yet.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No usage in this range yet.</p>
           ) : (
             <HorizontalBar
               data={stats.by_user.slice(0, 5).map((u) => ({

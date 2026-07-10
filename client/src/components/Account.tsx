@@ -3,7 +3,7 @@ import { listUsers, createUser, updateUser, deleteUser, getMe } from '../api/cli
 import type { User, Role } from '../types';
 
 const inputClass =
-  'rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
 
 export function Account() {
   const [users, setUsers] = useState<User[]>([]);
@@ -36,14 +36,18 @@ export function Account() {
   }, [refreshKey]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <h1 className="text-xl font-semibold tracking-tight text-gray-900">Account</h1>
-      <p className="mt-0.5 text-sm text-gray-500">Manage users and their roles.</p>
+    <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
+      <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+        Account
+      </h1>
+      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+        Manage users and their roles.
+      </p>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       ) : (
         <UsersCard users={users} meId={me?.id ?? 0} onChanged={reload} />
       )}
@@ -77,13 +81,13 @@ function UsersCard({
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
-      <h2 className="mb-4 text-sm font-semibold text-gray-900">Users</h2>
+    <div className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+      <h2 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">Users</h2>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+            <tr className="border-b border-gray-100 dark:border-gray-800 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               <th className="pb-2 font-medium">Email</th>
               <th className="pb-2 font-medium">Role</th>
               <th className="pb-2 text-right font-medium">Actions</th>
@@ -91,17 +95,19 @@ function UsersCard({
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                <td className="py-3 text-gray-800">
+              <tr key={u.id} className="border-b border-gray-50 dark:border-gray-800 last:border-0">
+                <td className="py-3 text-gray-800 dark:text-gray-100">
                   {u.email}
-                  {u.id === meId && <span className="ml-2 text-xs text-gray-400">(you)</span>}
+                  {u.id === meId && (
+                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">(you)</span>
+                  )}
                 </td>
                 <td className="py-3">
                   <select
                     value={u.role}
                     disabled={busy}
                     onChange={(e) => run(() => updateUser(u.id, { role: e.target.value as Role }))}
-                    className="rounded-lg border border-gray-200 px-2 py-1 text-sm outline-none focus:border-indigo-500"
+                    className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 px-2 py-1 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400"
                   >
                     <option value="admin">admin</option>
                     <option value="member">member</option>
@@ -112,7 +118,7 @@ function UsersCard({
                     <button
                       disabled={busy}
                       onClick={() => run(() => deleteUser(u.id))}
-                      className="rounded-lg px-2.5 py-1 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                      className="rounded-lg px-2.5 py-1 text-sm font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-500/15 disabled:opacity-50"
                     >
                       Delete
                     </button>
@@ -124,7 +130,7 @@ function UsersCard({
         </table>
       </div>
 
-      {rowError && <p className="mt-3 text-sm text-red-600">{rowError}</p>}
+      {rowError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{rowError}</p>}
 
       <AddUserForm
         busy={busy}
@@ -158,7 +164,7 @@ function AddUserForm({
   return (
     <form
       onSubmit={submit}
-      className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4"
+      className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-100 dark:border-gray-800 pt-4"
     >
       <input
         type="email"
@@ -182,7 +188,7 @@ function AddUserForm({
       <button
         type="submit"
         disabled={busy || !email.trim() || password.length < 8}
-        className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Add user
       </button>

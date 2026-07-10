@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getWhatsAppAllowlist, setWhatsAppAllowlist } from '../../api/client';
 
 const inputClass =
-  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
 
 // Show a JID as the friendlier bare number in the input.
 function toDisplay(jid: string): string {
@@ -50,12 +50,17 @@ export function WhatsAppSettings() {
     }
   };
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
 
   return (
-    <form onSubmit={save} className="rounded-2xl border border-gray-200 bg-white p-6">
-      <h2 className="mb-1 text-base font-semibold text-gray-900">WhatsApp numbers</h2>
-      <p className="mb-5 text-sm text-gray-500">
+    <form
+      onSubmit={save}
+      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+    >
+      <h2 className="mb-1 text-base font-semibold text-gray-900 dark:text-gray-50">
+        WhatsApp numbers
+      </h2>
+      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         The numbers allowed to chat with your assistant. The assistant runs on the account you pair
         in Integrations; it answers these numbers and ignores everyone else. The{' '}
         <span className="font-medium">first</span> number also receives reminders and the daily
@@ -65,7 +70,9 @@ export function WhatsAppSettings() {
       <div className="space-y-2">
         {numbers.map((n, i) => (
           <div key={i} className="flex items-center gap-2">
-            <span className="w-6 shrink-0 text-right text-xs text-gray-400">{i + 1}.</span>
+            <span className="w-6 shrink-0 text-right text-xs text-gray-400 dark:text-gray-500">
+              {i + 1}.
+            </span>
             <input
               value={n}
               onChange={(e) => setAt(i, e.target.value)}
@@ -77,7 +84,7 @@ export function WhatsAppSettings() {
               <button
                 type="button"
                 onClick={() => removeAt(i)}
-                className="shrink-0 text-sm font-medium text-gray-400 hover:text-red-600"
+                className="shrink-0 text-sm font-medium text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
                 aria-label="Remove number"
               >
                 Remove
@@ -89,24 +96,28 @@ export function WhatsAppSettings() {
       <button
         type="button"
         onClick={add}
-        className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+        className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
       >
         + Add number
       </button>
 
-      <p className="mt-3 text-xs text-gray-400">
+      <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
         Enter the number with country code (e.g. 62… for Indonesia), or paste a full JID like
         6285121503971@s.whatsapp.net. No + or leading 0.
       </p>
 
       {msg && (
-        <p className={`mt-4 text-sm ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>
+        <p
+          className={`mt-4 text-sm ${msg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+        >
+          {msg.text}
+        </p>
       )}
 
       <button
         type="submit"
         disabled={saving}
-        className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+        className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
       >
         {saving ? 'Saving…' : 'Save'}
       </button>

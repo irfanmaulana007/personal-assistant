@@ -11,6 +11,7 @@ const (
 	CapabilityKnowledge Capability = "knowledge"
 	CapabilityMemory    Capability = "memory"
 	CapabilityContact   Capability = "contact"
+	CapabilityLifeGoal  Capability = "life_goal"
 	CapabilityActivity  Capability = "activity"
 	CapabilityTravel    Capability = "travel"
 	CapabilityHiking    Capability = "hiking"
@@ -69,6 +70,14 @@ const (
 const (
 	ActionContactAdd    Action = "contact.add"
 	ActionContactSearch Action = "contact.search"
+)
+
+// Life goal actions (a simple life checklist)
+const (
+	ActionLifeGoalAdd    Action = "life_goal.add"
+	ActionLifeGoalList   Action = "life_goal.list"
+	ActionLifeGoalCheck  Action = "life_goal.check"
+	ActionLifeGoalDelete Action = "life_goal.delete"
 )
 
 // Activity actions

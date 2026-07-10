@@ -8,6 +8,8 @@ import type {
   ReminderPayload,
   RemindersConfig,
   ModelPrice,
+  LifeGoal,
+  LifeGoalPayload,
   Skill,
   Role,
   ChatResponse,
@@ -154,6 +156,29 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
     method: 'PUT',
     body: JSON.stringify(cfg),
   });
+}
+
+export async function listLifeGoals(): Promise<LifeGoal[]> {
+  return request<LifeGoal[]>('/api/life-goals');
+}
+
+export async function createLifeGoal(g: LifeGoalPayload): Promise<LifeGoal> {
+  return request<LifeGoal>('/api/life-goals', { method: 'POST', body: JSON.stringify(g) });
+}
+
+export async function updateLifeGoal(id: number, g: LifeGoalPayload): Promise<LifeGoal> {
+  return request<LifeGoal>(`/api/life-goals/${id}`, { method: 'PUT', body: JSON.stringify(g) });
+}
+
+export async function setLifeGoalDone(id: number, done: boolean): Promise<LifeGoal> {
+  return request<LifeGoal>(`/api/life-goals/${id}/done`, {
+    method: 'PUT',
+    body: JSON.stringify({ done }),
+  });
+}
+
+export async function deleteLifeGoal(id: number): Promise<void> {
+  await request(`/api/life-goals/${id}`, { method: 'DELETE' });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {

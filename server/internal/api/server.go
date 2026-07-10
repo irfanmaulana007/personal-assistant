@@ -107,6 +107,11 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/reminders/{id}", protect(s.handleUpdateReminder))
 	mux.Handle("PUT /api/reminders/{id}/enabled", protect(s.handleSetReminderEnabled))
 	mux.Handle("DELETE /api/reminders/{id}", protect(s.handleDeleteReminder))
+	mux.Handle("GET /api/life-goals", protect(s.handleListLifeGoals))
+	mux.Handle("POST /api/life-goals", protect(s.handleCreateLifeGoal))
+	mux.Handle("PUT /api/life-goals/{id}", protect(s.handleUpdateLifeGoal))
+	mux.Handle("PUT /api/life-goals/{id}/done", protect(s.handleSetLifeGoalDone))
+	mux.Handle("DELETE /api/life-goals/{id}", protect(s.handleDeleteLifeGoal))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))
