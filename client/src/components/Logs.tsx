@@ -40,9 +40,9 @@ const channelBadge: Record<string, string> = {
 
 // scoreTone maps an overall 1–5 judge score to a traffic-light colour.
 function scoreTone(overall: number): string {
-  if (overall >= 4) return 'bg-green-100 text-green-700';
-  if (overall >= 3) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
+  if (overall >= 4) return 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300';
+  if (overall >= 3) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300';
+  return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300';
 }
 
 /** A compact pill showing the judge's overall score, or an em dash if unjudged. */
