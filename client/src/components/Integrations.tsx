@@ -180,17 +180,19 @@ function ToolkitCard({
     }
   };
 
-  const disconnect = async () => {
+  const disconnect = async (connectionId?: string) => {
     setBusy(true);
     setErr('');
     try {
-      onChanged(await disconnectIntegration(toolkit.slug));
+      onChanged(await disconnectIntegration(toolkit.slug, connectionId));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not disconnect');
     } finally {
       setBusy(false);
     }
   };
+
+  const accounts = toolkit.accounts ?? [];
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -208,9 +210,20 @@ function ToolkitCard({
             </span>
           </div>
         </div>
-        {isConnected ? (
+
+        {/* Multi-account toolkits (e.g. Google Calendar): add another account.
+            Single toolkits: the usual Connect / Disconnect. */}
+        {toolkit.multi ? (
           <button
-            onClick={disconnect}
+            onClick={connect}
+            disabled={busy}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {busy ? 'Opening…' : accounts.length > 0 ? 'Add account' : 'Connect'}
+          </button>
+        ) : isConnected ? (
+          <button
+            onClick={() => disconnect()}
             disabled={busy}
             className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
           >
@@ -226,6 +239,40 @@ function ToolkitCard({
           </button>
         )}
       </div>
+
+      {toolkit.multi && accounts.length > 0 && (
+        <div className="mt-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
+          {accounts.map((a, i) => (
+            <div
+              key={a.connection_id}
+              className="flex items-center justify-between gap-3 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm text-gray-700">Account {i + 1}</div>
+                <span
+                  className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[a.status].cls}`}
+                >
+                  {statusStyles[a.status].label}
+                </span>
+              </div>
+              <button
+                onClick={() => disconnect(a.connection_id)}
+                disabled={busy}
+                className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {toolkit.multi && accounts.length === 0 && (
+        <p className="mt-3 text-xs text-gray-400">
+          Connect one or more Google accounts — events from all of them show up in your schedule.
+        </p>
+      )}
+
       {toolkit.status === 'pending' && (
         <p className="mt-3 text-xs text-gray-400">
           Authorization started — finish in the opened tab, then click Refresh.

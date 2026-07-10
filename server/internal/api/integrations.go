@@ -30,11 +30,22 @@ func toolkitName(slug string) (string, bool) {
 	return "", false
 }
 
+// multiToolkits may have several connected accounts per user (e.g. multiple
+// Google accounts). Other toolkits are treated as a single connection.
+var multiToolkits = map[string]bool{"googlecalendar": true}
+
+type integrationAccount struct {
+	ConnectionID string `json:"connection_id"`
+	Status       string `json:"status"`
+}
+
 type integrationToolkit struct {
-	Slug         string `json:"slug"`
-	Name         string `json:"name"`
-	Status       string `json:"status"` // connected, pending, error, disconnected
-	ConnectionID string `json:"connection_id,omitempty"`
+	Slug         string               `json:"slug"`
+	Name         string               `json:"name"`
+	Status       string               `json:"status"` // connected, pending, error, disconnected
+	ConnectionID string               `json:"connection_id,omitempty"`
+	Multi        bool                 `json:"multi,omitempty"`
+	Accounts     []integrationAccount `json:"accounts,omitempty"`
 }
 
 type integrationsResp struct {
@@ -78,33 +89,41 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 		Toolkits:   make([]integrationToolkit, 0, len(supportedToolkits)),
 	}
 
-	// Map connection status by toolkit slug when configured.
-	statusBySlug := map[string]struct {
-		status string
-		id     string
-	}{}
+	// Gather all connections per toolkit slug (a user may have several).
+	accountsBySlug := map[string][]integrationAccount{}
 	if key != "" {
 		conns, err := s.composio.ListConnections(r.Context(), key, s.composioUserID(r))
 		if err != nil {
 			s.log.Warn("composio list connections failed", "error", err)
 		} else {
 			for _, c := range conns {
-				// Keep the first/most relevant connection per toolkit.
-				if _, ok := statusBySlug[c.ToolkitSlug]; !ok {
-					statusBySlug[c.ToolkitSlug] = struct {
-						status string
-						id     string
-					}{statusFromComposio(c.Status), c.ID}
-				}
+				accountsBySlug[c.ToolkitSlug] = append(accountsBySlug[c.ToolkitSlug], integrationAccount{
+					ConnectionID: c.ID,
+					Status:       statusFromComposio(c.Status),
+				})
 			}
 		}
 	}
 
 	for _, t := range supportedToolkits {
 		item := integrationToolkit{Slug: t.Slug, Name: t.Name, Status: "disconnected"}
-		if st, ok := statusBySlug[t.Slug]; ok {
-			item.Status = st.status
-			item.ConnectionID = st.id
+		accts := accountsBySlug[t.Slug]
+		if multiToolkits[t.Slug] {
+			item.Multi = true
+			item.Accounts = accts
+			for _, a := range accts { // header reflects the best account state
+				if a.Status == "connected" {
+					item.Status = "connected"
+					break
+				}
+				if a.Status == "pending" {
+					item.Status = "pending"
+				}
+			}
+		} else if len(accts) > 0 {
+			// Single-connection toolkit: use the first.
+			item.Status = accts[0].Status
+			item.ConnectionID = accts[0].ConnectionID
 		}
 		resp.Toolkits = append(resp.Toolkits, item)
 	}
@@ -181,17 +200,25 @@ func (s *Server) handleDisconnectIntegration(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Optionally target a single account (multi-connection toolkits); otherwise
+	// remove every connection for the toolkit.
+	only := strings.TrimSpace(r.URL.Query().Get("connection_id"))
+
 	conns, err := s.composio.ListConnections(r.Context(), key, s.composioUserID(r))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	for _, c := range conns {
-		if c.ToolkitSlug == slug {
-			if err := s.composio.DeleteConnection(r.Context(), key, c.ID); err != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-				return
-			}
+		if c.ToolkitSlug != slug {
+			continue
+		}
+		if only != "" && c.ID != only {
+			continue
+		}
+		if err := s.composio.DeleteConnection(r.Context(), key, c.ID); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
 		}
 	}
 	s.handleListIntegrations(w, r)

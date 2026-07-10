@@ -283,8 +283,12 @@ export async function connectIntegration(slug: string): Promise<{ redirect_url: 
   return request<{ redirect_url: string }>(`/api/integrations/${slug}/connect`, { method: 'POST' });
 }
 
-export async function disconnectIntegration(slug: string): Promise<Integrations> {
-  return request<Integrations>(`/api/integrations/${slug}`, { method: 'DELETE' });
+export async function disconnectIntegration(
+  slug: string,
+  connectionId?: string,
+): Promise<Integrations> {
+  const q = connectionId ? `?connection_id=${encodeURIComponent(connectionId)}` : '';
+  return request<Integrations>(`/api/integrations/${slug}${q}`, { method: 'DELETE' });
 }
 
 export async function getWhatsApp(): Promise<WhatsAppStatus> {
