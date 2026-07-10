@@ -288,6 +288,69 @@ func TestBuildDigest_MergesCalendarEvents(t *testing.T) {
 	}
 }
 
+func TestReminderEvents_RRULE(t *testing.T) {
+	daily := reminderEvents(store.Reminder{RepeatMode: "daily", Title: "A", Times: []string{"08:00", "20:00"}}, testTZ)
+	if len(daily) != 2 || daily[0].rrule != "RRULE:FREQ=DAILY" {
+		t.Fatalf("daily: %+v", daily)
+	}
+	if daily[0].ev.Start.Hour() != 8 || daily[1].ev.Start.Hour() != 20 {
+		t.Errorf("daily times wrong: %v %v", daily[0].ev.Start, daily[1].ev.Start)
+	}
+
+	weekly := reminderEvents(store.Reminder{RepeatMode: "weekly", Title: "B", Weekdays: []int{1, 3}, Times: []string{"09:00"}}, testTZ)
+	if len(weekly) != 1 || weekly[0].rrule != "RRULE:FREQ=WEEKLY;BYDAY=MO,WE" {
+		t.Fatalf("weekly: %+v", weekly)
+	}
+
+	monthly := reminderEvents(store.Reminder{RepeatMode: "monthly", Title: "C", DayOfMonth: 5, Times: []string{"07:00"}}, testTZ)
+	if len(monthly) != 1 || monthly[0].rrule != "RRULE:FREQ=MONTHLY;BYMONTHDAY=5" {
+		t.Fatalf("monthly: %+v", monthly)
+	}
+
+	once := reminderEvents(store.Reminder{RepeatMode: "once", Title: "D", OnceDate: "2026-08-05", Times: []string{"14:00"}}, testTZ)
+	if len(once) != 1 || once[0].rrule != "" || !once[0].ev.Start.Equal(at(2026, time.August, 5, 14, 0)) {
+		t.Fatalf("once: %+v", once)
+	}
+
+	// No times → nothing to mirror.
+	if got := reminderEvents(store.Reminder{RepeatMode: "specific", EventAt: "2026-08-05T09:00"}, testTZ); len(got) != 0 {
+		t.Errorf("specific/no-times should mirror nothing, got %+v", got)
+	}
+}
+
+func TestCalendarHash_ChangesWithSchedule(t *testing.T) {
+	base := store.Reminder{RepeatMode: "daily", Title: "X", Times: []string{"09:00"}}
+	if calendarHash(base) != calendarHash(base) {
+		t.Fatal("hash not stable")
+	}
+	changed := base
+	changed.Times = []string{"10:00"}
+	if calendarHash(base) == calendarHash(changed) {
+		t.Error("hash should change when the time changes")
+	}
+}
+
+func TestBuildDigest_SkipsMirroredCalendarEvents(t *testing.T) {
+	now := at(2026, time.March, 10, 7, 0)
+	reminders := []store.Reminder{
+		{RepeatMode: "daily", Title: "Standup", Times: []string{"09:00"}, Enabled: true, CalendarEventIDs: []string{"evt-mirror"}},
+	}
+	cal := []calendar.Event{
+		{ID: "evt-mirror", Title: "Standup (calendar copy)", Start: at(2026, time.March, 10, 9, 0)},
+		{ID: "evt-ext", Title: "External meeting", Start: at(2026, time.March, 10, 15, 0)},
+	}
+	msg := buildDigest(reminders, cal, now, testTZ)
+	if !strings.Contains(msg, "Standup") {
+		t.Error("the reminder should appear")
+	}
+	if strings.Contains(msg, "calendar copy") {
+		t.Error("a calendar event mirroring a reminder must be skipped (no duplicate)")
+	}
+	if !strings.Contains(msg, "External meeting") {
+		t.Error("an external calendar event should appear")
+	}
+}
+
 func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
 	now := at(2026, time.March, 10, 7, 0)
 	reminders := []store.Reminder{

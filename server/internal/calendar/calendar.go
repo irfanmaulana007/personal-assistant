@@ -12,7 +12,6 @@ package calendar
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -28,12 +27,14 @@ const toolkitSlug = "googlecalendar"
 // Composio Google Calendar tool slugs.
 const (
 	toolCreateEvent   = "GOOGLECALENDAR_CREATE_EVENT"
+	toolDeleteEvent   = "GOOGLECALENDAR_DELETE_EVENT"
 	toolListEvents    = "GOOGLECALENDAR_LIST_EVENTS"
 	toolListCalendars = "GOOGLECALENDAR_LIST_CALENDARS"
 )
 
 // Event is a normalized calendar event (also used for create input).
 type Event struct {
+	ID       string // calendar event id (list results / create result)
 	Title    string
 	Location string
 	Start    time.Time
@@ -93,12 +94,19 @@ func (s *Service) HasCalendar(ctx context.Context, userID int64) bool {
 	return len(s.Connections(ctx, userID)) > 0
 }
 
-// CreateEvent adds a timed event to the user's primary (first connected) account.
-func (s *Service) CreateEvent(ctx context.Context, userID int64, ev Event) error {
+// PrimaryConnection returns the id of the user's first connected Google account.
+func (s *Service) PrimaryConnection(ctx context.Context, userID int64) (string, bool) {
 	conns := s.Connections(ctx, userID)
 	if len(conns) == 0 {
-		return fmt.Errorf("no connected google calendar")
+		return "", false
 	}
+	return conns[0].ID, true
+}
+
+// CreateEvent adds an event to the given connection's primary calendar and
+// returns its event id. rrule, when non-empty, makes it recurring (e.g.
+// "RRULE:FREQ=WEEKLY;BYDAY=MO,WE").
+func (s *Service) CreateEvent(ctx context.Context, userID int64, connID string, ev Event, rrule string) (string, error) {
 	dur := ev.End.Sub(ev.Start)
 	if dur <= 0 {
 		dur = time.Hour
@@ -114,9 +122,38 @@ func (s *Service) CreateEvent(ctx context.Context, userID int64, ev Event) error
 	if ev.Location != "" {
 		args["location"] = ev.Location
 	}
+	if rrule != "" {
+		args["recurrence"] = []string{rrule}
+	}
 	argsJSON, _ := json.Marshal(args)
-	_, err := s.client.ExecuteTool(ctx, s.apiKey(ctx), toolCreateEvent, string(argsJSON), strconv.FormatInt(userID, 10), conns[0].ID)
+	raw, err := s.client.ExecuteTool(ctx, s.apiKey(ctx), toolCreateEvent, string(argsJSON), strconv.FormatInt(userID, 10), connID)
+	if err != nil {
+		return "", err
+	}
+	return parseCreatedEventID(raw), nil
+}
+
+// DeleteEvent removes a mirrored event from a connection's primary calendar.
+func (s *Service) DeleteEvent(ctx context.Context, userID int64, connID, eventID string) error {
+	args, _ := json.Marshal(map[string]any{"calendar_id": "primary", "event_id": eventID})
+	_, err := s.client.ExecuteTool(ctx, s.apiKey(ctx), toolDeleteEvent, string(args), strconv.FormatInt(userID, 10), connID)
 	return err
+}
+
+// parseCreatedEventID tolerantly pulls the new event's id out of Composio's
+// create response (top-level, or under a "data"/"response_data" wrapper).
+func parseCreatedEventID(raw string) string {
+	var w struct {
+		ID   string `json:"id"`
+		Data struct {
+			ID           string `json:"id"`
+			ResponseData struct {
+				ID string `json:"id"`
+			} `json:"response_data"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(raw), &w)
+	return firstNonEmpty(w.ID, w.Data.ID, w.Data.ResponseData.ID)
 }
 
 // ListEvents returns events in [from, to) across every connected account and
@@ -195,6 +232,7 @@ type calItem struct {
 }
 
 type gEvent struct {
+	ID       string `json:"id"`
 	Summary  string `json:"summary"`
 	Location string `json:"location"`
 	Start    gTime  `json:"start"`
@@ -230,6 +268,7 @@ func (s *Service) parseEvents(raw, calID string) []Event {
 		}
 		end, _, _ := s.parseGTime(it.End)
 		out = append(out, Event{
+			ID:       it.ID,
 			Title:    strings.TrimSpace(firstNonEmpty(it.Summary, "(no title)")),
 			Location: it.Location,
 			Start:    start,

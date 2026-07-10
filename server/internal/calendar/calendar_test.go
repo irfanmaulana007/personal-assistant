@@ -11,6 +11,21 @@ func testService() *Service {
 	return &Service{tz: time.FixedZone("WIB", 7*3600), log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
+func TestParseCreatedEventID(t *testing.T) {
+	cases := map[string]string{
+		`{"id":"abc"}`:                            "abc",
+		`{"data":{"id":"def"}}`:                   "def",
+		`{"data":{"response_data":{"id":"ghi"}}}`: "ghi",
+		`{"foo":1}`:                               "",
+		`not json`:                                "",
+	}
+	for raw, want := range cases {
+		if got := parseCreatedEventID(raw); got != want {
+			t.Errorf("parseCreatedEventID(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestParseEvents_TimedTopLevelItems(t *testing.T) {
 	s := testService()
 	raw := `{"items":[{"summary":"Standup","location":"Zoom","start":{"dateTime":"2026-03-10T15:00:00+07:00"},"end":{"dateTime":"2026-03-10T15:30:00+07:00"}}]}`
