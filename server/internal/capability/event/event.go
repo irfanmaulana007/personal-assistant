@@ -103,29 +103,10 @@ func (h *Handler) create(ctx context.Context, result *intent.ParseResult) (strin
 	}
 	local := when.In(h.timezone)
 
-	dur := time.Hour
-	if m, err := strconv.Atoi(result.Entities["duration_minutes"]); err == nil && m > 0 {
-		dur = time.Duration(m) * time.Minute
-	}
-
+	// A one-time event is stored as a one-time reminder (the source of truth). If
+	// a Google Calendar is connected it's mirrored there automatically by the
+	// reminder layer; the daily recap covers today & tomorrow.
 	userID := authctx.UserID(ctx)
-
-	// Calendar-first.
-	if h.calendar != nil && h.calendar.HasCalendar(ctx, userID) {
-		ev := calendar.Event{
-			Title:    title,
-			Location: result.Entities["location"],
-			Start:    when,
-			End:      when.Add(dur),
-		}
-		if err := h.calendar.CreateEvent(ctx, userID, ev); err != nil {
-			h.log.Warn("create calendar event", "error", err)
-			return "", fmt.Errorf("add to calendar: %w", err)
-		}
-		return fmt.Sprintf("Added to your Google Calendar: *%s* — %s", title, local.Format("Mon, Jan 2 at 3:04 PM")), nil
-	}
-
-	// Fallback: a one-time reminder.
 	in := store.ReminderInput{
 		Title:      title,
 		RepeatMode: "once",
@@ -134,10 +115,9 @@ func (h *Handler) create(ctx context.Context, result *intent.ParseResult) (strin
 		Enabled:    true,
 	}
 	if _, err := h.store.CreateReminder(ctx, userID, in); err != nil {
-		return "", fmt.Errorf("create fallback reminder: %w", err)
+		return "", fmt.Errorf("create reminder: %w", err)
 	}
-	return fmt.Sprintf("You don't have Google Calendar connected, so I saved *%s* as a one-time reminder for %s. Connect Google Calendar in Integrations to put one-time events on your calendar.",
-		title, local.Format("Mon, Jan 2 at 3:04 PM")), nil
+	return fmt.Sprintf("Reminder set: *%s* — %s", title, local.Format("Mon, Jan 2 at 3:04 PM")), nil
 }
 
 func firstNonEmpty(vals ...string) string {

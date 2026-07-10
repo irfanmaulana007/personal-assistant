@@ -14,10 +14,8 @@ import { Toggle } from './ui/Toggle';
 const inputClass =
   'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
 
-// Reminders are for repeats only; one-time events go to Google Calendar. The
-// "once" mode still exists in the backend (fallback + legacy rows) so it's kept
-// in the type and the summary, but it is no longer offered when creating one.
 const MODES: { value: RepeatMode; label: string }[] = [
+  { value: 'once', label: 'Once' },
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
@@ -313,6 +311,7 @@ function ReminderForm({
       repeat_mode: mode,
       weekdays: mode === 'weekly' && f.weekdays.length === 0 ? [1] : f.weekdays,
       day_of_month: mode === 'monthly' && !f.day_of_month ? 1 : f.day_of_month,
+      once_date: mode === 'once' && !f.once_date ? todayISO() : f.once_date,
     }));
   };
 
@@ -377,6 +376,18 @@ function ReminderForm({
             ))}
           </div>
         </div>
+
+        {form.repeat_mode === 'once' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
+            <input
+              type="date"
+              value={form.once_date}
+              onChange={(e) => set('once_date', e.target.value)}
+              className={`${inputClass} max-w-[12rem]`}
+            />
+          </div>
+        )}
 
         {form.repeat_mode === 'weekly' && (
           <div>

@@ -126,9 +126,9 @@ func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (str
 
 	repeat := strings.ToLower(strings.TrimSpace(result.Entities["repeat"]))
 	switch repeat {
-	case "daily", "weekly", "monthly":
+	case "once", "daily", "weekly", "monthly":
 	default:
-		return "How often should it repeat — daily, weekly, or monthly? (For a one-time event I can add it to your calendar instead.)", nil
+		return "How often should it repeat — once, daily, weekly, or monthly?", nil
 	}
 
 	// When no time is given, fall back to the user's configured default time.
@@ -152,6 +152,12 @@ func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (str
 			return "Which day of the month (1-31)?", nil
 		}
 		in.DayOfMonth = dom
+	case "once":
+		date := strings.TrimSpace(result.Entities["date"])
+		if _, err := time.ParseInLocation("2006-01-02", date, h.timezone); err != nil {
+			return "What date should I remind you (e.g. 2026-08-05)?", nil
+		}
+		in.OnceDate = date
 	}
 
 	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), in)
