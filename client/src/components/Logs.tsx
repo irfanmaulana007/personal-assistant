@@ -52,6 +52,7 @@ export function Logs() {
 
   const [selected, setSelected] = useState<Trace | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -132,10 +133,19 @@ export function Logs() {
 
   const openDetail = (t: Trace) => {
     setSelected(t);
+    setDetailError('');
     setDetailLoading(true);
     getLog(t.id)
-      .then(setSelected)
-      .catch(() => {})
+      .then((full) => {
+        setSelected(full);
+        setDetailError('');
+      })
+      .catch((e) =>
+        // The list row (t) has no tool calls or LLM steps — those are
+        // detail-only. Surface the failure instead of silently showing a
+        // drawer that looks complete but is missing the tool-call section.
+        setDetailError(e instanceof Error ? e.message : 'Failed to load full run detail'),
+      )
       .finally(() => setDetailLoading(false));
   };
 
@@ -282,7 +292,7 @@ export function Logs() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5">
-                <TraceDetail trace={selected} loading={detailLoading} />
+                <TraceDetail trace={selected} loading={detailLoading} detailError={detailError} />
               </div>
             </div>
           </>
@@ -292,7 +302,15 @@ export function Logs() {
   );
 }
 
-function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
+function TraceDetail({
+  trace,
+  loading,
+  detailError,
+}: {
+  trace: Trace;
+  loading: boolean;
+  detailError?: string;
+}) {
   const { formatDate, formatMoney } = usePreferences();
   const meta = [
     { k: 'Model', v: trace.model || '—' },
@@ -364,47 +382,54 @@ function TraceDetail({ trace, loading }: { trace: Trace; loading: boolean }) {
         </Section>
       )}
 
-      {loading ? (
-        <p className="mt-4 text-xs text-gray-400">Loading tool calls…</p>
-      ) : (
-        trace.tools &&
-        trace.tools.length > 0 && (
-          <Section title={`Tool calls (${trace.tools.length})`}>
-            <div className="space-y-3">
-              {trace.tools.map((t, i) => (
-                <div key={i} className="rounded-lg border border-gray-100">
-                  <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700">
-                    <span>{t.name}</span>
-                    {t.latency_ms != null && (
-                      <span className="text-xs font-normal text-gray-400 tabular-nums">
-                        {fmtLatency(t.latency_ms)}
-                      </span>
-                    )}
+      <Section
+        title={
+          !loading && trace.tools && trace.tools.length > 0
+            ? `Tool calls (${trace.tools.length})`
+            : 'Tool calls'
+        }
+      >
+        {loading ? (
+          <p className="text-xs text-gray-400">Loading tool calls…</p>
+        ) : detailError ? (
+          <p className="text-xs text-red-600">Couldn't load tool calls: {detailError}</p>
+        ) : trace.tools && trace.tools.length > 0 ? (
+          <div className="space-y-3">
+            {trace.tools.map((t, i) => (
+              <div key={i} className="rounded-lg border border-gray-100">
+                <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700">
+                  <span>{t.name}</span>
+                  {t.latency_ms != null && (
+                    <span className="text-xs font-normal text-gray-400 tabular-nums">
+                      {fmtLatency(t.latency_ms)}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2 p-3">
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400">
+                      Arguments
+                    </div>
+                    <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700">
+                      {pretty(t.arguments) || '{}'}
+                    </pre>
                   </div>
-                  <div className="space-y-2 p-3">
-                    <div>
-                      <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400">
-                        Arguments
-                      </div>
-                      <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700">
-                        {pretty(t.arguments) || '{}'}
-                      </pre>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400">
+                      Result
                     </div>
-                    <div>
-                      <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-400">
-                        Result
-                      </div>
-                      <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700">
-                        {pretty(t.result)}
-                      </pre>
-                    </div>
+                    <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700">
+                      {pretty(t.result)}
+                    </pre>
                   </div>
                 </div>
-              ))}
-            </div>
-          </Section>
-        )
-      )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">No tools were used in this run.</p>
+        )}
+      </Section>
 
       {trace.steps && trace.steps.length > 0 && (
         <Section title={`LLM calls (${trace.steps.length})`}>
