@@ -120,11 +120,11 @@ var toolSpecs = []toolSpec{
 	// Reminders are a core capability (they back the Reminders page and the
 	// user's schedule/calendar), so these tools are always available.
 	{
-		name:        "reminder_set",
-		description: "Set a one-off reminder at a single natural-language time (e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'). For anything that repeats, use reminder_schedule instead.",
-		capability:  intent.CapabilityReminder,
-		action:      intent.ActionReminderSet,
-		parameters:  `{"type":"object","properties":{"message":{"type":"string","description":"What to be reminded about."},"time":{"type":"string","description":"When to remind, e.g. 'in 30 minutes', 'at 5pm', 'tomorrow at 9am'."}},"required":["message","time"]}`,
+		name:        "schedule_event",
+		description: "Add a ONE-TIME / dated event — an appointment, meeting, flight, or a specific-date thing (e.g. 'dentist tomorrow 3pm', 'meeting on Aug 5 at 2pm', 'besok jam 10 donor darah'). It goes to the user's Google Calendar when connected, otherwise it's saved as a one-time reminder. Use reminder_schedule instead for anything that repeats.",
+		capability:  intent.CapabilityEvent,
+		action:      intent.ActionEventCreate,
+		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"What the event is."},"datetime":{"type":"string","description":"When it happens, e.g. 'tomorrow at 3pm', 'Aug 5 at 2pm', '2026-08-05 14:00'."},"duration_minutes":{"type":"integer","description":"Event length in minutes (default 60)."},"location":{"type":"string","description":"Where it is, if given."}},"required":["title","datetime"]}`,
 	},
 	{
 		name:        "reminder_schedule",

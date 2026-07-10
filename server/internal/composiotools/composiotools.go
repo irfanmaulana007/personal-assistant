@@ -19,11 +19,13 @@ import (
 // curated maps our supported toolkit slugs to a hand-picked set of Composio
 // tool slugs (the most useful actions). If none resolve for a toolkit, we fall
 // back to that toolkit's top tools so a slug rename doesn't break everything.
+// Google Calendar is intentionally NOT exposed as raw Composio tools here — the
+// agent uses the higher-level schedule_event / list_calendar tools (backed by
+// internal/calendar), which handle multi-account and the reminder fallback.
 var curated = map[string][]string{
-	"gmail":          {"GMAIL_SEND_EMAIL", "GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"},
-	"googlecalendar": {"GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_FIND_EVENT", "GOOGLECALENDAR_LIST_EVENTS"},
-	"github":         {"GITHUB_CREATE_AN_ISSUE", "GITHUB_LIST_REPOSITORY_ISSUES", "GITHUB_SEARCH_ISSUES"},
-	"sentry":         {"SENTRY_LIST_ORGANIZATION_ISSUES", "SENTRY_LIST_PROJECTS"},
+	"gmail":  {"GMAIL_SEND_EMAIL", "GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"},
+	"github": {"GITHUB_CREATE_AN_ISSUE", "GITHUB_LIST_REPOSITORY_ISSUES", "GITHUB_SEARCH_ISSUES"},
+	"sentry": {"SENTRY_LIST_ORGANIZATION_ISSUES", "SENTRY_LIST_PROJECTS"},
 }
 
 const fallbackLimit = 6
@@ -117,7 +119,7 @@ func (p *Provider) Execute(ctx context.Context, name, argsJSON string) string {
 	if key == "" {
 		return "This app isn't connected. Ask an admin to connect it in Integrations."
 	}
-	out, err := p.client.ExecuteTool(ctx, key, name, argsJSON, userID)
+	out, err := p.client.ExecuteTool(ctx, key, name, argsJSON, userID, "")
 	if err != nil {
 		p.log.Warn("execute composio tool", "tool", name, "error", err)
 		return "Error running " + name + ": " + err.Error()

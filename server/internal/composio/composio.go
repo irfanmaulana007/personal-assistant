@@ -239,7 +239,10 @@ func (c *Client) fetchTools(ctx context.Context, apiKey string, q url.Values) ([
 }
 
 // ExecuteTool runs a tool for a user and returns a compact result string.
-func (c *Client) ExecuteTool(ctx context.Context, apiKey, toolSlug, argumentsJSON, userID string) (string, error) {
+// connectedAccountID targets a specific connected account when non-empty (a user
+// may have several accounts connected for the same toolkit); empty lets Composio
+// pick the user's default.
+func (c *Client) ExecuteTool(ctx context.Context, apiKey, toolSlug, argumentsJSON, userID, connectedAccountID string) (string, error) {
 	var args map[string]any
 	if strings.TrimSpace(argumentsJSON) != "" {
 		if err := json.Unmarshal([]byte(argumentsJSON), &args); err != nil {
@@ -247,6 +250,9 @@ func (c *Client) ExecuteTool(ctx context.Context, apiKey, toolSlug, argumentsJSO
 		}
 	}
 	body := map[string]any{"arguments": args, "user_id": userID}
+	if connectedAccountID != "" {
+		body["connected_account_id"] = connectedAccountID
+	}
 
 	var resp struct {
 		Data       json.RawMessage `json:"data"`
