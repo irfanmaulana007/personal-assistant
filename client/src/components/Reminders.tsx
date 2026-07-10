@@ -10,6 +10,7 @@ import {
 } from '../api/client';
 import type { Reminder, ReminderPayload, RepeatMode, RemindersConfig } from '../types';
 import { Toggle } from './ui/Toggle';
+import { SkeletonListRow } from './ui/Skeleton';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30';
@@ -241,7 +242,11 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <div className="mt-5 space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <SkeletonListRow key={i} trailingWidth="w-28" />
+          ))}
+        </div>
       ) : reminders.length === 0 && !editing ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No reminders yet.</p>
       ) : (

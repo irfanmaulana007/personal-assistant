@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { listUsers, createUser, updateUser, deleteUser, getMe } from '../api/client';
+import { Skeleton, SkeletonCard } from './ui/Skeleton';
 import type { User, Role } from '../types';
 
 const inputClass =
@@ -47,7 +48,18 @@ export function Account() {
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <SkeletonCard className="mt-6">
+          <Skeleton className="mb-4 h-3.5 w-16" />
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between gap-4">
+                <Skeleton className="h-4 w-56 max-w-full" />
+                <Skeleton className="h-7 w-24 rounded-lg" />
+                <Skeleton className="h-6 w-14 rounded-lg" />
+              </div>
+            ))}
+          </div>
+        </SkeletonCard>
       ) : (
         <UsersCard users={users} meId={me?.id ?? 0} onChanged={reload} />
       )}
