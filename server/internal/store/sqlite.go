@@ -304,6 +304,9 @@ func (s *SQLiteStore) migrate() error {
 		{"reminders", "event_at", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "offsets", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "last_fired_at", "DATETIME"},
+		{"reminders", "calendar_conn", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "calendar_event_ids", "TEXT NOT NULL DEFAULT ''"},
+		{"reminders", "calendar_hash", "TEXT NOT NULL DEFAULT ''"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -447,7 +450,7 @@ func (s *SQLiteStore) DeleteUser(ctx context.Context, id int64) error {
 
 // --- Reminders ---
 
-const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, last_fired_at, remind_at, created_at, notified, cancelled`
+const reminderCols = `id, user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, last_fired_at, calendar_conn, calendar_event_ids, calendar_hash, remind_at, created_at, notified, cancelled`
 
 func (s *SQLiteStore) CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error) {
 	now := time.Now().UTC()
@@ -483,7 +486,7 @@ func (s *SQLiteStore) CreateLegacyReminder(ctx context.Context, userID int64, me
 
 func (s *SQLiteStore) GetReminder(ctx context.Context, userID, id int64) (*Reminder, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT `+reminderCols+` FROM reminders WHERE id = ? AND user_id = ?`, id, userID)
+		`SELECT `+reminderCols+` FROM reminders WHERE id = ? AND user_id = ? AND cancelled = 0`, id, userID)
 	r, err := scanReminder(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -529,8 +532,43 @@ func (s *SQLiteStore) UpdateReminder(ctx context.Context, userID, id int64, in R
 	return err
 }
 
+// DeleteReminder soft-deletes (cancelled = 1) so the calendar reconciler can
+// remove any mirrored events before the row is finally removed.
 func (s *SQLiteStore) DeleteReminder(ctx context.Context, userID, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM reminders WHERE id = ? AND user_id = ?`, id, userID)
+	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET cancelled = 1, enabled = 0 WHERE id = ? AND user_id = ?`, id, userID)
+	return err
+}
+
+// HardDeleteReminder removes the row permanently (used by the reconciler after
+// cleaning up any mirrored calendar events).
+func (s *SQLiteStore) HardDeleteReminder(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM reminders WHERE id = ?`, id)
+	return err
+}
+
+// ListAllForOwner returns every reminder for a user, including disabled and
+// cancelled ones (the reconciler needs those to clean up calendar events).
+func (s *SQLiteStore) ListAllForOwner(ctx context.Context, ownerID int64) ([]Reminder, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+reminderCols+` FROM reminders WHERE user_id = ?`, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list all reminders: %w", err)
+	}
+	defer rows.Close()
+	return scanReminders(rows)
+}
+
+// SetReminderCalendar records the mirrored calendar events for a reminder.
+func (s *SQLiteStore) SetReminderCalendar(ctx context.Context, id int64, conn string, eventIDs []string, hash string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE reminders SET calendar_conn = ?, calendar_event_ids = ?, calendar_hash = ? WHERE id = ?`,
+		conn, joinTimes(eventIDs), hash, id)
+	return err
+}
+
+// ClearReminderCalendar forgets a reminder's calendar mirror (after deleting the events).
+func (s *SQLiteStore) ClearReminderCalendar(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE reminders SET calendar_conn = '', calendar_event_ids = '', calendar_hash = '' WHERE id = ?`, id)
 	return err
 }
 
@@ -580,17 +618,20 @@ type rowScanner interface {
 
 func scanReminder(row rowScanner) (*Reminder, error) {
 	var r Reminder
-	var times, weekdays, offsets string
+	var times, weekdays, offsets, calEventIDs string
 	var lastFired sql.NullTime
 	if err := row.Scan(
 		&r.ID, &r.UserID, &r.Title, &r.Message, &r.RepeatMode, &times, &weekdays,
-		&r.DayOfMonth, &r.OnceDate, &r.EventAt, &offsets, &r.Enabled, &lastFired, &r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled,
+		&r.DayOfMonth, &r.OnceDate, &r.EventAt, &offsets, &r.Enabled, &lastFired,
+		&r.CalendarConn, &calEventIDs, &r.CalendarHash,
+		&r.RemindAt, &r.CreatedAt, &r.Notified, &r.Cancelled,
 	); err != nil {
 		return nil, err
 	}
 	r.Times = splitTimes(times)
 	r.Weekdays = splitInts(weekdays)
 	r.Offsets = splitInts(offsets)
+	r.CalendarEventIDs = splitTimes(calEventIDs) // comma-split, non-empty
 	if lastFired.Valid {
 		t := lastFired.Time.UTC()
 		r.LastFiredAt = &t

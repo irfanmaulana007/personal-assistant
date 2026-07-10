@@ -50,6 +50,11 @@ type Reminder struct {
 	Enabled     bool
 	LastFiredAt *time.Time // UTC instant of the most-recent slot fired; nil = never
 
+	// Google Calendar mirror bookkeeping (managed by the reconciler).
+	CalendarConn     string   // Composio connection the events live on
+	CalendarEventIDs []string // one calendar event id per reminder time
+	CalendarHash     string   // hash of the mirrored schedule (detects edits)
+
 	// Legacy one-shot fields (retained for chat-created reminders).
 	Message   string
 	RemindAt  time.Time
@@ -393,6 +398,11 @@ type Store interface {
 	SetReminderEnabled(ctx context.Context, userID, id int64, enabled bool) error
 	ListEnabledForOwner(ctx context.Context, ownerID int64) ([]Reminder, error)
 	MarkReminderFired(ctx context.Context, id int64, firedAt time.Time, disable bool) error
+	// Calendar-mirror bookkeeping (used by the reconciler).
+	ListAllForOwner(ctx context.Context, ownerID int64) ([]Reminder, error)
+	HardDeleteReminder(ctx context.Context, id int64) error
+	SetReminderCalendar(ctx context.Context, id int64, conn string, eventIDs []string, hash string) error
+	ClearReminderCalendar(ctx context.Context, id int64) error
 	// Legacy one-shot path (chat-created reminders).
 	CreateLegacyReminder(ctx context.Context, userID int64, message string, remindAt time.Time) (*Reminder, error)
 	GetDueReminders(ctx context.Context, userID int64) ([]Reminder, error)

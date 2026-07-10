@@ -93,6 +93,51 @@ func TestReminderCRUDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReminderCalendarRefsAndSoftDelete(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	const uid = 1
+
+	r, err := s.CreateReminder(ctx, uid, ReminderInput{
+		Title: "X", RepeatMode: "daily", Times: []string{"09:00"}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := s.SetReminderCalendar(ctx, r.ID, "conn1", []string{"e1", "e2"}, "hash1"); err != nil {
+		t.Fatalf("set calendar: %v", err)
+	}
+	got, _ := s.GetReminder(ctx, uid, r.ID)
+	if got == nil || got.CalendarConn != "conn1" || len(got.CalendarEventIDs) != 2 || got.CalendarHash != "hash1" {
+		t.Fatalf("calendar refs round-trip failed: %+v", got)
+	}
+
+	// Soft delete: hidden from Get/List but retained for the reconciler.
+	if err := s.DeleteReminder(ctx, uid, r.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if g, _ := s.GetReminder(ctx, uid, r.ID); g != nil {
+		t.Error("soft-deleted reminder should not be gettable")
+	}
+	all, _ := s.ListAllForOwner(ctx, uid)
+	if len(all) != 1 || !all[0].Cancelled {
+		t.Fatalf("row should remain (cancelled) for reconciler cleanup: %+v", all)
+	}
+
+	// Clear + hard delete.
+	if err := s.ClearReminderCalendar(ctx, r.ID); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if err := s.HardDeleteReminder(ctx, r.ID); err != nil {
+		t.Fatalf("hard delete: %v", err)
+	}
+	all, _ = s.ListAllForOwner(ctx, uid)
+	if len(all) != 0 {
+		t.Errorf("hard delete should remove the row, got %d", len(all))
+	}
+}
+
 func TestSpecificReminderRoundTrip(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

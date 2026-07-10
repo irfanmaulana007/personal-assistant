@@ -23,25 +23,34 @@ import (
 // blasting stale reminders on boot. Must be well above the tick interval.
 const graceWindow = 15 * time.Minute
 
-// CalendarReader supplies the owner's calendar events for the daily recap.
-type CalendarReader interface {
+// reconcileInterval bounds how often the calendar mirror is reconciled.
+const reconcileInterval = 5 * time.Minute
+
+// CalendarSyncer reads the owner's calendar events (for the recap) and mirrors
+// reminders to Google Calendar (for the reconciler).
+type CalendarSyncer interface {
 	ListEvents(ctx context.Context, userID int64, from, to time.Time) []calendar.Event
+	PrimaryConnection(ctx context.Context, userID int64) (string, bool)
+	CreateEvent(ctx context.Context, userID int64, connID string, ev calendar.Event, rrule string) (string, error)
+	DeleteEvent(ctx context.Context, userID int64, connID, eventID string) error
 }
 
 // Handler handles reminder-related commands and runs the background scheduler.
 type Handler struct {
 	store         store.Store
 	settings      *settings.Service
-	calendar      CalendarReader
+	calendar      CalendarSyncer
 	timezone      *time.Location
 	checkInterval time.Duration
 	sendFunc      transport.SendFunc
 	ownerJID      string
 	log           *slog.Logger
+
+	lastReconcile time.Time
 }
 
-// New creates a new reminder handler. cal may be nil (recap then omits calendar events).
-func New(s store.Store, settingsSvc *settings.Service, cal CalendarReader, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
+// New creates a new reminder handler. cal may be nil (no calendar mirror/recap).
+func New(s store.Store, settingsSvc *settings.Service, cal CalendarSyncer, timezone *time.Location, checkInterval time.Duration, ownerJID string, log *slog.Logger) *Handler {
 	return &Handler{
 		store:         s,
 		settings:      settingsSvc,
@@ -375,6 +384,85 @@ func (h *Handler) checkDueReminders(ctx context.Context) {
 	}
 
 	h.maybeSendDigest(ctx, reminders, now)
+
+	// Periodically reconcile the Google Calendar mirror (create/update/delete).
+	if h.calendar != nil && time.Since(h.lastReconcile) >= reconcileInterval {
+		h.lastReconcile = time.Now()
+		h.reconcileCalendar(ctx, owner.ID)
+	}
+}
+
+// reconcileCalendar brings the owner's Google Calendar mirror in line with the
+// reminders table: creates events for new/changed reminders, deletes them for
+// disabled/removed ones. Everything is best-effort (fail-soft).
+func (h *Handler) reconcileCalendar(ctx context.Context, ownerID int64) {
+	reminders, err := h.store.ListAllForOwner(ctx, ownerID)
+	if err != nil {
+		h.log.Error("reconcile: list reminders", "error", err)
+		return
+	}
+	connID, hasCal := h.calendar.PrimaryConnection(ctx, ownerID)
+	for _, r := range reminders {
+		h.reconcileOne(ctx, ownerID, r, connID, hasCal)
+	}
+}
+
+func (h *Handler) reconcileOne(ctx context.Context, userID int64, r store.Reminder, connID string, hasCal bool) {
+	// Removed reminder: clean up its events, then drop the row.
+	if r.Cancelled {
+		h.deleteMirror(ctx, userID, r)
+		if err := h.store.HardDeleteReminder(ctx, r.ID); err != nil {
+			h.log.Error("reconcile: hard delete", "id", r.ID, "error", err)
+		}
+		return
+	}
+	// Disabled, or no calendar connected: ensure nothing is mirrored.
+	if !r.Enabled || !hasCal {
+		if len(r.CalendarEventIDs) > 0 {
+			h.deleteMirror(ctx, userID, r)
+			_ = h.store.ClearReminderCalendar(ctx, r.ID)
+		}
+		return
+	}
+	// Enabled + connected: (re)create the mirror when missing or changed.
+	want := calendarHash(r)
+	if len(r.CalendarEventIDs) > 0 && r.CalendarHash == want && r.CalendarConn == connID {
+		return // already in sync
+	}
+	if len(r.CalendarEventIDs) > 0 {
+		h.deleteMirror(ctx, userID, r)
+	}
+	ids := h.createMirror(ctx, userID, connID, r)
+	if len(ids) > 0 {
+		if err := h.store.SetReminderCalendar(ctx, r.ID, connID, ids, want); err != nil {
+			h.log.Error("reconcile: save refs", "id", r.ID, "error", err)
+		}
+	} else {
+		_ = h.store.ClearReminderCalendar(ctx, r.ID) // retry next cycle
+	}
+}
+
+func (h *Handler) deleteMirror(ctx context.Context, userID int64, r store.Reminder) {
+	for _, eid := range r.CalendarEventIDs {
+		if err := h.calendar.DeleteEvent(ctx, userID, r.CalendarConn, eid); err != nil {
+			h.log.Warn("reconcile: delete event", "id", eid, "error", err)
+		}
+	}
+}
+
+func (h *Handler) createMirror(ctx context.Context, userID int64, connID string, r store.Reminder) []string {
+	var ids []string
+	for _, me := range reminderEvents(r, h.timezone) {
+		id, err := h.calendar.CreateEvent(ctx, userID, connID, me.ev, me.rrule)
+		if err != nil {
+			h.log.Warn("reconcile: create event", "reminder", r.ID, "error", err)
+			continue
+		}
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // maybeSendDigest sends a single daily recap of the owner's upcoming reminders
@@ -449,7 +537,18 @@ func buildDigest(reminders []store.Reminder, calEvents []calendar.Event, now tim
 	var items []digestItem
 	inWindow := func(t time.Time) bool { return !t.Before(start) && t.Before(end) }
 
+	// Calendar events that mirror a reminder are already listed from the DB;
+	// skip them so nothing appears twice.
+	mirrored := map[string]bool{}
+	for _, r := range reminders {
+		for _, id := range r.CalendarEventIDs {
+			mirrored[id] = true
+		}
+	}
 	for _, ev := range calEvents {
+		if ev.ID != "" && mirrored[ev.ID] {
+			continue
+		}
 		if inWindow(ev.Start) {
 			items = append(items, digestItem{ev.Start, ev.Title})
 		}
@@ -762,4 +861,80 @@ func reminderBody(r store.Reminder) string {
 		return r.Title
 	}
 	return r.Message
+}
+
+// mirrorEvent is one calendar event to create for a reminder (one per time).
+type mirrorEvent struct {
+	ev    calendar.Event
+	rrule string
+}
+
+var icalWeekdays = [...]string{"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
+
+// reminderEvents maps a reminder to the calendar events that mirror it: one per
+// time, with a recurrence rule for daily/weekly/monthly. Specific/legacy
+// reminders (no times) produce nothing.
+func reminderEvents(r store.Reminder, tz *time.Location) []mirrorEvent {
+	now := time.Now().In(tz)
+	var out []mirrorEvent
+	for _, hm := range r.Times {
+		hh, mm, ok := parseHM(hm)
+		if !ok {
+			continue
+		}
+		var start time.Time
+		var rrule string
+		switch r.RepeatMode {
+		case "daily":
+			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
+			rrule = "RRULE:FREQ=DAILY"
+		case "weekly":
+			days := make([]string, 0, len(r.Weekdays))
+			for _, d := range r.Weekdays {
+				if d >= 0 && d <= 6 {
+					days = append(days, icalWeekdays[d])
+				}
+			}
+			if len(days) == 0 {
+				continue
+			}
+			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
+			rrule = "RRULE:FREQ=WEEKLY;BYDAY=" + strings.Join(days, ",")
+		case "monthly":
+			if r.DayOfMonth < 1 || r.DayOfMonth > 31 {
+				continue
+			}
+			start = time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, tz)
+			rrule = fmt.Sprintf("RRULE:FREQ=MONTHLY;BYMONTHDAY=%d", r.DayOfMonth)
+		default: // once
+			day, err := time.ParseInLocation("2006-01-02", r.OnceDate, tz)
+			if err != nil {
+				continue
+			}
+			start = time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, tz)
+		}
+		out = append(out, mirrorEvent{
+			ev:    calendar.Event{Title: reminderBody(r), Start: start, End: start.Add(time.Hour)},
+			rrule: rrule,
+		})
+	}
+	return out
+}
+
+// calendarHash fingerprints the fields that define a reminder's calendar mirror,
+// so the reconciler can detect edits and re-sync.
+func calendarHash(r store.Reminder) string {
+	return strings.Join([]string{
+		reminderBody(r), r.RepeatMode,
+		strings.Join(r.Times, ","), joinIntSlice(r.Weekdays),
+		strconv.Itoa(r.DayOfMonth), r.OnceDate,
+	}, "|")
+}
+
+func joinIntSlice(nums []int) string {
+	parts := make([]string, len(nums))
+	for i, n := range nums {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ",")
 }

@@ -19,10 +19,8 @@ import (
 )
 
 // Calendar is the subset of the calendar service this handler needs (an
-// interface so the logic is unit-testable without Composio).
+// interface so the agenda logic is unit-testable without Composio).
 type Calendar interface {
-	HasCalendar(ctx context.Context, userID int64) bool
-	CreateEvent(ctx context.Context, userID int64, ev calendar.Event) error
 	ListEvents(ctx context.Context, userID int64, from, to time.Time) []calendar.Event
 }
 
