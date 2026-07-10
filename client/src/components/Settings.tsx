@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const allSections = [
   { to: '/settings', label: 'Agent', end: true, admin: false },
   { to: '/settings/model', label: 'Model', end: false, admin: true },
+  { to: '/settings/whatsapp', label: 'WhatsApp', end: false, admin: true },
   { to: '/settings/display', label: 'Display', end: false, admin: true },
   { to: '/settings/pricing', label: 'Pricing', end: false, admin: true },
 ];

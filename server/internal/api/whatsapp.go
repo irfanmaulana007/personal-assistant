@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	qrcode "github.com/skip2/go-qrcode"
 )
@@ -64,4 +66,66 @@ func (s *Server) handleWhatsAppDisconnect(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.writeWhatsAppStatus(w)
+}
+
+type whatsappAllowlistResp struct {
+	Allowlist []string `json:"allowlist"`
+}
+
+// handleGetWhatsAppAllowlist returns the numbers allowed to chat with the assistant.
+func (s *Server) handleGetWhatsAppAllowlist(w http.ResponseWriter, r *http.Request) {
+	list := s.settings.WhatsAppAllowedJIDs(r.Context())
+	if list == nil {
+		list = []string{}
+	}
+	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list})
+}
+
+// handleSetWhatsAppAllowlist saves the allowlist and refreshes the live transport.
+func (s *Server) handleSetWhatsAppAllowlist(w http.ResponseWriter, r *http.Request) {
+	var req whatsappAllowlistResp
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	seen := map[string]bool{}
+	list := make([]string, 0, len(req.Allowlist))
+	for _, raw := range req.Allowlist {
+		jid := normalizeWhatsAppJID(raw)
+		if jid == "" || seen[jid] {
+			continue
+		}
+		seen[jid] = true
+		list = append(list, jid)
+	}
+	if err := s.settings.SetWhatsAppAllowedJIDs(r.Context(), list); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
+		return
+	}
+	if s.whatsapp != nil {
+		s.whatsapp.SetAllowedSenders(list)
+	}
+	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list})
+}
+
+// normalizeWhatsAppJID accepts a full JID ("628…@s.whatsapp.net") or a bare
+// number ("+62 851-2150-3971") and returns a canonical user JID, or "" if empty.
+func normalizeWhatsAppJID(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.Contains(s, "@") {
+		return s
+	}
+	var digits strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	if digits.Len() == 0 {
+		return ""
+	}
+	return digits.String() + "@s.whatsapp.net"
 }

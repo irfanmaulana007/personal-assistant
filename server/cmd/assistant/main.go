@@ -155,9 +155,18 @@ func main() {
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
 		wa = whatsapp.New(cfg.WhatsApp.Database, log)
-		// Answer the owner's configured number(s) — set OWNER_JID to your
-		// personal (and work) numbers when the assistant runs on its own account.
-		wa.SetAllowedSenders(cfg.Owner.AllowedJIDs())
+		// The allowlist lives in settings (editable at Settings → WhatsApp). Seed
+		// it from OWNER_JID on first boot so existing deployments keep working.
+		allow := settingsSvc.WhatsAppAllowedJIDs(ctx)
+		if len(allow) == 0 {
+			if seed := cfg.Owner.AllowedJIDs(); len(seed) > 0 {
+				if err := settingsSvc.SetWhatsAppAllowedJIDs(ctx, seed); err != nil {
+					log.Error("seed whatsapp allowlist", "error", err)
+				}
+				allow = seed
+			}
+		}
+		wa.SetAllowedSenders(allow)
 		wa.SetMessageHandler(func(msg *transport.Message) {
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.
@@ -247,9 +256,12 @@ func main() {
 		// Reminders are delivered to the paired WhatsApp account (derived from
 		// pairing), regardless of the reminder's stored recipient.
 		reminderHandler.SetSendFunc(func(ctx context.Context, _ string, text string) error {
-			// Deliver to the owner's primary number (OWNER_JID). Fall back to the
+			// Deliver to the primary (first) allowlisted number. Fall back to the
 			// paired account itself ("message yourself" mode) when none is set.
-			to := cfg.Owner.PrimaryJID()
+			to := ""
+			if list := settingsSvc.WhatsAppAllowedJIDs(ctx); len(list) > 0 {
+				to = list[0]
+			}
 			if to == "" {
 				to = wa.OwnerJID()
 			}

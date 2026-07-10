@@ -24,6 +24,7 @@ type WhatsAppController interface {
 	Status() (status, qr string)
 	BeginPairing() error
 	Logout(ctx context.Context) error
+	SetAllowedSenders(jids []string)
 }
 
 // Server is the HTTP API server for the web client.
@@ -125,6 +126,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/whatsapp", admin(s.handleWhatsAppStatus))
 	mux.Handle("POST /api/whatsapp/connect", admin(s.handleWhatsAppConnect))
 	mux.Handle("POST /api/whatsapp/disconnect", admin(s.handleWhatsAppDisconnect))
+	mux.Handle("GET /api/whatsapp/allowlist", admin(s.handleGetWhatsAppAllowlist))
+	mux.Handle("PUT /api/whatsapp/allowlist", admin(s.handleSetWhatsAppAllowlist))
 
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())

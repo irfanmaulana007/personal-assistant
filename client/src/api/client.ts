@@ -302,3 +302,14 @@ export async function connectWhatsApp(): Promise<WhatsAppStatus> {
 export async function disconnectWhatsApp(): Promise<WhatsAppStatus> {
   return request<WhatsAppStatus>('/api/whatsapp/disconnect', { method: 'POST' });
 }
+
+export async function getWhatsAppAllowlist(): Promise<{ allowlist: string[] }> {
+  return request<{ allowlist: string[] }>('/api/whatsapp/allowlist');
+}
+
+export async function setWhatsAppAllowlist(allowlist: string[]): Promise<{ allowlist: string[] }> {
+  return request<{ allowlist: string[] }>('/api/whatsapp/allowlist', {
+    method: 'PUT',
+    body: JSON.stringify({ allowlist }),
+  });
+}
