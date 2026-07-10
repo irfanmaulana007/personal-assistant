@@ -23,6 +23,15 @@ var skillSeed = []Skill{
 		Prompt:         "You can look up saved contacts with the contact_search tool and save new ones with contact_add. When the user asks about a person (their phone, email, or a note), search for them. When the user shares contact details (\"save John's number 0812…\", \"Sarah's email is …\"), save them. Always confirm what you found or saved, and never invent contact details.",
 	},
 	{
+		Key:            "life_goals",
+		Name:           "Life Goals",
+		Category:       "Personal",
+		DefaultEnabled: true,
+		SortOrder:      1,
+		Description:    "Keep a checklist of things you want to do in life — \"take a swimming course\", \"get a gym membership\", \"visit Japan\". Add them just by mentioning them, ask to see your list, and check them off as you go. Also manageable from the Life Goals page.",
+		Prompt:         "The user keeps a life list — a checklist of things they want to do in life. Use lifegoal_add when they mention wanting to do or achieve something someday, lifegoal_list to show the checklist and its progress, lifegoal_check to mark an item done when they've achieved it, and lifegoal_delete to remove one. Identify an item to check or delete by its number from the last listing or by its title. Confirm what you added or checked off, and be encouraging when they complete something.",
+	},
+	{
 		Key:            "travel_control",
 		Name:           "Travel Control",
 		Category:       "Finance",
