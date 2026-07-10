@@ -32,7 +32,7 @@ func toolkitName(slug string) (string, bool) {
 
 // multiToolkits may have several connected accounts per user (e.g. multiple
 // Google accounts). Other toolkits are treated as a single connection.
-var multiToolkits = map[string]bool{"googlecalendar": true}
+var multiToolkits = map[string]bool{"googlecalendar": true, "gmail": true}
 
 type integrationAccount struct {
 	ConnectionID string `json:"connection_id"`
