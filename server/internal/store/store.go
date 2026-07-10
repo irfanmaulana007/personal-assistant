@@ -108,12 +108,13 @@ type Contact struct {
 // LifeGoal is a single checklist item on the user's life to-do list (things
 // they want to do, like "Take a swimming course"), scoped to a user.
 type LifeGoal struct {
-	ID        int64
-	Title     string
-	Note      string
-	Done      bool
-	CreatedAt time.Time
-	DoneAt    *time.Time // set when Done, nil otherwise
+	ID          int64
+	Title       string
+	Description string // an enriched explanation of the goal
+	Note        string // a short, optional user annotation
+	Done        bool
+	CreatedAt   time.Time
+	DoneAt      *time.Time // set when Done, nil otherwise
 }
 
 // Activity is a logged sport/workout session, scoped to a user.
@@ -457,10 +458,10 @@ type Store interface {
 	SearchContacts(ctx context.Context, userID int64, query string) ([]Contact, error)
 
 	// Life goals (a simple life checklist, scoped to a user)
-	CreateLifeGoal(ctx context.Context, userID int64, title, note string) (*LifeGoal, error)
+	CreateLifeGoal(ctx context.Context, userID int64, title, description, note string) (*LifeGoal, error)
 	ListLifeGoals(ctx context.Context, userID int64) ([]LifeGoal, error)
 	GetLifeGoal(ctx context.Context, userID, id int64) (*LifeGoal, error)
-	UpdateLifeGoal(ctx context.Context, userID, id int64, title, note string) error
+	UpdateLifeGoal(ctx context.Context, userID, id int64, title, description, note string) error
 	SetLifeGoalDone(ctx context.Context, userID, id int64, done bool) error
 	DeleteLifeGoal(ctx context.Context, userID, id int64) error
 

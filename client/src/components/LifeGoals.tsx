@@ -51,6 +51,7 @@ export function LifeGoals() {
 
   // New-item form state.
   const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [newNote, setNewNote] = useState('');
   const [adding, setAdding] = useState(false);
 
@@ -76,8 +77,9 @@ export function LifeGoals() {
     setAdding(true);
     setError('');
     try {
-      await createLifeGoal({ title, note: newNote.trim() });
+      await createLifeGoal({ title, description: newDescription.trim(), note: newNote.trim() });
       setNewTitle('');
+      setNewDescription('');
       setNewNote('');
       await reload();
     } catch (err) {
@@ -113,8 +115,12 @@ export function LifeGoals() {
     }
   };
 
-  const saveEdit = async (id: number, title: string, note: string) => {
-    await updateLifeGoal(id, { title: title.trim(), note: note.trim() });
+  const saveEdit = async (id: number, title: string, description: string, note: string) => {
+    await updateLifeGoal(id, {
+      title: title.trim(),
+      description: description.trim(),
+      note: note.trim(),
+    });
     await reload();
     setEditingId(null);
   };
@@ -175,6 +181,13 @@ export function LifeGoals() {
             {adding ? 'Adding…' : '+ Add'}
           </button>
         </div>
+        <textarea
+          value={newDescription}
+          onChange={(e) => setNewDescription(e.target.value)}
+          placeholder="Add a description (optional)"
+          rows={2}
+          className={`${inputClass} mt-2 resize-none`}
+        />
         <input
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
@@ -212,7 +225,7 @@ export function LifeGoals() {
                 key={g.id}
                 goal={g}
                 onCancel={() => setEditingId(null)}
-                onSave={(title, note) => saveEdit(g.id, title, note)}
+                onSave={(title, description, note) => saveEdit(g.id, title, description, note)}
               />
             ) : (
               <div
@@ -230,12 +243,23 @@ export function LifeGoals() {
                   >
                     {g.title}
                   </div>
-                  {g.note && (
+                  {g.description && (
                     <p
                       className={`mt-0.5 text-sm ${
                         g.done
                           ? 'text-gray-300 dark:text-gray-600'
                           : 'text-gray-500 dark:text-gray-400'
+                      }`}
+                    >
+                      {g.description}
+                    </p>
+                  )}
+                  {g.note && (
+                    <p
+                      className={`mt-1 text-xs ${
+                        g.done
+                          ? 'text-gray-300 dark:text-gray-600'
+                          : 'text-gray-400 dark:text-gray-500'
                       }`}
                     >
                       {g.note}
@@ -274,10 +298,11 @@ function EditRow({
   onCancel,
 }: {
   goal: LifeGoal;
-  onSave: (title: string, note: string) => Promise<void>;
+  onSave: (title: string, description: string, note: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState(goal.title);
+  const [description, setDescription] = useState(goal.description);
   const [note, setNote] = useState(goal.note);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -288,7 +313,7 @@ function EditRow({
     setSaving(true);
     setError('');
     try {
-      await onSave(title, note);
+      await onSave(title, description, note);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
       setSaving(false);
@@ -306,6 +331,13 @@ function EditRow({
         placeholder="Title"
         className={inputClass}
         autoFocus
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Description (optional)"
+        rows={2}
+        className={`${inputClass} mt-2 resize-none`}
       />
       <input
         value={note}

@@ -10,26 +10,29 @@ import (
 )
 
 type lifeGoalResp struct {
-	ID      int64  `json:"id"`
-	Title   string `json:"title"`
-	Note    string `json:"note"`
-	Done    bool   `json:"done"`
-	DoneAt  string `json:"done_at"` // RFC3339, or "" when not done
-	Created string `json:"created_at"`
+	ID          int64  `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Note        string `json:"note"`
+	Done        bool   `json:"done"`
+	DoneAt      string `json:"done_at"` // RFC3339, or "" when not done
+	Created     string `json:"created_at"`
 }
 
 type lifeGoalReq struct {
-	Title string `json:"title"`
-	Note  string `json:"note"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Note        string `json:"note"`
 }
 
 func toLifeGoalResp(g store.LifeGoal) lifeGoalResp {
 	resp := lifeGoalResp{
-		ID:      g.ID,
-		Title:   g.Title,
-		Note:    g.Note,
-		Done:    g.Done,
-		Created: g.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:          g.ID,
+		Title:       g.Title,
+		Description: g.Description,
+		Note:        g.Note,
+		Done:        g.Done,
+		Created:     g.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if g.DoneAt != nil {
 		resp.DoneAt = g.DoneAt.Format("2006-01-02T15:04:05Z07:00")
@@ -73,7 +76,7 @@ func (s *Server) handleCreateLifeGoal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
-	g, err := s.store.CreateLifeGoal(r.Context(), claims.UserID(), title, strings.TrimSpace(req.Note))
+	g, err := s.store.CreateLifeGoal(r.Context(), claims.UserID(), title, strings.TrimSpace(req.Description), strings.TrimSpace(req.Note))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create life goal"})
 		return
@@ -81,7 +84,7 @@ func (s *Server) handleCreateLifeGoal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toLifeGoalResp(*g))
 }
 
-// handleUpdateLifeGoal edits an item's title/note.
+// handleUpdateLifeGoal edits an item's title/description/note.
 func (s *Server) handleUpdateLifeGoal(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFrom(r.Context())
 	if claims == nil {
@@ -103,7 +106,7 @@ func (s *Server) handleUpdateLifeGoal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
-	if err := s.store.UpdateLifeGoal(r.Context(), claims.UserID(), id, title, strings.TrimSpace(req.Note)); err != nil {
+	if err := s.store.UpdateLifeGoal(r.Context(), claims.UserID(), id, title, strings.TrimSpace(req.Description), strings.TrimSpace(req.Note)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update life goal"})
 		return
 	}

@@ -7,19 +7,19 @@ import (
 	"time"
 )
 
-const lifeGoalCols = "id, title, note, done, created_at, done_at"
+const lifeGoalCols = "id, title, description, note, done, created_at, done_at"
 
-func (s *SQLiteStore) CreateLifeGoal(ctx context.Context, userID int64, title, note string) (*LifeGoal, error) {
+func (s *SQLiteStore) CreateLifeGoal(ctx context.Context, userID int64, title, description, note string) (*LifeGoal, error) {
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO life_goals (user_id, title, note, done, created_at) VALUES (?, ?, ?, 0, ?)`,
-		userID, title, note, now,
+		`INSERT INTO life_goals (user_id, title, description, note, done, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
+		userID, title, description, note, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert life goal: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return &LifeGoal{ID: id, Title: title, Note: note, Done: false, CreatedAt: now}, nil
+	return &LifeGoal{ID: id, Title: title, Description: description, Note: note, Done: false, CreatedAt: now}, nil
 }
 
 // ListLifeGoals returns the user's goals, unfinished first, newest within a group.
@@ -47,10 +47,10 @@ func (s *SQLiteStore) GetLifeGoal(ctx context.Context, userID, id int64) (*LifeG
 	return g, nil
 }
 
-func (s *SQLiteStore) UpdateLifeGoal(ctx context.Context, userID, id int64, title, note string) error {
+func (s *SQLiteStore) UpdateLifeGoal(ctx context.Context, userID, id int64, title, description, note string) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE life_goals SET title = ?, note = ? WHERE id = ? AND user_id = ?`,
-		title, note, id, userID)
+		`UPDATE life_goals SET title = ?, description = ?, note = ? WHERE id = ? AND user_id = ?`,
+		title, description, note, id, userID)
 	if err != nil {
 		return fmt.Errorf("update life goal: %w", err)
 	}
@@ -85,7 +85,7 @@ func scanLifeGoal(sc rowScanner) (*LifeGoal, error) {
 	var g LifeGoal
 	var done int
 	var doneAt sql.NullTime
-	if err := sc.Scan(&g.ID, &g.Title, &g.Note, &done, &g.CreatedAt, &doneAt); err != nil {
+	if err := sc.Scan(&g.ID, &g.Title, &g.Description, &g.Note, &done, &g.CreatedAt, &doneAt); err != nil {
 		return nil, err
 	}
 	g.Done = done != 0
