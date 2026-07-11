@@ -9,20 +9,21 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *PostgresStore) CreateLifeGoal(ctx context.Context, userID int64, title, note string) (*LifeGoal, error) {
+func (s *PostgresStore) CreateLifeGoal(ctx context.Context, userID int64, title, description, note string) (*LifeGoal, error) {
 	title = s.enTitle(ctx, title)
+	description = s.enText(ctx, description)
 	note = s.enText(ctx, note)
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO life_goals (user_id, title, note, done, created_at)
-		 VALUES ($1, $2, $3, false, $4) RETURNING id`,
-		userID, title, note, now,
+		`INSERT INTO life_goals (user_id, title, description, note, done, created_at)
+		 VALUES ($1, $2, $3, $4, false, $5) RETURNING id`,
+		userID, title, description, note, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert life goal: %w", err)
 	}
-	return &LifeGoal{ID: id, Title: title, Note: note, Done: false, CreatedAt: now}, nil
+	return &LifeGoal{ID: id, Title: title, Description: description, Note: note, Done: false, CreatedAt: now}, nil
 }
 
 // ListLifeGoals returns the user's goals, unfinished first, newest within a group.
@@ -50,12 +51,13 @@ func (s *PostgresStore) GetLifeGoal(ctx context.Context, userID, id int64) (*Lif
 	return g, nil
 }
 
-func (s *PostgresStore) UpdateLifeGoal(ctx context.Context, userID, id int64, title, note string) error {
+func (s *PostgresStore) UpdateLifeGoal(ctx context.Context, userID, id int64, title, description, note string) error {
 	title = s.enTitle(ctx, title)
+	description = s.enText(ctx, description)
 	note = s.enText(ctx, note)
 	_, err := s.pool.Exec(ctx,
-		`UPDATE life_goals SET title = $1, note = $2 WHERE id = $3 AND user_id = $4`,
-		title, note, id, userID)
+		`UPDATE life_goals SET title = $1, description = $2, note = $3 WHERE id = $4 AND user_id = $5`,
+		title, description, note, id, userID)
 	if err != nil {
 		return fmt.Errorf("update life goal: %w", err)
 	}
@@ -94,7 +96,8 @@ type pgRowScanner interface {
 func pgScanLifeGoal(sc pgRowScanner) (*LifeGoal, error) {
 	var g LifeGoal
 	var doneAt *time.Time
-	if err := sc.Scan(&g.ID, &g.Title, &g.Note, &g.Done, &g.CreatedAt, &doneAt); err != nil {
+	// Column order matches lifeGoalCols: id, title, description, note, done, created_at, done_at.
+	if err := sc.Scan(&g.ID, &g.Title, &g.Description, &g.Note, &g.Done, &g.CreatedAt, &doneAt); err != nil {
 		return nil, err
 	}
 	if doneAt != nil {

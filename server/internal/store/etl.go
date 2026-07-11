@@ -313,7 +313,7 @@ func (m *etl) contacts() error {
 
 func (m *etl) lifeGoals() error {
 	rows, err := m.src.QueryContext(m.ctx,
-		`SELECT id, user_id, title, note, done, created_at, done_at FROM life_goals`)
+		`SELECT id, user_id, title, description, note, done, created_at, done_at FROM life_goals`)
 	if err != nil {
 		return fmt.Errorf("read life_goals: %w", err)
 	}
@@ -322,19 +322,19 @@ func (m *etl) lifeGoals() error {
 	src := 0
 	for rows.Next() {
 		var (
-			id, userID  int64
-			title, note string
-			done        int64
-			created     sql.NullTime
-			doneAt      sql.NullTime
+			id, userID               int64
+			title, description, note string
+			done                     int64
+			created                  sql.NullTime
+			doneAt                   sql.NullTime
 		)
-		if err := rows.Scan(&id, &userID, &title, &note, &done, &created, &doneAt); err != nil {
+		if err := rows.Scan(&id, &userID, &title, &description, &note, &done, &created, &doneAt); err != nil {
 			return fmt.Errorf("scan life_goal: %w", err)
 		}
 		if err := m.pgExec(
-			`INSERT INTO life_goals (id, user_id, title, note, done, created_at, done_at)
-			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			id, userID, title, note, boolFromInt(done), nullTime(created), nullTime(doneAt),
+			`INSERT INTO life_goals (id, user_id, title, description, note, done, created_at, done_at)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			id, userID, title, description, note, boolFromInt(done), nullTime(created), nullTime(doneAt),
 		); err != nil {
 			return fmt.Errorf("insert life_goal %d: %w", id, err)
 		}

@@ -28,7 +28,7 @@ func TestETLSQLiteToHybridRoundTrip(t *testing.T) {
 	if _, err := src.CreateContact(ctx, u.ID, "Alice", "1", "alice@x.com", "friend"); err != nil {
 		t.Fatalf("seed contact: %v", err)
 	}
-	g, _ := src.CreateLifeGoal(ctx, u.ID, "Learn Go", "")
+	g, _ := src.CreateLifeGoal(ctx, u.ID, "Learn Go", "", "")
 	_ = src.SetLifeGoalDone(ctx, u.ID, g.ID, true)
 
 	trip, _ := src.CreateTrip(ctx, u.ID, "Japan", "Tokyo", "JPY", 5000)
