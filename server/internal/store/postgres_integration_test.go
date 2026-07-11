@@ -229,7 +229,7 @@ func TestPostgresContactsLifeGoalsTravelHiking(t *testing.T) {
 	}
 
 	// Life goals (BOOLEAN done + nullable done_at).
-	g, err := s.CreateLifeGoal(ctx, u.ID, "Learn Go", "")
+	g, err := s.CreateLifeGoal(ctx, u.ID, "Learn Go", "", "")
 	if err != nil {
 		t.Fatalf("create life goal: %v", err)
 	}
