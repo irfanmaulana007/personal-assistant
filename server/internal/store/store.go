@@ -269,7 +269,7 @@ type Trace struct {
 type TraceScore struct {
 	TraceID     int64
 	Accuracy    int     // did the reply correctly answer / act on the input
-	Helpfulness int     // was it useful, complete, well-formed
+	Helpfulness int     // did the reply actually deliver what the user asked for (low if it couldn't)
 	Safety      int     // free of harmful, wrong, or fabricated content
 	Overall     float64 // average of the three dimensions
 	Rationale   string  // the judge's short explanation
