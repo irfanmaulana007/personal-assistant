@@ -41,7 +41,10 @@ type Server struct {
 	signingKey []byte
 	staticDir  string
 	port       int
-	log        *slog.Logger
+	// environment names the deployment (e.g. "local" / "production"); surfaced
+	// on trace responses so the Logs run-detail copy shows which DB holds the run.
+	environment string
+	log         *slog.Logger
 }
 
 // NewServer creates a new API server. whatsapp may be nil.
@@ -56,21 +59,23 @@ func NewServer(
 	signingKey []byte,
 	staticDir string,
 	port int,
+	environment string,
 	log *slog.Logger,
 ) *Server {
 	return &Server{
-		agent:      agent,
-		settings:   settingsSvc,
-		pricing:    pricing.New(store),
-		llmClient:  llmClient,
-		eval:       judge,
-		composio:   composioClient,
-		whatsapp:   whatsapp,
-		store:      store,
-		signingKey: signingKey,
-		staticDir:  staticDir,
-		port:       port,
-		log:        log.With("component", "api"),
+		agent:       agent,
+		settings:    settingsSvc,
+		pricing:     pricing.New(store),
+		llmClient:   llmClient,
+		eval:        judge,
+		composio:    composioClient,
+		whatsapp:    whatsapp,
+		store:       store,
+		signingKey:  signingKey,
+		staticDir:   staticDir,
+		port:        port,
+		environment: environment,
+		log:         log.With("component", "api"),
 	}
 }
 

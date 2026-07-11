@@ -262,6 +262,9 @@ export interface LLMCall {
 
 export interface Trace {
   id: number;
+  /** Deployment that served this run (e.g. "local" / "production") — tells you
+   *  which database holds the data when debugging a copied run detail. */
+  environment?: string;
   user_id: number;
   user?: string;
   platform: string;
