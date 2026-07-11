@@ -12,14 +12,21 @@ WhatsApp transport. It can manage your calendar, email, reminders, and notes.
 ## Quick start
 
 ```bash
-# 1. Configure the server (see server/config/config.example.yaml)
-cp server/config/config.example.yaml server/config/config.yaml
-#    then set a WEB_PASSWORD and ENCRYPTION_KEY (openssl rand -base64 32)
+# 1. Start local databases (PostgreSQL + MongoDB) — the app requires both.
+docker run -d --name pa-pg    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=personal_assistant -p 5432:5432 postgres:17
+docker run -d --name pa-mongo -p 27017:27017 mongo:7
 
-# 2. Install client deps
+# 2. Configure the server (see server/config/config.example.yaml)
+cp server/config/config.example.yaml server/config/config.yaml
+#    - set a WEB_PASSWORD and ENCRYPTION_KEY (openssl rand -base64 32)
+#    - set the database connection (postgres_dsn / mongo_uri / mongo_db) —
+#      see the local-dev example in config.example.yaml
+
+# 3. Install client deps
 make deps
 
-# 3. Run
+# 4. Run
 make dev-server        # Go server on :8090 (hot reload via air)
 make dev-client        # Vite dev client on :5273 (proxies /api to :8090)
 ```

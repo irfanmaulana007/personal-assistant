@@ -14,12 +14,27 @@ web:
   static_dir: "../client/dist"
 
 database:
-  # The app runs on PostgreSQL (main data) + MongoDB (logs). Env-expanded;
-  # see .env / POSTGRES_DSN etc. For local dev, point these at a local
-  # postgres/mongo (or use `docker compose up postgres mongo`).
+  # The app runs on PostgreSQL (main data) + MongoDB (logs). Both are required.
+  #
+  # These default to environment variables, which is how production is wired
+  # (docker-compose / Dokploy inject POSTGRES_DSN / MONGO_URI — see .env.example).
   postgres_dsn: "${POSTGRES_DSN}"
   mongo_uri: "${MONGO_URI}"
   mongo_db: "assistant_logs"
+  #
+  # For LOCAL development, start a local Postgres + Mongo, then either export
+  # POSTGRES_DSN / MONGO_URI in the shell that launches the server, OR replace
+  # the three lines above with direct localhost values, e.g.:
+  #
+  #   postgres_dsn: "postgres://postgres:postgres@localhost:5432/personal_assistant?sslmode=disable"
+  #   mongo_uri: "mongodb://localhost:27017/?authSource=admin"
+  #   mongo_db: "personal_assistant"
+  #
+  # A quick way to get both databases locally:
+  #   docker run -d --name pa-pg    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  #     -e POSTGRES_DB=personal_assistant -p 5432:5432 postgres:17
+  #   docker run -d --name pa-mongo -p 27017:27017 mongo:7
+  # The Postgres schema and Mongo indexes are created automatically on first boot.
 
 google:
   credentials_file: "config/google_credentials.json"
