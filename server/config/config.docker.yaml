@@ -18,7 +18,14 @@ web:
   static_dir: "client/dist" # built client, copied into the image
 
 database:
-  path: "data/assistant.db" # persisted in the /app/data volume
+  # Defaults to the single-file SQLite backend; docker-compose flips this to
+  # "hybrid" via the DB_DRIVER env var (PostgreSQL for main data, MongoDB for
+  # logs), injecting the DSN/URI below from the environment (see .env.example).
+  driver: "sqlite"
+  path: "data/assistant.db" # used only when driver is "sqlite"
+  postgres_dsn: "${POSTGRES_DSN}"
+  mongo_uri: "${MONGO_URI}"
+  mongo_db: "assistant_logs"
 
 google:
   credentials_file: "config/google_credentials.json" # only used if calendar/email below are enabled

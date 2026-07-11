@@ -1,5 +1,46 @@
 # Deployment
 
+## Storage backends
+
+The server supports two storage backends, selected by `database.driver` (or the
+`DB_DRIVER` env var):
+
+- **`sqlite`** (default) — a single file (`data/assistant.db`). Zero external
+  dependencies; ideal for a personal, single-instance deployment.
+- **`hybrid`** — PostgreSQL for main data + MongoDB for logs/analytics. Requires
+  the two database servers (bundled in `docker-compose.yml`).
+
+### Hybrid via Docker Compose
+
+`docker-compose.yml` runs `postgres:17` and `mongo:7` alongside the assistant and
+sets `DB_DRIVER=hybrid`. Configure secrets in `.env` (see `.env.example`):
+
+```bash
+POSTGRES_PASSWORD=...   # bundled postgres
+MONGO_PASSWORD=...      # bundled mongo
+ENCRYPTION_KEY=...      # openssl rand -base64 32
+WEB_PASSWORD=...
+OWNER_JID=...@s.whatsapp.net
+
+docker compose up -d
+```
+
+The Postgres schema is created automatically on first boot (embedded
+golang-migrate migrations); Mongo indexes are ensured on startup.
+
+### Migrating an existing SQLite database
+
+To move data from a prior `sqlite` deployment into the hybrid backend, run the
+bundled `migrate-db` tool (built into the image):
+
+```bash
+docker compose run --rm --entrypoint /app/migrate-db assistant \
+  --config config/config.yaml --sqlite data/assistant.db --truncate --verify
+```
+
+`--verify` compares per-table source/destination row counts and exits non-zero on
+any mismatch. Original ids are preserved so references stay valid.
+
 ## Local Development
 
 ### Prerequisites
