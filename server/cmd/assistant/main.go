@@ -63,14 +63,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize store (backend selected by cfg.Database.Driver)
+	// Initialize the hybrid store (PostgreSQL for data, MongoDB for logs).
 	db, err := store.Open(ctx, cfg.Database)
 	if err != nil {
 		log.Error("failed to initialize database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	log.Info("database initialized", "driver", cfg.Database.Driver)
+	log.Info("database initialized", "backend", "hybrid (postgres + mongo)")
 
 	// Decode the encryption key once for reuse (Google tokens + settings).
 	encKey, err := crypto.DecodeKey(cfg.Security.EncryptionKey)

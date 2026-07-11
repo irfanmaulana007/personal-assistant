@@ -5,7 +5,8 @@ WhatsApp transport. It can manage your calendar, email, reminders, and notes.
 
 ## Stack
 
-- **Server:** Go 1.25+, SQLite (FTS5, CGO required) — `server/`
+- **Server:** Go 1.25+, PostgreSQL (main data) + MongoDB (logs). CGO is still
+  required (the WhatsApp session and the one-time `migrate-db` ETL use SQLite) — `server/`
 - **Client:** TypeScript, React, Vite, Tailwind — `client/`
 
 ## Quick start

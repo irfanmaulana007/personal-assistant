@@ -5,16 +5,15 @@ services:
     ports:
       - '8090:8090'
     volumes:
-      # SQLite is no longer the app store on the hybrid driver, but the WhatsApp
-      # (whatsmeow) session DB still lives here — keep the volume.
+      # The app data lives in Postgres/Mongo now; this volume only holds the
+      # WhatsApp (whatsmeow) session DB, which still uses its own SQLite file.
       - assistant-data:/app/data
     environment:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEB_PASSWORD=${WEB_PASSWORD}
       - OWNER_JID=${OWNER_JID}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # Hybrid backend: PostgreSQL for main data, MongoDB for logs.
-      - DB_DRIVER=hybrid
+      # Storage: PostgreSQL for main data, MongoDB for logs.
       - POSTGRES_DSN=postgres://assistant:${POSTGRES_PASSWORD}@postgres:5432/assistant?sslmode=disable
       - MONGO_URI=mongodb://root:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
       - MONGO_DB=assistant_logs

@@ -72,23 +72,16 @@ type WebConfig struct {
 	StaticDir string `yaml:"static_dir"`
 }
 
-// Database driver identifiers. "sqlite" is the single-file default; "hybrid"
-// serves main data from PostgreSQL and logs from MongoDB.
-const (
-	DriverSQLite = "sqlite"
-	DriverHybrid = "hybrid"
-)
-
+// DatabaseConfig configures the storage backend. The application runs on a
+// hybrid backend only — PostgreSQL for main data, MongoDB for logs. (SQLite is
+// no longer an application backend; it survives solely as the read source for
+// the one-time `migrate-db` ETL, which takes its path via --sqlite.)
 type DatabaseConfig struct {
-	// Driver selects the storage backend: "sqlite" (default) or "hybrid".
-	Driver string `yaml:"driver"`
-	// Path is the SQLite file location; used when Driver == "sqlite".
-	Path string `yaml:"path"`
-	// PostgresDSN is the PostgreSQL connection string; required when hybrid.
+	// PostgresDSN is the PostgreSQL connection string (main data). Required.
 	PostgresDSN string `yaml:"postgres_dsn"`
-	// MongoURI is the MongoDB connection string; required when hybrid.
+	// MongoURI is the MongoDB connection string (logs/analytics). Required.
 	MongoURI string `yaml:"mongo_uri"`
-	// MongoDB is the MongoDB database name for logs; used when hybrid.
+	// MongoDB is the MongoDB database name for logs. Required.
 	MongoDB string `yaml:"mongo_db"`
 }
 
@@ -180,8 +173,6 @@ func defaults() *Config {
 			StaticDir: "client/dist",
 		},
 		Database: DatabaseConfig{
-			Driver:  DriverSQLite,
-			Path:    "data/assistant.db",
 			MongoDB: "assistant_logs",
 		},
 		Google: GoogleConfig{
@@ -220,12 +211,6 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("OWNER_JID"); v != "" {
 		cfg.Owner.WhatsAppJID = v
 	}
-	if v := os.Getenv("DB_DRIVER"); v != "" {
-		cfg.Database.Driver = v
-	}
-	if v := os.Getenv("DB_PATH"); v != "" {
-		cfg.Database.Path = v
-	}
 	if v := os.Getenv("POSTGRES_DSN"); v != "" {
 		cfg.Database.PostgresDSN = v
 	}
@@ -254,23 +239,15 @@ func validate(cfg *Config) error {
 		errs = append(errs, "whatsapp.database is required when whatsapp is enabled")
 	}
 
-	switch cfg.Database.Driver {
-	case DriverSQLite:
-		if cfg.Database.Path == "" {
-			errs = append(errs, "database.path is required when database.driver is \"sqlite\"")
-		}
-	case DriverHybrid:
-		if cfg.Database.PostgresDSN == "" {
-			errs = append(errs, "database.postgres_dsn is required when database.driver is \"hybrid\" (set POSTGRES_DSN env var)")
-		}
-		if cfg.Database.MongoURI == "" {
-			errs = append(errs, "database.mongo_uri is required when database.driver is \"hybrid\" (set MONGO_URI env var)")
-		}
-		if cfg.Database.MongoDB == "" {
-			errs = append(errs, "database.mongo_db is required when database.driver is \"hybrid\"")
-		}
-	default:
-		errs = append(errs, fmt.Sprintf("database.driver %q is invalid (must be %q or %q)", cfg.Database.Driver, DriverSQLite, DriverHybrid))
+	// The application runs on the hybrid Postgres + Mongo backend only.
+	if cfg.Database.PostgresDSN == "" {
+		errs = append(errs, "database.postgres_dsn is required (set POSTGRES_DSN env var)")
+	}
+	if cfg.Database.MongoURI == "" {
+		errs = append(errs, "database.mongo_uri is required (set MONGO_URI env var)")
+	}
+	if cfg.Database.MongoDB == "" {
+		errs = append(errs, "database.mongo_db is required")
 	}
 
 	if cfg.Web.Enabled && cfg.Web.Password == "" {

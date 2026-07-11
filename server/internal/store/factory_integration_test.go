@@ -53,7 +53,6 @@ func TestOpenHybrid(t *testing.T) {
 
 	// The exact path main.go takes: config -> store.Open -> Store.
 	db, err := Open(ctx, config.DatabaseConfig{
-		Driver:      config.DriverHybrid,
 		PostgresDSN: dsn,
 		MongoURI:    uri,
 		MongoDB:     "assistant_logs",

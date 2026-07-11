@@ -8,58 +8,36 @@ func baseValid() *Config {
 	cfg := defaults()
 	cfg.Owner.WhatsAppJID = "123@s.whatsapp.net"
 	cfg.Web.Password = "secret"
+	cfg.Database.PostgresDSN = "postgres://u:p@localhost:5432/app"
+	cfg.Database.MongoURI = "mongodb://localhost:27017"
+	// MongoDB defaults to "assistant_logs".
 	return cfg
 }
 
-func TestValidateDatabaseDriver(t *testing.T) {
+func TestValidateDatabase(t *testing.T) {
 	tests := []struct {
 		name    string
 		mutate  func(*Config)
 		wantErr bool
 	}{
 		{
-			name:    "sqlite default is valid",
+			name:    "full hybrid config is valid",
 			mutate:  func(*Config) {},
 			wantErr: false,
 		},
 		{
-			name:    "sqlite requires path",
-			mutate:  func(c *Config) { c.Database.Path = "" },
+			name:    "missing postgres dsn fails",
+			mutate:  func(c *Config) { c.Database.PostgresDSN = "" },
 			wantErr: true,
 		},
 		{
-			name: "hybrid requires postgres, mongo uri and db",
-			mutate: func(c *Config) {
-				c.Database.Driver = DriverHybrid
-				c.Database.PostgresDSN = "postgres://u:p@localhost:5432/app"
-				c.Database.MongoURI = "mongodb://localhost:27017"
-				c.Database.MongoDB = "assistant_logs"
-			},
-			wantErr: false,
-		},
-		{
-			name: "hybrid missing postgres dsn fails",
-			mutate: func(c *Config) {
-				c.Database.Driver = DriverHybrid
-				c.Database.MongoURI = "mongodb://localhost:27017"
-				c.Database.MongoDB = "assistant_logs"
-			},
+			name:    "missing mongo uri fails",
+			mutate:  func(c *Config) { c.Database.MongoURI = "" },
 			wantErr: true,
 		},
 		{
-			name: "hybrid missing mongo uri fails",
-			mutate: func(c *Config) {
-				c.Database.Driver = DriverHybrid
-				c.Database.PostgresDSN = "postgres://u:p@localhost:5432/app"
-				c.Database.MongoDB = "assistant_logs"
-			},
-			wantErr: true,
-		},
-		{
-			name: "unknown driver is rejected",
-			mutate: func(c *Config) {
-				c.Database.Driver = "cassandra"
-			},
+			name:    "missing mongo db fails",
+			mutate:  func(c *Config) { c.Database.MongoDB = "" },
 			wantErr: true,
 		},
 	}

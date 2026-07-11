@@ -1,19 +1,18 @@
 # Deployment
 
-## Storage backends
+## Storage
 
-The server supports two storage backends, selected by `database.driver` (or the
-`DB_DRIVER` env var):
+The server stores its data in **PostgreSQL** (main data) and **MongoDB**
+(logs/analytics). Both are required. `docker-compose.yml` bundles `postgres:17`
+and `mongo:7` alongside the assistant.
 
-- **`sqlite`** (default) — a single file (`data/assistant.db`). Zero external
-  dependencies; ideal for a personal, single-instance deployment.
-- **`hybrid`** — PostgreSQL for main data + MongoDB for logs/analytics. Requires
-  the two database servers (bundled in `docker-compose.yml`).
+> SQLite is no longer an application backend. It survives only for the WhatsApp
+> (whatsmeow) session file and as the read source for the one-time `migrate-db`
+> ETL below.
 
-### Hybrid via Docker Compose
+### Docker Compose
 
-`docker-compose.yml` runs `postgres:17` and `mongo:7` alongside the assistant and
-sets `DB_DRIVER=hybrid`. Configure secrets in `.env` (see `.env.example`):
+Configure secrets in `.env` (see `.env.example`), then bring up the stack:
 
 ```bash
 POSTGRES_PASSWORD=...   # bundled postgres
@@ -30,8 +29,9 @@ golang-migrate migrations); Mongo indexes are ensured on startup.
 
 ### Migrating an existing SQLite database
 
-To move data from a prior `sqlite` deployment into the hybrid backend, run the
-bundled `migrate-db` tool (built into the image):
+If you are coming from an older SQLite-based deployment, move that data across
+once with the bundled `migrate-db` tool (built into the image). Keep your old
+`assistant.db` reachable and pass it via `--sqlite`:
 
 ```bash
 docker compose run --rm --entrypoint /app/migrate-db assistant \

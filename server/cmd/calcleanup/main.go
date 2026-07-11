@@ -51,14 +51,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := store.NewSQLite(cfg.Database.Path)
+	ctx := context.Background()
+	db, err := store.Open(ctx, cfg.Database)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open store: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	ctx := context.Background()
 	tz := cfg.Owner.Location()
 	encKey, err := crypto.DecodeKey(cfg.Security.EncryptionKey)
 	if err != nil {
