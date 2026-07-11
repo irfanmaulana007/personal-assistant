@@ -12,21 +12,16 @@ The app is a **single Docker container** (see `Dockerfile`):
 - At runtime the Go server serves **both the JSON API and the static client** on
   **one port (`8090`)** — there is no separate frontend service.
 
-### Storage backends
+### Storage
 
-The server supports two backends, selected by the `DB_DRIVER` env var:
+Application data lives in **PostgreSQL** (users, settings, reminders, notes, …)
+and **MongoDB** (logs, traces, usage analytics). You therefore deploy **three
+services** in the same Dokploy project — the assistant Application plus a
+PostgreSQL and a MongoDB database — set up under [Databases](#databases-postgresql--mongodb).
 
-- **`sqlite`** (default) — all state lives in **SQLite files inside one volume**
-  (`/app/data`): `assistant.db` (users, settings, traces, skills, notes, …) and
-  `whatsmeow.db` (the WhatsApp pairing session). **One Application, one volume, no
-  external database service.** This is the simplest path — start here.
-- **`hybrid`** — application data lives in **PostgreSQL** and logs/analytics in
-  **MongoDB**, with only the WhatsApp session left in the `/app/data` volume.
-  Requires two extra database services. See
-  [Option B](#option-b--hybrid-postgresql--mongodb-backend) below.
-
-The rest of this guide covers the default **SQLite** deployment (Option A); the
-hybrid backend is an add-on documented at the end.
+The `/app/data` volume is still needed, but now holds only the **WhatsApp
+(whatsmeow) session** file. On boot the server **creates the PostgreSQL schema
+automatically** (embedded migrations) and **ensures the MongoDB indexes**.
 
 ## Prerequisites
 
@@ -53,19 +48,18 @@ Set these on the Application (values are read at container start):
 > The same is true for the **Composio API key** (used for Gmail / Google Calendar /
 > GitHub / Sentry integrations): it's entered on the **Integrations page**, not via env.
 
-> `DB_PATH` and the WhatsApp DB default to the `/app/data` volume — leave them alone so
-> your data persists. Only `OWNER_JID` needs a real value even if you don't use WhatsApp
+Plus the database connection variables (point these at the PostgreSQL and MongoDB
+services you create under [Databases](#databases-postgresql--mongodb)):
+
+| Variable         | Required | Description                                                               |
+| ---------------- | -------- | ------------------------------------------------------------------------- |
+| `POSTGRES_DSN`   | **yes**  | PostgreSQL connection string, e.g. `postgres://assistant:PASS@assistant-postgres:5432/assistant?sslmode=disable`. |
+| `MONGO_URI`      | **yes**  | MongoDB connection string, e.g. `mongodb://root:PASS@assistant-mongo:27017/?authSource=admin`. |
+| `MONGO_DB`       | no       | Mongo database name for logs (default `assistant_logs`).                  |
+
+> The WhatsApp session DB defaults to the `/app/data` volume — leave it alone so the
+> pairing persists. `OWNER_JID` needs a real value even if you don't use WhatsApp
 > (config validation requires it).
-
-For the **hybrid backend** (Option B) also set these — otherwise leave them unset and
-the app uses SQLite:
-
-| Variable         | Required for hybrid | Description                                                              |
-| ---------------- | ------------------- | ------------------------------------------------------------------------ |
-| `DB_DRIVER`      | **yes**             | Set to `hybrid` to use PostgreSQL + MongoDB. Unset/`sqlite` keeps the default single-file backend. |
-| `POSTGRES_DSN`   | **yes**             | PostgreSQL connection string, e.g. `postgres://assistant:PASS@assistant-postgres:5432/assistant?sslmode=disable`. |
-| `MONGO_URI`      | **yes**             | MongoDB connection string, e.g. `mongodb://root:PASS@assistant-mongo:27017/?authSource=admin`. |
-| `MONGO_DB`       | no                  | Mongo database name for logs (default `assistant_logs`).                  |
 
 ## Step 1 — Create the project and application
 
@@ -82,19 +76,23 @@ the app uses SQLite:
 
 ## Step 3 — Set environment variables
 
-Open the **Environment** tab and add the variables from the table above:
+First create the database services ([Databases](#databases-postgresql--mongodb)),
+then open the **Environment** tab and add the variables from the tables above:
 
 ```
 ENCRYPTION_KEY=<output of: openssl rand -base64 32>
 WEB_PASSWORD=<a strong password>
 OWNER_JID=6281234567890@s.whatsapp.net
 LOG_LEVEL=info
+POSTGRES_DSN=postgres://assistant:<pg-password>@assistant-postgres:5432/assistant?sslmode=disable
+MONGO_URI=mongodb://root:<mongo-password>@assistant-mongo:27017/?authSource=admin
+MONGO_DB=assistant_logs
 ```
 
 ## Step 4 — Add the persistent volume
 
-This is critical — without it, your database and WhatsApp session are lost on every
-redeploy.
+This holds the WhatsApp (whatsmeow) session — without it you must re-pair WhatsApp on
+every redeploy. (Application data lives in the Postgres/Mongo services, not here.)
 
 1. Go to **Advanced → Volumes / Mounts → Add Mount**.
 2. Type **Volume** (a Docker named volume managed by Dokploy).
@@ -145,9 +143,9 @@ Verify: `https://assistant.example.com/api/health` should return `{"status":"ok"
 ## Updating
 
 Push to `main` and click **Deploy** again (or enable **Auto Deploy / webhooks** in the
-Application settings so Dokploy redeploys on push). The `/app/data` volume is
-preserved across deploys, so your data and WhatsApp pairing survive updates — as long
-as `ENCRYPTION_KEY` stays the same.
+Application settings so Dokploy redeploys on push). Your data lives in the Postgres and
+Mongo services and the `/app/data` volume (WhatsApp session) is preserved across
+deploys, so everything survives updates — as long as `ENCRYPTION_KEY` stays the same.
 
 ## Backups
 
@@ -162,21 +160,17 @@ docker run --rm -v assistant-data:/data -v "$PWD":/backup alpine \
 
 Restore by extracting the archive back into the volume before starting the container.
 
-**On the hybrid backend (Option B),** the `assistant-data` volume only holds the
-WhatsApp session — your application data and logs live in the PostgreSQL and MongoDB
-services. Back those up with their own tools (`pg_dump` for Postgres, `mongodump` for
-Mongo), e.g. via Dokploy's database backup features.
+The `assistant-data` volume only holds the WhatsApp session — your **application data
+and logs live in the PostgreSQL and MongoDB services**. Back those up with their own
+tools (`pg_dump` for Postgres, `mongodump` for Mongo), e.g. via Dokploy's database
+backup features.
 
-## Option B — Hybrid PostgreSQL + MongoDB backend
+## Databases (PostgreSQL + MongoDB)
 
-By default the app runs on SQLite (Option A) and needs no external database. The
-**hybrid** backend instead stores application data in **PostgreSQL** and
-logs/analytics in **MongoDB**. It is entirely opt-in via `DB_DRIVER=hybrid`.
+The app stores its data in PostgreSQL (main data) and MongoDB (logs). **Create these
+two services before setting the app's environment variables (Step 3).**
 
-You only need this if you specifically want Postgres/Mongo (e.g. to share the data
-with other tools, or to scale beyond a single instance). Otherwise stay on Option A.
-
-### B1 — Create the database services in Dokploy
+### Create the database services in Dokploy
 
 In the same project:
 
@@ -187,31 +181,20 @@ In the same project:
 
 Dokploy runs these on the project's internal Docker network, so the Application
 reaches them by **service name** as hostname (`assistant-postgres`, `assistant-mongo`)
-— no public exposure needed.
+— no public exposure needed. Use those hostnames in the `POSTGRES_DSN` / `MONGO_URI`
+values from [Step 3](#step-3--set-environment-variables) (adjust if you named the
+services differently).
 
-### B2 — Point the Application at them
+On the app's first boot the server **creates the PostgreSQL schema automatically**
+(embedded migrations) and **ensures the MongoDB indexes** — there is no manual schema
+step.
 
-On the `assistant` Application's **Environment** tab, add (in addition to the Option A
-vars):
+### Migrating data from an older SQLite deployment
 
-```
-DB_DRIVER=hybrid
-POSTGRES_DSN=postgres://assistant:<pg-password>@assistant-postgres:5432/assistant?sslmode=disable
-MONGO_URI=mongodb://root:<mongo-password>@assistant-mongo:27017/?authSource=admin
-MONGO_DB=assistant_logs
-```
-
-Adjust the hostnames if you named the services differently. Redeploy the Application.
-On boot the server **creates the PostgreSQL schema automatically** (embedded
-migrations) and **ensures the MongoDB indexes** — there is no manual schema step.
-The `/app/data` volume is still required (the WhatsApp session lives there).
-
-### B3 — (Optional) Migrate existing SQLite data
-
-If you are switching an existing SQLite deployment to hybrid and want to keep your
-data, the image ships a `migrate-db` ETL binary. With the databases reachable, run it
-once against your `assistant.db` (e.g. from the Application's terminal, or a one-off
-container):
+If you are coming from a previous SQLite-based deployment and want to keep your data,
+the image ships a `migrate-db` ETL binary. With the databases reachable and your old
+`assistant.db` present, run it once (e.g. from the Application's terminal, or a
+one-off container):
 
 ```bash
 /app/migrate-db --config config/config.yaml \
@@ -223,20 +206,16 @@ mismatch; original ids are preserved so references stay valid.
 
 ## Alternative: docker-compose
 
-The repo also ships a `docker-compose.yml`. It is now a **full hybrid stack** — the
-`assistant` service plus bundled `postgres:17` and `mongo:7` services (with
-healthchecks and named volumes) and `DB_DRIVER=hybrid` preset. If you prefer Dokploy's
-**Compose** service type, point it at that file and set the environment variables.
-For a plain VPS without Dokploy:
+The repo also ships a `docker-compose.yml` — a **full stack**: the `assistant` service
+plus bundled `postgres:17` and `mongo:7` (with healthchecks and named volumes). If you
+prefer Dokploy's **Compose** service type, point it at that file and set the
+environment variables. For a plain VPS without Dokploy:
 
 ```bash
 cp .env.example .env   # fill ENCRYPTION_KEY, WEB_PASSWORD, OWNER_JID,
                        # plus POSTGRES_PASSWORD and MONGO_PASSWORD
 docker compose up -d --build
 ```
-
-To run the compose stack on **SQLite** instead of the bundled databases, set
-`DB_DRIVER=sqlite` on the `assistant` service (or remove the postgres/mongo services).
 
 ## Troubleshooting
 

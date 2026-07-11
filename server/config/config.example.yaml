@@ -14,12 +14,9 @@ web:
   static_dir: "../client/dist"
 
 database:
-  # Storage backend: "sqlite" (single file, default) or "hybrid"
-  # (PostgreSQL for main data + MongoDB for logs).
-  driver: "sqlite"
-  # Used when driver is "sqlite".
-  path: "data/assistant.db"
-  # Used when driver is "hybrid" (env-expanded; see .env / POSTGRES_DSN etc.).
+  # The app runs on PostgreSQL (main data) + MongoDB (logs). Env-expanded;
+  # see .env / POSTGRES_DSN etc. For local dev, point these at a local
+  # postgres/mongo (or use `docker compose up postgres mongo`).
   postgres_dsn: "${POSTGRES_DSN}"
   mongo_uri: "${MONGO_URI}"
   mongo_db: "assistant_logs"

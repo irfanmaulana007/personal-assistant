@@ -35,7 +35,6 @@ import (
 // the unrelated owner/web validation to pass.
 type yamlDatabase struct {
 	Database struct {
-		Path        string `yaml:"path"`
 		PostgresDSN string `yaml:"postgres_dsn"`
 		MongoURI    string `yaml:"mongo_uri"`
 		MongoDB     string `yaml:"mongo_db"`
@@ -61,15 +60,14 @@ func run() error {
 	)
 	flag.Parse()
 
-	// Start from the config file when present, then let explicit flags override.
+	// The Postgres/Mongo destination comes from the config file (or flags); the
+	// SQLite source path must be given explicitly via --sqlite (it is no longer
+	// part of the application config).
 	path, dsn, uri, db := *sqlitePath, *postgresDSN, *mongoURI, *mongoDB
 	if data, err := os.ReadFile(*configPath); err == nil {
 		var yc yamlDatabase
 		if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &yc); err != nil {
 			return fmt.Errorf("parse config %s: %w", *configPath, err)
-		}
-		if path == "" {
-			path = yc.Database.Path
 		}
 		if dsn == "" {
 			dsn = yc.Database.PostgresDSN
@@ -84,7 +82,7 @@ func run() error {
 
 	switch {
 	case path == "":
-		return fmt.Errorf("missing SQLite path (set --sqlite or database.path in config)")
+		return fmt.Errorf("missing SQLite source path (set --sqlite)")
 	case dsn == "":
 		return fmt.Errorf("missing Postgres DSN (set --postgres-dsn or database.postgres_dsn in config)")
 	case uri == "":
