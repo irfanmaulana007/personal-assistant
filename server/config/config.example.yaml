@@ -1,3 +1,8 @@
+# Names this deployment ("local" / "production", ...). Shown in the Logs
+# run-detail copy so a pasted trace makes clear which database holds its data.
+# Override with the APP_ENV env var; defaults to "local".
+environment: "local"
+
 owner:
   whatsapp_jid: "6281234567890@s.whatsapp.net" # optional — derived from pairing
   name: "Your Name"

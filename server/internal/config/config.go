@@ -10,6 +10,11 @@ import (
 )
 
 type Config struct {
+	// Environment names the deployment this instance is running as — typically
+	// "local" or "production". It is surfaced in the Logs run-detail copy so a
+	// pasted trace makes clear which database (local vs prod) holds its data.
+	// Override with the APP_ENV env var; defaults to "local".
+	Environment  string             `yaml:"environment"`
 	Owner        OwnerConfig        `yaml:"owner"`
 	WhatsApp     WhatsAppConfig     `yaml:"whatsapp"`
 	Web          WebConfig          `yaml:"web"`
@@ -151,6 +156,10 @@ func Load(path string) (*Config, error) {
 
 	applyEnvOverrides(cfg)
 
+	if strings.TrimSpace(cfg.Environment) == "" {
+		cfg.Environment = "local"
+	}
+
 	if err := validate(cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
@@ -160,6 +169,7 @@ func Load(path string) (*Config, error) {
 
 func defaults() *Config {
 	return &Config{
+		Environment: "local",
 		Owner: OwnerConfig{
 			Timezone: "UTC",
 		},
@@ -205,6 +215,9 @@ func defaults() *Config {
 }
 
 func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("APP_ENV"); v != "" {
+		cfg.Environment = v
+	}
 	if v := os.Getenv("ENCRYPTION_KEY"); v != "" {
 		cfg.Security.EncryptionKey = v
 	}

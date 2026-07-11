@@ -39,6 +39,7 @@ type scoreResp struct {
 
 type traceResp struct {
 	ID               int64                `json:"id"`
+	Environment      string               `json:"environment,omitempty"`
 	UserID           int64                `json:"user_id"`
 	User             string               `json:"user,omitempty"`
 	Platform         string               `json:"platform"`
@@ -64,6 +65,7 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 	cost, _ := s.pricing.Estimate(t.Model, t.PromptTokens, t.CompletionTokens)
 	r := traceResp{
 		ID:               t.ID,
+		Environment:      s.environment,
 		UserID:           t.UserID,
 		Platform:         t.Platform,
 		Input:            t.Input,

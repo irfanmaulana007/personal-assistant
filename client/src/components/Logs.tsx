@@ -45,6 +45,7 @@ function buildDebugText(t: Trace): string {
 
   L.push('=== RUN DETAIL ===');
   add('ID', t.id);
+  add('Environment', t.environment);
   add('Status', t.status);
   add('Created', t.created_at);
   add('User', t.user ? `${t.user} (#${t.user_id})` : `#${t.user_id}`);

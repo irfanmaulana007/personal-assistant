@@ -324,6 +324,7 @@ func main() {
 			signingKey[:],
 			cfg.Web.StaticDir,
 			cfg.Web.Port,
+			cfg.Environment,
 			log,
 		)
 

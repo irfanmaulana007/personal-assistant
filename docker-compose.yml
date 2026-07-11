@@ -9,6 +9,7 @@ services:
       # WhatsApp (whatsmeow) session DB, which still uses its own SQLite file.
       - assistant-data:/app/data
     environment:
+      - APP_ENV=${APP_ENV:-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEB_PASSWORD=${WEB_PASSWORD}
       - OWNER_JID=${OWNER_JID}
