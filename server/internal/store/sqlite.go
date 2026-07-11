@@ -819,12 +819,16 @@ func (s *SQLiteStore) ListNotes(ctx context.Context, userID int64, tag string) (
 }
 
 func (s *SQLiteStore) SearchNotes(ctx context.Context, userID int64, query string) ([]Note, error) {
+	ftsQuery := sqliteFTS5Query(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT n.id, n.title, n.content, n.tags, n.created_at, n.updated_at
 		 FROM notes n
 		 JOIN notes_fts f ON n.id = f.rowid
 		 WHERE notes_fts MATCH ? AND n.user_id = ?
-		 ORDER BY rank`, query, userID,
+		 ORDER BY rank`, ftsQuery, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search notes: %w", err)
