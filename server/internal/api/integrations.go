@@ -53,7 +53,7 @@ type integrationsResp struct {
 	Configured bool                 `json:"configured"`
 	APIKeyMask string               `json:"api_key_mask"`
 	Toolkits   []integrationToolkit `json:"toolkits"`
-	// Web search (Brave) is a standalone API key, independent of Composio.
+	// Web search (Tavily) is a standalone API key, independent of Composio.
 	WebSearchConfigured bool   `json:"web_search_configured"`
 	WebSearchKeyMask    string `json:"web_search_key_mask"`
 }
@@ -160,7 +160,7 @@ func (s *Server) handleSetComposioKey(w http.ResponseWriter, r *http.Request) {
 	s.handleListIntegrations(w, r)
 }
 
-// handleSetWebSearchKey stores/clears the web-search (Brave) API key.
+// handleSetWebSearchKey stores/clears the web-search (Tavily) API key.
 func (s *Server) handleSetWebSearchKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		APIKey string `json:"api_key"`

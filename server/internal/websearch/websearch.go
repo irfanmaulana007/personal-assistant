@@ -1,59 +1,72 @@
-// Package websearch is a thin client over the Brave Search API. It gives the
+// Package websearch is a thin client over the Tavily Search API. It gives the
 // assistant a way to answer questions about current, real-world information
 // (news, scores, prices, "what happened today") that isn't in the user's own
 // data or the model's training cutoff.
 //
-// Brave is used because it's a genuine general-web search with a single-header
-// API key and a clean JSON response. The subscription token is supplied per
-// call (resolved from encrypted settings) rather than baked into the client, so
-// the same client instance serves every request.
+// Tavily is used because it's purpose-built for LLM agents: it returns a
+// synthesized answer alongside ranked, pre-summarized results, and offers a
+// genuine free tier (no card required). The API key is supplied per call
+// (resolved from encrypted settings) rather than baked into the client, so the
+// same client instance serves every request.
 package websearch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 )
 
-// endpoint is the Brave Search web-search REST endpoint.
-const endpoint = "https://api.search.brave.com/res/v1/web/search"
+// endpoint is the Tavily search REST endpoint.
+const endpoint = "https://api.tavily.com/search"
 
 // Result is a single web result, trimmed to what the assistant needs to
 // synthesize an answer and cite a source.
 type Result struct {
-	Title       string
-	URL         string
-	Description string
+	Title   string
+	URL     string
+	Content string
 }
 
-// Client calls the Brave Search API. It is safe for concurrent use.
+// Response is a search response: Tavily's synthesized answer (may be empty) and
+// the ranked results backing it.
+type Response struct {
+	Answer  string
+	Results []Result
+}
+
+// Client calls the Tavily Search API. It is safe for concurrent use.
 type Client struct {
 	http *http.Client
 }
 
 // New creates a search client with a sane request timeout.
 func New() *Client {
-	return &Client{http: &http.Client{Timeout: 12 * time.Second}}
+	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
 }
 
-// braveResponse mirrors the slice of the Brave payload we care about.
-type braveResponse struct {
-	Web struct {
-		Results []struct {
-			Title       string `json:"title"`
-			URL         string `json:"url"`
-			Description string `json:"description"`
-		} `json:"results"`
-	} `json:"web"`
+type tavilyRequest struct {
+	Query         string `json:"query"`
+	MaxResults    int    `json:"max_results"`
+	SearchDepth   string `json:"search_depth"`
+	IncludeAnswer bool   `json:"include_answer"`
 }
 
-// Search runs a query and returns up to count results. apiKey is the Brave
-// subscription token; count is clamped to Brave's 1..20 range.
-func (c *Client) Search(ctx context.Context, apiKey, query string, count int) ([]Result, error) {
+// tavilyResponse mirrors the slice of the Tavily payload we care about.
+type tavilyResponse struct {
+	Answer  string `json:"answer"`
+	Results []struct {
+		Title   string `json:"title"`
+		URL     string `json:"url"`
+		Content string `json:"content"`
+	} `json:"results"`
+}
+
+// Search runs a query and returns Tavily's answer plus up to count results.
+// apiKey is the Tavily API key; count is clamped to Tavily's 0..20 range.
+func (c *Client) Search(ctx context.Context, apiKey, query string, count int) (*Response, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("web search is not configured")
 	}
@@ -64,20 +77,27 @@ func (c *Client) Search(ctx context.Context, apiKey, query string, count int) ([
 		count = 20
 	}
 
-	q := url.Values{}
-	q.Set("q", query)
-	q.Set("count", strconv.Itoa(count))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+q.Encode(), nil)
+	body, err := json.Marshal(tavilyRequest{
+		Query:         query,
+		MaxResults:    count,
+		SearchDepth:   "basic",
+		IncludeAnswer: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Subscription-Token", apiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("brave search request: %w", err)
+		return nil, fmt.Errorf("tavily search request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -88,17 +108,17 @@ func (c *Client) Search(ctx context.Context, apiKey, query string, count int) ([
 		return nil, fmt.Errorf("web search rate limit reached, try again shortly")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("brave search returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("tavily search returned HTTP %d", resp.StatusCode)
 	}
 
-	var parsed braveResponse
+	var parsed tavilyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decode brave response: %w", err)
+		return nil, fmt.Errorf("decode tavily response: %w", err)
 	}
 
-	out := make([]Result, 0, len(parsed.Web.Results))
-	for _, r := range parsed.Web.Results {
-		out = append(out, Result{Title: r.Title, URL: r.URL, Description: r.Description})
+	out := &Response{Answer: parsed.Answer, Results: make([]Result, 0, len(parsed.Results))}
+	for _, r := range parsed.Results {
+		out.Results = append(out.Results, Result{Title: r.Title, URL: r.URL, Content: r.Content})
 	}
 	return out, nil
 }

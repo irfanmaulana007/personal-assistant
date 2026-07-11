@@ -73,7 +73,7 @@ var skillSeed = []Skill{
 		Category:       "Knowledge",
 		DefaultEnabled: false,
 		SortOrder:      8,
-		Description:    "Let the assistant look things up on the open web — news, sports scores, prices, weather, or anything more recent than its training data. Ask a question about the wider world and it searches, then answers with sources. Requires a Brave Search API key (set it on the Integrations page).",
+		Description:    "Let the assistant look things up on the open web — news, sports scores, prices, weather, or anything more recent than its training data. Ask a question about the wider world and it searches, then answers with sources. Requires a Tavily API key (set it on the Integrations page).",
 		Prompt:         "You can search the open web with the web_search tool. Use it whenever the user asks about current or real-world information you don't already have — news, sports scores and brackets, prices, weather, recent events, or any fact that may be newer than your training cutoff — instead of saying you lack real-time access. Search first, then answer from the results: summarize concisely in the user's language and cite the source links. Never invent facts beyond what the results contain; if the search returns nothing useful or web search isn't configured, say so plainly. Do not use it for the user's own private data (calendar, email, notes, contacts) — those have their own tools.",
 	},
 	{

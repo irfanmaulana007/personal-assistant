@@ -22,7 +22,7 @@ const (
 	KeyLLMBaseURL     = "llm.base_url"     // plaintext
 	KeyComposioAPIKey = "composio.api_key" // encrypted
 
-	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Brave Search subscription token)
+	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Tavily Search API key)
 
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
@@ -211,7 +211,7 @@ func (s *Service) SetComposioKey(ctx context.Context, key string) error {
 	return s.store.SetSetting(ctx, KeyComposioAPIKey, enc)
 }
 
-// WebSearchKey returns the decrypted web-search (Brave) API key, or "" if unset.
+// WebSearchKey returns the decrypted web-search (Tavily) API key, or "" if unset.
 func (s *Service) WebSearchKey(ctx context.Context) (string, error) {
 	enc, err := s.store.GetSetting(ctx, KeyWebSearchAPIKey)
 	if err != nil {
