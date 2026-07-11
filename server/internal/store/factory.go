@@ -20,7 +20,16 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	case config.DriverSQLite, "":
 		return NewSQLite(cfg.Path)
 	case config.DriverHybrid:
-		return nil, fmt.Errorf("database driver %q is not yet available", cfg.Driver)
+		pg, err := NewPostgres(ctx, cfg.PostgresDSN)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: %w", err)
+		}
+		mongo, err := NewMongo(ctx, cfg.MongoURI, cfg.MongoDB)
+		if err != nil {
+			_ = pg.Close()
+			return nil, fmt.Errorf("mongo: %w", err)
+		}
+		return NewHybrid(pg, mongo), nil
 	default:
 		return nil, fmt.Errorf("unknown database driver %q", cfg.Driver)
 	}
