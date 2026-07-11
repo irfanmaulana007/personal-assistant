@@ -33,6 +33,83 @@ function pretty(s: string): string {
   }
 }
 
+// buildDebugText renders a full trace into a plain-text block that can be
+// pasted straight into a chat/issue for debugging — every field a maintainer
+// would want, including tool calls, LLM steps, the judge score, and output.
+function buildDebugText(t: Trace): string {
+  const L: string[] = [];
+  const add = (label: string, value: unknown) => {
+    if (value === undefined || value === null || value === '') return;
+    L.push(`${label}: ${value}`);
+  };
+
+  L.push('=== RUN DETAIL ===');
+  add('ID', t.id);
+  add('Status', t.status);
+  add('Created', t.created_at);
+  add('User', t.user ? `${t.user} (#${t.user_id})` : `#${t.user_id}`);
+  add('Channel', t.platform);
+  add('Model', t.model);
+  add(
+    'Tokens',
+    `${t.total_tokens} (prompt ${t.prompt_tokens} / completion ${t.completion_tokens})`,
+  );
+  add('Latency (ms)', t.latency_ms);
+  add('Est. cost (USD)', t.estimated_cost_usd);
+  if (t.skills && t.skills.length > 0) add('Skills', t.skills.join(', '));
+
+  if (t.score) {
+    L.push('');
+    L.push('--- Quality score ---');
+    add('Overall', `${t.score.overall} / 5`);
+    add('Accuracy', t.score.accuracy);
+    add('Helpfulness', t.score.helpfulness);
+    add('Safety', t.score.safety);
+    add('Judge model', t.score.judge_model);
+    add('Rationale', t.score.rationale);
+  }
+
+  L.push('');
+  L.push('--- Input ---');
+  L.push(t.input || '(none)');
+
+  if (t.error) {
+    L.push('');
+    L.push('--- Error ---');
+    L.push(t.error);
+  }
+
+  if (t.tools && t.tools.length > 0) {
+    L.push('');
+    L.push(`--- Tool calls (${t.tools.length}) ---`);
+    t.tools.forEach((tool, i) => {
+      L.push(`[${i + 1}] ${tool.name}${tool.latency_ms != null ? ` (${tool.latency_ms}ms)` : ''}`);
+      L.push(`  arguments: ${pretty(tool.arguments) || '{}'}`);
+      L.push(`  result: ${pretty(tool.result)}`);
+    });
+  }
+
+  if (t.steps && t.steps.length > 0) {
+    L.push('');
+    L.push(`--- LLM calls (${t.steps.length}) ---`);
+    t.steps.forEach((st) => {
+      const finish =
+        st.tool_calls && st.tool_calls.length > 0
+          ? st.tool_calls.join(', ')
+          : st.finish_reason || '—';
+      L.push(
+        `#${st.step} ${st.model} · ${st.total_tokens} tok (${st.prompt_tokens}/${st.completion_tokens}) · ${st.latency_ms}ms · $${st.estimated_cost_usd} · ${finish}`,
+      );
+    });
+  }
+
+  L.push('');
+  L.push('--- Output ---');
+  L.push(t.output || '(none)');
+
+  return L.join('\n');
+}
+
 const channelBadge: Record<string, string> = {
   web: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   whatsapp: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
@@ -347,20 +424,23 @@ export function Logs() {
                 <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">
                   Run detail
                 </h2>
-                <button
-                  onClick={() => setSelected(null)}
-                  aria-label="Close"
-                  className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                  <CopyButton getText={() => buildDebugText(selected)} />
+                  <button
+                    onClick={() => setSelected(null)}
+                    aria-label="Close"
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-5 dark:bg-gray-900">
                 <TraceDetail trace={selected} loading={detailLoading} detailError={detailError} />
@@ -654,4 +734,65 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-gray-400 dark:text-gray-500">{children}</p>;
+}
+
+/**
+ * CopyButton copies the text produced by getText() to the clipboard, showing a
+ * brief check-mark confirmation. Used in the run-detail header to grab the whole
+ * trace as a paste-ready debug dump.
+ */
+function CopyButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    const text = getText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for insecure contexts / browsers without the async clipboard API.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        /* give up silently — nothing more we can do */
+      }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      onClick={copy}
+      aria-label={copied ? 'Copied' : 'Copy debug details'}
+      title={copied ? 'Copied!' : 'Copy debug details'}
+      className={`rounded-lg p-1.5 transition ${
+        copied
+          ? 'text-green-600 dark:text-green-400'
+          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50'
+      }`}
+    >
+      {copied ? (
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="9" y="9" width="11" height="11" rx="2" strokeWidth={2} />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5 15V5a2 2 0 012-2h10"
+          />
+        </svg>
+      )}
+    </button>
+  );
 }
