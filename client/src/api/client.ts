@@ -307,6 +307,13 @@ export async function setComposioKey(apiKey: string): Promise<Integrations> {
   });
 }
 
+export async function setWebSearchKey(apiKey: string): Promise<Integrations> {
+  return request<Integrations>('/api/integrations/websearch-key', {
+    method: 'PUT',
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
 export async function connectIntegration(slug: string): Promise<{ redirect_url: string }> {
   return request<{ redirect_url: string }>(`/api/integrations/${slug}/connect`, { method: 'POST' });
 }

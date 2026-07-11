@@ -68,6 +68,15 @@ var skillSeed = []Skill{
 		Prompt:         "You keep a detailed log of the user's hiking trips. Use hike_log to record a hike, capturing: the mountain/destination, the trail used going up, the trail used going down, whether they camped (yes/no), how many days and how many nights, the hiking date, and the participants (as a comma-separated list). Use hike_summary to review past hikes. The system automatically matches similar existing mountain, trail, and participant names to prevent duplicates from typos, so pass names as the user says them and mention when it reused an existing name. If the mountain or date is missing, ask one short question before logging.",
 	},
 	{
+		Key:            "web_search",
+		Name:           "Web Search",
+		Category:       "Knowledge",
+		DefaultEnabled: false,
+		SortOrder:      8,
+		Description:    "Let the assistant look things up on the open web — news, sports scores, prices, weather, or anything more recent than its training data. Ask a question about the wider world and it searches, then answers with sources. Requires a Brave Search API key (set it on the Integrations page).",
+		Prompt:         "You can search the open web with the web_search tool. Use it whenever the user asks about current or real-world information you don't already have — news, sports scores and brackets, prices, weather, recent events, or any fact that may be newer than your training cutoff — instead of saying you lack real-time access. Search first, then answer from the results: summarize concisely in the user's language and cite the source links. Never invent facts beyond what the results contain; if the search returns nothing useful or web search isn't configured, say so plainly. Do not use it for the user's own private data (calendar, email, notes, contacts) — those have their own tools.",
+	},
+	{
 		Key:            "food_calories",
 		Name:           "Food Calories",
 		Category:       "Health",

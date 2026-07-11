@@ -15,6 +15,7 @@ const (
 	CapabilityActivity  Capability = "activity"
 	CapabilityTravel    Capability = "travel"
 	CapabilityHiking    Capability = "hiking"
+	CapabilityWebSearch Capability = "web_search"
 	CapabilityHelp      Capability = "help"
 	CapabilityUnknown   Capability = "unknown"
 )
@@ -97,6 +98,11 @@ const (
 const (
 	ActionHikeLog     Action = "hike.log"
 	ActionHikeSummary Action = "hike.summary"
+)
+
+// Web search actions
+const (
+	ActionWebSearch Action = "web_search.search"
 )
 
 const (

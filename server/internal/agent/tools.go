@@ -244,6 +244,15 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"trip":{"type":"string","description":"Trip name; defaults to the active trip."}}}`,
 		},
 	},
+	"web_search": {
+		{
+			name:        "web_search",
+			description: "Search the open web for current, real-world information the user asks about — news, sports scores and brackets, prices, weather, recent events, or any fact that may be newer than your training data. Returns the top results (title, URL, snippet) for you to summarize and cite. Use it whenever the user wants live or up-to-date information you don't already have.",
+			capability:  intent.CapabilityWebSearch,
+			action:      intent.ActionWebSearch,
+			parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"The search query, phrased as you'd type it into a search engine."},"count":{"type":"integer","description":"How many results to return (default 5, max 20)."}},"required":["query"]}`,
+		},
+	},
 	"hiking_tracker": {
 		{
 			name:        "hike_log",

@@ -27,6 +27,7 @@ import (
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
+	websearchcap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/websearch"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composiotools"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
@@ -42,6 +43,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/translate"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport/whatsapp"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/websearch"
 )
 
 func main() {
@@ -150,6 +152,7 @@ func main() {
 	handlers = append(handlers, activity.New(db, timezone, log))
 	handlers = append(handlers, travel.New(db, timezone, log))
 	handlers = append(handlers, hiking.New(db, timezone, log))
+	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
 
 	router := capability.NewRouter(log, handlers...)
 

@@ -53,6 +53,9 @@ type integrationsResp struct {
 	Configured bool                 `json:"configured"`
 	APIKeyMask string               `json:"api_key_mask"`
 	Toolkits   []integrationToolkit `json:"toolkits"`
+	// Web search (Brave) is a standalone API key, independent of Composio.
+	WebSearchConfigured bool   `json:"web_search_configured"`
+	WebSearchKeyMask    string `json:"web_search_key_mask"`
 }
 
 func statusFromComposio(s string) string {
@@ -88,6 +91,14 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 		Configured: key != "",
 		APIKeyMask: settings.Mask(key),
 		Toolkits:   make([]integrationToolkit, 0, len(supportedToolkits)),
+	}
+
+	// Web search key status (independent of Composio).
+	if wsKey, err := s.settings.WebSearchKey(r.Context()); err == nil {
+		resp.WebSearchConfigured = wsKey != ""
+		resp.WebSearchKeyMask = settings.Mask(wsKey)
+	} else {
+		s.log.Warn("resolve web search key", "error", err)
 	}
 
 	// Gather all connections per toolkit slug (a user may have several).
@@ -143,6 +154,22 @@ func (s *Server) handleSetComposioKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.settings.SetComposioKey(r.Context(), strings.TrimSpace(req.APIKey)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+		return
+	}
+	s.handleListIntegrations(w, r)
+}
+
+// handleSetWebSearchKey stores/clears the web-search (Brave) API key.
+func (s *Server) handleSetWebSearchKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := s.settings.SetWebSearchKey(r.Context(), strings.TrimSpace(req.APIKey)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
 		return
 	}
