@@ -22,6 +22,8 @@ const (
 	KeyLLMBaseURL     = "llm.base_url"     // plaintext
 	KeyComposioAPIKey = "composio.api_key" // encrypted
 
+	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Brave Search subscription token)
+
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
 	KeyReminderDigestTime  = "reminder_digest_time"  // local "HH:MM"; empty ⇒ no daily recap
@@ -207,6 +209,34 @@ func (s *Service) SetComposioKey(ctx context.Context, key string) error {
 		return fmt.Errorf("encrypt composio key: %w", err)
 	}
 	return s.store.SetSetting(ctx, KeyComposioAPIKey, enc)
+}
+
+// WebSearchKey returns the decrypted web-search (Brave) API key, or "" if unset.
+func (s *Service) WebSearchKey(ctx context.Context) (string, error) {
+	enc, err := s.store.GetSetting(ctx, KeyWebSearchAPIKey)
+	if err != nil {
+		return "", err
+	}
+	if len(enc) == 0 {
+		return "", nil
+	}
+	dec, err := crypto.Decrypt(s.encKey, enc)
+	if err != nil {
+		return "", fmt.Errorf("decrypt web search key: %w", err)
+	}
+	return string(dec), nil
+}
+
+// SetWebSearchKey stores the web-search API key encrypted. An empty value clears it.
+func (s *Service) SetWebSearchKey(ctx context.Context, key string) error {
+	if key == "" {
+		return s.store.SetSetting(ctx, KeyWebSearchAPIKey, []byte{})
+	}
+	enc, err := crypto.Encrypt(s.encKey, []byte(key))
+	if err != nil {
+		return fmt.Errorf("encrypt web search key: %w", err)
+	}
+	return s.store.SetSetting(ctx, KeyWebSearchAPIKey, enc)
 }
 
 // Mask returns a masked view of a secret (e.g. "••••7890"), or "" if empty.

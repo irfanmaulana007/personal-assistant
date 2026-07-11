@@ -144,6 +144,8 @@ export interface Integrations {
   configured: boolean;
   api_key_mask: string;
   toolkits: IntegrationToolkit[];
+  web_search_configured: boolean;
+  web_search_key_mask: string;
 }
 
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';
