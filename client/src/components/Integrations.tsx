@@ -292,7 +292,7 @@ function WebSearchKeyCard({
           placeholder={
             data.web_search_configured
               ? `Saved (${data.web_search_key_mask}) — leave blank to keep`
-              : 'Paste your Brave Search API key'
+              : 'Paste your Tavily API key'
           }
           autoComplete="off"
           className={`${inputClass} flex-1 min-w-[240px]`}
@@ -308,7 +308,8 @@ function WebSearchKeyCard({
       </div>
       <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
         Stored encrypted on the server. Powers the <span className="font-medium">Web Search</span>{' '}
-        skill — enable it under Skills. Get a free key from the Brave Search API dashboard.
+        skill — enable it under Skills. Get a free key from the Tavily dashboard (1,000
+        searches/month, no card required).
       </p>
     </form>
   );
