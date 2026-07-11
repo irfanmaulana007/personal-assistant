@@ -20,7 +20,7 @@ import (
 // defaultResults is how many results to fetch when the caller doesn't specify.
 const defaultResults = 5
 
-// Handler answers web-search tool calls via the Brave Search client.
+// Handler answers web-search tool calls via the Tavily Search client.
 type Handler struct {
 	client   *websearch.Client
 	settings *settings.Service
@@ -50,7 +50,7 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	}
 	if apiKey == "" {
 		// Reported to the model as text so it can tell the user gracefully.
-		return "Web search is not configured — no search API key has been set. Ask the user to add a Brave Search API key on the Integrations page.", nil
+		return "Web search is not configured — no search API key has been set. Ask the user to add a Tavily API key on the Integrations page.", nil
 	}
 
 	count := defaultResults
@@ -60,22 +60,25 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		}
 	}
 
-	results, err := h.client.Search(ctx, apiKey, query, count)
+	res, err := h.client.Search(ctx, apiKey, query, count)
 	if err != nil {
 		h.log.Warn("web search failed", "query", query, "error", err)
 		// Surface a readable reason to the model rather than an error page.
 		return fmt.Sprintf("Web search failed: %v", err), nil
 	}
-	if len(results) == 0 {
+	if len(res.Results) == 0 && strings.TrimSpace(res.Answer) == "" {
 		return fmt.Sprintf("No web results found for %q.", query), nil
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Top web results for %q:", query))
-	for i, r := range results {
+	b.WriteString(fmt.Sprintf("Web search results for %q:", query))
+	if ans := strings.TrimSpace(res.Answer); ans != "" {
+		b.WriteString("\n\nSuggested answer: " + ans)
+	}
+	for i, r := range res.Results {
 		b.WriteString(fmt.Sprintf("\n\n%d. %s\n%s", i+1, strings.TrimSpace(r.Title), strings.TrimSpace(r.URL)))
-		if desc := strings.TrimSpace(r.Description); desc != "" {
-			b.WriteString("\n" + desc)
+		if c := strings.TrimSpace(r.Content); c != "" {
+			b.WriteString("\n" + c)
 		}
 	}
 	b.WriteString("\n\nSummarize these for the user and cite the sources; do not invent facts beyond them.")
