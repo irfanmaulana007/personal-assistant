@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
-	"github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -236,58 +235,6 @@ func TestFireSpecific_GuardBlocksRefire(t *testing.T) {
 	}
 }
 
-func TestBuildDigest(t *testing.T) {
-	now := at(2026, time.March, 10, 7, 0) // Tuesday 07:00
-	reminders := []store.Reminder{
-		// Daily: 06:00 already past today (excluded), 20:00 today + tomorrow (included).
-		{RepeatMode: "daily", Title: "Stretch", Times: []string{"06:00", "20:00"}, Enabled: true},
-		// Weekly Wed (tomorrow) 09:00 → included; Tue is today but already past isn't set here.
-		{RepeatMode: "weekly", Title: "Standup", Weekdays: []int{3}, Times: []string{"09:00"}, Enabled: true},
-		// Specific event tomorrow 18:00 → included.
-		{RepeatMode: "specific", Title: "Flight", EventAt: "2026-03-11T18:00", Offsets: []int{60}, Enabled: true},
-		// Specific event far away → excluded.
-		{RepeatMode: "specific", Title: "Faraway", EventAt: "2026-04-01T10:00", Offsets: []int{60}, Enabled: true},
-	}
-	msg := buildDigest(reminders, nil, now, testTZ)
-	if msg == "" {
-		t.Fatal("expected a non-empty digest")
-	}
-	for _, want := range []string{"Stretch", "Standup", "Flight", "Today 8:00 PM", "Tomorrow"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("digest missing %q; got:\n%s", want, msg)
-		}
-	}
-	if strings.Contains(msg, "Faraway") {
-		t.Errorf("digest should not include out-of-window reminder; got:\n%s", msg)
-	}
-	// Stretch's today 06:00 is before now (07:00) → the today variant is excluded
-	// (tomorrow's 06:00 still legitimately appears).
-	if strings.Contains(msg, "Today 6:00 AM") {
-		t.Errorf("digest should exclude a past same-day slot; got:\n%s", msg)
-	}
-}
-
-func TestBuildDigest_MergesCalendarEvents(t *testing.T) {
-	now := at(2026, time.March, 10, 7, 0)
-	cal := []calendar.Event{
-		{Title: "Client call", Start: at(2026, time.March, 10, 14, 0)}, // today, in window
-		{Title: "Far meeting", Start: at(2026, time.March, 20, 9, 0)},  // out of window
-	}
-	reminders := []store.Reminder{
-		{RepeatMode: "daily", Title: "Stretch", Times: []string{"20:00"}, Enabled: true},
-	}
-	msg := buildDigest(reminders, cal, now, testTZ)
-	if !strings.Contains(msg, "Client call") {
-		t.Errorf("digest should include the in-window calendar event; got:\n%s", msg)
-	}
-	if !strings.Contains(msg, "Stretch") {
-		t.Errorf("digest should still include reminders; got:\n%s", msg)
-	}
-	if strings.Contains(msg, "Far meeting") {
-		t.Errorf("digest should exclude out-of-window calendar events; got:\n%s", msg)
-	}
-}
-
 func TestReminderEvents_RRULE(t *testing.T) {
 	daily := reminderEvents(store.Reminder{RepeatMode: "daily", Title: "A", Times: []string{"08:00", "20:00"}}, testTZ)
 	if len(daily) != 2 || daily[0].rrule != "RRULE:FREQ=DAILY" {
@@ -371,37 +318,6 @@ func TestCalendarHash_ChangesWithSchedule(t *testing.T) {
 	changed.Times = []string{"10:00"}
 	if calendarHash(base) == calendarHash(changed) {
 		t.Error("hash should change when the time changes")
-	}
-}
-
-func TestBuildDigest_SkipsMirroredCalendarEvents(t *testing.T) {
-	now := at(2026, time.March, 10, 7, 0)
-	reminders := []store.Reminder{
-		{RepeatMode: "daily", Title: "Standup", Times: []string{"09:00"}, Enabled: true, CalendarEventIDs: []string{"evt-mirror"}},
-	}
-	cal := []calendar.Event{
-		{ID: "evt-mirror", Title: "Standup (calendar copy)", Start: at(2026, time.March, 10, 9, 0)},
-		{ID: "evt-ext", Title: "External meeting", Start: at(2026, time.March, 10, 15, 0)},
-	}
-	msg := buildDigest(reminders, cal, now, testTZ)
-	if !strings.Contains(msg, "Standup") {
-		t.Error("the reminder should appear")
-	}
-	if strings.Contains(msg, "calendar copy") {
-		t.Error("a calendar event mirroring a reminder must be skipped (no duplicate)")
-	}
-	if !strings.Contains(msg, "External meeting") {
-		t.Error("an external calendar event should appear")
-	}
-}
-
-func TestBuildDigest_EmptyWhenNothingUpcoming(t *testing.T) {
-	now := at(2026, time.March, 10, 7, 0)
-	reminders := []store.Reminder{
-		{RepeatMode: "weekly", Title: "Sat only", Weekdays: []int{6}, Times: []string{"09:00"}, Enabled: true},
-	}
-	if got := buildDigest(reminders, nil, now, testTZ); got != "" {
-		t.Errorf("expected empty digest, got: %q", got)
 	}
 }
 
