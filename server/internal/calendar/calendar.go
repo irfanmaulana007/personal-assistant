@@ -4,9 +4,11 @@
 // normalizes Composio's provider-shaped responses into a small Event type.
 //
 // NOTE: the Composio Google-Calendar tool slugs, argument names, and response
-// shapes below are best-effort and must be verified against a live Composio +
-// Google account. All access is deliberately confined to this file so that risk
-// stays contained; callers only depend on the stable Event type and methods.
+// shapes below have been verified against a live Composio + Google account
+// (Composio's list-events action is GOOGLECALENDAR_EVENTS_LIST, not the older
+// GOOGLECALENDAR_LIST_EVENTS, which now 404s as "Tool not found"). All access is
+// deliberately confined to this file so that risk stays contained; callers only
+// depend on the stable Event type and methods.
 package calendar
 
 import (
@@ -28,7 +30,7 @@ const toolkitSlug = "googlecalendar"
 const (
 	toolCreateEvent   = "GOOGLECALENDAR_CREATE_EVENT"
 	toolDeleteEvent   = "GOOGLECALENDAR_DELETE_EVENT"
-	toolListEvents    = "GOOGLECALENDAR_LIST_EVENTS"
+	toolListEvents    = "GOOGLECALENDAR_EVENTS_LIST"
 	toolListCalendars = "GOOGLECALENDAR_LIST_CALENDARS"
 )
 
