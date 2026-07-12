@@ -192,6 +192,7 @@ func main() {
 			}
 		}
 		wa.SetAllowedSenders(allow)
+		wa.SetAllowAll(settingsSvc.WhatsAppAllowAll(ctx))
 		wa.SetMessageHandler(func(msg *transport.Message) {
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.

@@ -70,6 +70,10 @@ func (s *Server) handleWhatsAppDisconnect(w http.ResponseWriter, r *http.Request
 
 type whatsappAllowlistResp struct {
 	Allowlist []string `json:"allowlist"`
+	// AllowAll, when true, makes the assistant answer every number and the
+	// allowlist is ignored. Pointer on the request so an omitted field leaves
+	// the stored value unchanged.
+	AllowAll *bool `json:"allow_all,omitempty"`
 }
 
 // handleGetWhatsAppAllowlist returns the numbers allowed to chat with the assistant.
@@ -78,7 +82,8 @@ func (s *Server) handleGetWhatsAppAllowlist(w http.ResponseWriter, r *http.Reque
 	if list == nil {
 		list = []string{}
 	}
-	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list})
+	allowAll := s.settings.WhatsAppAllowAll(r.Context())
+	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list, AllowAll: &allowAll})
 }
 
 // handleSetWhatsAppAllowlist saves the allowlist and refreshes the live transport.
@@ -102,10 +107,19 @@ func (s *Server) handleSetWhatsAppAllowlist(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
 	}
+	allowAll := s.settings.WhatsAppAllowAll(r.Context())
+	if req.AllowAll != nil {
+		allowAll = *req.AllowAll
+		if err := s.settings.SetWhatsAppAllowAll(r.Context(), allowAll); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
+			return
+		}
+	}
 	if s.whatsapp != nil {
 		s.whatsapp.SetAllowedSenders(list)
+		s.whatsapp.SetAllowAll(allowAll)
 	}
-	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list})
+	writeJSON(w, http.StatusOK, whatsappAllowlistResp{Allowlist: list, AllowAll: &allowAll})
 }
 
 // normalizeWhatsAppJID accepts a full JID ("628…@s.whatsapp.net") or a bare

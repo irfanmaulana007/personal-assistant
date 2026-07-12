@@ -43,6 +43,7 @@ type Transport struct {
 	qr       string
 	ownerJID string
 	allowed  map[string]bool // senders permitted to talk to the assistant
+	allowAll bool            // when true, answer every sender (allowed is ignored)
 	handler  transport.MessageHandler
 }
 
@@ -72,6 +73,18 @@ func (t *Transport) SetAllowedSenders(jids []string) {
 		t.allowed[j] = true
 	}
 	t.log.Info("whatsapp allowlist configured", "senders", jids)
+}
+
+// SetAllowAll toggles "answer every number" mode. When enabled the assistant
+// responds to any sender and the allowlist is ignored; when disabled it falls
+// back to the allowlist (or "message yourself" mode when that is empty).
+func (t *Transport) SetAllowAll(allowAll bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.allowAll = allowAll
+	if allowAll {
+		t.log.Info("whatsapp reply mode: all numbers (allowlist ignored)")
+	}
 }
 
 func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
@@ -315,6 +328,7 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	t.mu.RLock()
 	ownerJID := t.ownerJID
 	allowed := t.allowed
+	allowAll := t.allowAll
 	handler := t.handler
 	client := t.client
 	t.mu.RUnlock()
@@ -334,17 +348,21 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	}
 
 	// Decide who the assistant answers:
+	//  - allow-all mode → every sender is permitted (allowlist ignored);
 	//  - allowlist configured → any of the sender's identities must be listed;
 	//  - otherwise → the paired account's own messages ("message yourself" mode).
 	permitted := false
-	if len(allowed) > 0 {
+	switch {
+	case allowAll:
+		permitted = true
+	case len(allowed) > 0:
 		for _, c := range candidates {
 			if allowed[c] {
 				permitted = true
 				break
 			}
 		}
-	} else {
+	default:
 		permitted = ownerJID == "" || senderJID == ownerJID
 	}
 	if !permitted {

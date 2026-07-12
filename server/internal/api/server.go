@@ -27,6 +27,7 @@ type WhatsAppController interface {
 	BeginPairing() error
 	Logout(ctx context.Context) error
 	SetAllowedSenders(jids []string)
+	SetAllowAll(allowAll bool)
 }
 
 // Server is the HTTP API server for the web client.
