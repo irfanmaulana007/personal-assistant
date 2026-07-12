@@ -1,33 +1,31 @@
-import type { Channel } from '../types';
+import { MultiSelect, type MultiSelectOption } from './ui/MultiSelect';
+import type { ChannelValue } from '../types';
 
-const options: { value: Channel; label: string }[] = [
-  { value: '', label: 'All' },
+const options: MultiSelectOption<ChannelValue>[] = [
   { value: 'web', label: 'Web' },
   { value: 'whatsapp', label: 'WhatsApp' },
 ];
 
+const icon = (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+    />
+  </svg>
+);
+
+/** Multi-select filter over the message channel(s). Empty selection = all. */
 export function ChannelFilter({
   value,
   onChange,
 }: {
-  value: Channel;
-  onChange: (c: Channel) => void;
+  value: ChannelValue[];
+  onChange: (c: ChannelValue[]) => void;
 }) {
   return (
-    <div className="flex rounded-xl border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-800">
-      {options.map((o) => (
-        <button
-          key={o.value || 'all'}
-          onClick={() => onChange(o.value)}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-            value === o.value
-              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
-              : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <MultiSelect label="Channels" icon={icon} options={options} value={value} onChange={onChange} />
   );
 }

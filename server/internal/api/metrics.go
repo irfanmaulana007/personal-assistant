@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -34,24 +35,34 @@ type usageUserResp struct {
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 }
 
-// validPlatform normalizes the platform query param ("" = all).
-func validPlatform(p string) string {
-	switch p {
-	case "web", "whatsapp":
-		return p
-	default:
-		return ""
+// validCSV splits a comma-separated query param into a whitelisted, de-duped
+// list, preserving input order. nil result means "all".
+func validCSV(raw string, ok func(string) bool) []string {
+	if raw == "" {
+		return nil
 	}
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range strings.Split(raw, ",") {
+		v = strings.TrimSpace(v)
+		if v != "" && ok(v) && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
-// validScoreState whitelists the logs judge-score filter values.
-func validScoreState(s string) string {
-	switch s {
-	case "scored", "unscored", "low":
-		return s
-	default:
-		return ""
-	}
+// validPlatforms parses the platform filter (comma-separated; nil = all).
+func validPlatforms(raw string) []string {
+	return validCSV(raw, func(p string) bool { return p == "web" || p == "whatsapp" })
+}
+
+// validScoreStates parses the judge-score filter (comma-separated; nil = all).
+func validScoreStates(raw string) []string {
+	return validCSV(raw, func(s string) bool {
+		return s == "scored" || s == "unscored" || s == "low"
+	})
 }
 
 type usagePlatformResp struct {
@@ -85,9 +96,9 @@ type usageModelResp struct {
 }
 
 type usageResp struct {
-	From       string              `json:"from"`     // inclusive, YYYY-MM-DD
-	To         string              `json:"to"`       // inclusive, YYYY-MM-DD
-	Platform   string              `json:"platform"` // "", web, whatsapp
+	From       string              `json:"from"`               // inclusive, YYYY-MM-DD
+	To         string              `json:"to"`                 // inclusive, YYYY-MM-DD
+	Platforms  []string            `json:"platforms,omitempty"` // empty = all
 	Summary    usageSummaryResp    `json:"summary"`
 	ByDay      []usageDayResp      `json:"by_day"`
 	ByModel    []usageModelResp    `json:"by_model"`
@@ -134,12 +145,12 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 		from = to.AddDate(0, 0, -366)
 	}
 
-	platform := validPlatform(r.URL.Query().Get("platform"))
+	platforms := validPlatforms(r.URL.Query().Get("platform"))
 
 	// `to` is inclusive; query with an exclusive end at the start of the next day.
 	toExclusive := to.AddDate(0, 0, 1)
 
-	stats, err := s.store.UsageStatsBetween(r.Context(), from, toExclusive, platform)
+	stats, err := s.store.UsageStatsBetween(r.Context(), from, toExclusive, platforms)
 	if err != nil {
 		s.log.Error("failed to load usage stats", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load usage"})
@@ -149,7 +160,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 	resp := usageResp{
 		From:       from.Format(dateLayout),
 		To:         to.Format(dateLayout),
-		Platform:   platform,
+		Platforms:  platforms,
 		ByDay:      make([]usageDayResp, 0, len(stats.ByDay)),
 		ByModel:    make([]usageModelResp, 0, len(stats.ByModel)),
 		ByPlatform: make([]usagePlatformResp, 0, len(stats.ByPlatform)),
@@ -158,7 +169,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 
 	// Per-day cost from per-day, per-model token sums.
 	costByDay := map[string]float64{}
-	if dayModels, err := s.store.UsageByDayModel(r.Context(), from, toExclusive, platform); err == nil {
+	if dayModels, err := s.store.UsageByDayModel(r.Context(), from, toExclusive, platforms); err == nil {
 		for _, dm := range dayModels {
 			if c, known := s.pricing.Estimate(dm.Model, dm.PromptTokens, dm.CompletionTokens); known {
 				costByDay[dm.Date] += c
@@ -188,7 +199,7 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 
 	resp.ByHour = stats.ByHour[:]
 	resp.ByWeekday = stats.ByWeekday[:]
-	resp.ByUser = s.usageByUser(r.Context(), from, toExclusive, platform)
+	resp.ByUser = s.usageByUser(r.Context(), from, toExclusive, platforms)
 
 	var totalCost float64
 	for _, m := range stats.ByModel {
@@ -229,8 +240,8 @@ func (s *Server) handleMetricsUsage(w http.ResponseWriter, r *http.Request) {
 
 // usageByUser aggregates per-user usage (requests/tokens/errors/cost), sorted by
 // requests desc, resolving names via ListUsers. Cost is priced per (user, model).
-func (s *Server) usageByUser(ctx context.Context, from, to time.Time, platform string) []usageUserResp {
-	rows, err := s.store.UsageByUserModel(ctx, from, to, platform)
+func (s *Server) usageByUser(ctx context.Context, from, to time.Time, platforms []string) []usageUserResp {
+	rows, err := s.store.UsageByUserModel(ctx, from, to, platforms)
 	if err != nil {
 		s.log.Error("usage by user", "error", err)
 		return nil

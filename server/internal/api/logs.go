@@ -154,12 +154,12 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch one extra row to know whether a further page exists.
 	traces, err := s.store.ListTraces(r.Context(), store.TraceFilter{
-		Platform:   validPlatform(r.URL.Query().Get("platform")),
-		From:       from,
-		To:         to.AddDate(0, 0, 1),
-		Limit:      limit + 1,
-		Cursor:     cursor,
-		ScoreState: validScoreState(r.URL.Query().Get("score")),
+		Platforms:   validPlatforms(r.URL.Query().Get("platform")),
+		From:        from,
+		To:          to.AddDate(0, 0, 1),
+		Limit:       limit + 1,
+		Cursor:      cursor,
+		ScoreStates: validScoreStates(r.URL.Query().Get("score")),
 	})
 	if err != nil {
 		s.log.Error("list traces", "error", err)
