@@ -9,6 +9,7 @@ import { BucketList } from './components/BucketList';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
+import { ApiKeysSettings } from './components/settings/ApiKeysSettings';
 import { WhatsAppSettings } from './components/settings/WhatsAppSettings';
 import { RoutinesSettings } from './components/settings/RoutinesSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
@@ -68,6 +69,7 @@ function App() {
           <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
             <Route index element={<AgentSettings />} />
             {isAdmin && <Route path="model" element={<ModelSettings />} />}
+            {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
             {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
             {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
             <Route path="display" element={<DisplaySettings />} />
