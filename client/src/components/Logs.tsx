@@ -80,6 +80,8 @@ function buildDebugText(t: Trace): string {
     add('Safety', t.score.safety);
     add('Judge model', t.score.judge_model);
     add('Rationale', t.score.rationale);
+  } else if (t.status === 'error') {
+    L.push('(failed — no reply to score)');
   } else {
     L.push('(not scored)');
   }
@@ -134,19 +136,32 @@ function scoreTone(overall: number): string {
   return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300';
 }
 
-/** A compact pill showing the judge's overall score, or an em dash if unjudged. */
-function ScoreBadge({ score }: { score?: TraceScore }) {
-  if (!score) return <span className="text-gray-300 dark:text-gray-600">—</span>;
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreTone(
-        score.overall,
-      )}`}
-      title={score.rationale}
-    >
-      {score.overall.toFixed(1)}
-    </span>
-  );
+/** A compact pill showing the judge's overall score, a "Failed" pill for error
+ *  runs (which never produced a reply to judge), or an em dash if simply
+ *  unjudged. "Failed" is text, not a 1–5 number, so it reads distinctly from a
+ *  genuinely low score. */
+function ScoreBadge({ score, status }: { score?: TraceScore; status?: string }) {
+  if (score)
+    return (
+      <span
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreTone(
+          score.overall,
+        )}`}
+        title={score.rationale}
+      >
+        {score.overall.toFixed(1)}
+      </span>
+    );
+  if (status === 'error')
+    return (
+      <span
+        className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/30"
+        title="This run failed before producing a reply, so it can't be scored."
+      >
+        Failed
+      </span>
+    );
+  return <span className="text-gray-300 dark:text-gray-600">—</span>;
 }
 
 export function Logs() {
@@ -396,7 +411,7 @@ export function Logs() {
                         {t.model || '—'}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <ScoreBadge score={t.score} />
+                        <ScoreBadge score={t.score} status={t.status} />
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
                         {formatTokens(t.total_tokens)}
@@ -604,6 +619,15 @@ function TraceDetail({
               </p>
             )}
           </>
+        ) : trace.status === 'error' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-sm font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/30">
+              Failed
+            </span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              This run failed before producing a reply, so it can't be scored.
+            </span>
+          </div>
         ) : (
           <EmptyState>This run has not been scored.</EmptyState>
         )}
