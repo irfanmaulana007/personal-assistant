@@ -19,7 +19,7 @@ Model: deepseek-v4-flash
 Tokens: 13913 (prompt 13456 / completion 457)
 Latency (ms): 9587
 Est. cost (USD): 0.0020118000000000002
-Skills: life_goals, ask_about_contact, travel_control, activity_summary, food_calories, hiking_tracker, english_tutor
+Skills: bucket_list, ask_about_contact, travel_control, activity_summary, food_calories, hiking_tracker, english_tutor
 
 --- Input ---
 Minta braket piala dunia dong
