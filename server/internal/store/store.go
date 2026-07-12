@@ -255,12 +255,21 @@ type OAuthToken struct {
 	UpdatedAt time.Time
 }
 
-// ToolInvocation is one tool call the agent made during a run.
+// ToolInvocation is one tool call the agent made during a run. Model and the
+// token fields are populated only for tools that call a paid API of their own
+// (today the Image Generator on gpt-image-1) and are zero/empty otherwise, so a
+// run's image-generation cost can be priced separately from the LLM. They are
+// embedded in the trace document/JSON, so the bson tags name the new keys
+// explicitly (older tool records simply omit them).
 type ToolInvocation struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-	Result    string `json:"result"`
-	LatencyMs int    `json:"latency_ms,omitempty"`
+	Name             string `json:"name"`
+	Arguments        string `json:"arguments"`
+	Result           string `json:"result"`
+	LatencyMs        int    `json:"latency_ms,omitempty"`
+	Model            string `json:"model,omitempty" bson:"model,omitempty"`
+	PromptTokens     int    `json:"prompt_tokens,omitempty" bson:"prompt_tokens,omitempty"`
+	CompletionTokens int    `json:"completion_tokens,omitempty" bson:"completion_tokens,omitempty"`
+	TotalTokens      int    `json:"total_tokens,omitempty" bson:"total_tokens,omitempty"`
 }
 
 // LLMCall records one LLM round-trip within a trace.
@@ -278,9 +287,9 @@ type LLMCall struct {
 // Trace is a full record of one agent run — the source of truth for both the
 // dashboard aggregates and the logs viewer.
 type Trace struct {
-	ID               int64
-	UserID           int64
-	Platform         string
+	ID       int64
+	UserID   int64
+	Platform string
 	// Source is what triggered the run: "chat" for an interactive message
 	// (web/WhatsApp), or a routine key ("start_of_day" / "end_of_day") for a
 	// scheduled run. Empty is normalised to "chat" on write.
@@ -291,15 +300,22 @@ type Trace struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
-	LatencyMs        int
-	ToolCount        int
-	Tools            []ToolInvocation // populated by GetTrace only
-	Steps            []LLMCall        // per-LLM-call detail; populated by GetTrace only
-	Skills           []string         // skill keys active for this run
-	Status           string           // "ok" or "error"
-	Error            string
-	CreatedAt        time.Time
-	Score            *TraceScore // LLM-as-judge verdict; nil until judged
+	// Image* aggregate this run's image-generation usage (model + tokens) across
+	// all its tool calls, priced separately from the LLM. Zero/empty when the run
+	// generated no images.
+	ImageModel            string
+	ImagePromptTokens     int
+	ImageCompletionTokens int
+	ImageTotalTokens      int
+	LatencyMs             int
+	ToolCount             int
+	Tools                 []ToolInvocation // populated by GetTrace only
+	Steps                 []LLMCall        // per-LLM-call detail; populated by GetTrace only
+	Skills                []string         // skill keys active for this run
+	Status                string           // "ok" or "error"
+	Error                 string
+	CreatedAt             time.Time
+	Score                 *TraceScore // LLM-as-judge verdict; nil until judged
 }
 
 // TraceScore is an LLM-as-judge quality verdict for a single trace. Each

@@ -53,16 +53,16 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	size := strings.TrimSpace(result.Entities["size"])
 	quality := strings.TrimSpace(result.Entities["quality"])
 
-	var img *media.Image
+	var out *imagegen.Result
 	switch result.Action {
 	case intent.ActionImageEdit:
 		input := media.Inbound(ctx)
 		if input == nil {
 			return "There's no image attached to edit. Ask the user to send the image they want changed.", nil
 		}
-		img, err = h.client.Edit(ctx, apiKey, prompt, *input, size, quality)
+		out, err = h.client.Edit(ctx, apiKey, prompt, *input, size, quality)
 	default: // ActionImageGenerate
-		img, err = h.client.Generate(ctx, apiKey, prompt, size, quality)
+		out, err = h.client.Generate(ctx, apiKey, prompt, size, quality)
 	}
 	if err != nil {
 		h.log.Warn("image generation failed", "action", result.Action, "error", err)
@@ -70,8 +70,18 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return fmt.Sprintf("Image generation failed: %v", err), nil
 	}
 
-	if c := media.CollectorFrom(ctx); c != nil && img != nil {
-		c.Add(*img)
+	// Deliver the image out of band, and report the OpenAI token usage on the
+	// same channel so the agent can track its (much higher) per-image cost
+	// separately from the LLM. The API prices InputTokens/OutputTokens with the
+	// gpt-image-1 rate, so they map onto prompt/completion respectively.
+	if c := media.CollectorFrom(ctx); c != nil && out != nil {
+		c.Add(out.Image)
+		c.AddUsage(media.ToolUsage{
+			Model:            imagegen.Model,
+			PromptTokens:     out.Usage.InputTokens,
+			CompletionTokens: out.Usage.OutputTokens,
+			TotalTokens:      out.Usage.TotalTokens,
+		})
 	}
 	return fmt.Sprintf("The image for %q was created and is attached to your reply. Tell the user it's ready — do not paste any URL or base64 data.", prompt), nil
 }

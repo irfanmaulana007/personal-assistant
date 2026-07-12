@@ -94,12 +94,19 @@ func New(client *llm.Client, settingsSvc *settings.Service, skillsSvc *skills.Se
 	}
 }
 
-// ToolInvocation records a single tool call made during a run.
+// ToolInvocation records a single tool call made during a run. Model and the
+// token fields are set only for tools that call a paid API of their own (today
+// the Image Generator, on gpt-image-1); they stay zero/empty for ordinary tools
+// so the trace can price image generation apart from the LLM.
 type ToolInvocation struct {
-	Name      string
-	Arguments string
-	Result    string
-	LatencyMs int
+	Name             string
+	Arguments        string
+	Result           string
+	LatencyMs        int
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
 }
 
 // LLMCall records one LLM round-trip within a run (the agent loops, so a run
@@ -115,15 +122,22 @@ type LLMCall struct {
 	ToolCalls        []string // tool names requested in this step
 }
 
-// Result is the outcome of an agent run.
+// Result is the outcome of an agent run. Usage/Model describe the LLM
+// (DeepSeek); the Image* fields aggregate any image-generation usage across the
+// run's tool calls (model + tokens), kept separate so the two are priced with
+// their own rates rather than lumped into the LLM's token counts.
 type Result struct {
-	Reply  string
-	Usage  llm.Usage
-	Model  string
-	Tools  []ToolInvocation // tools invoked during the run, in order
-	Steps  []LLMCall        // each LLM round-trip, in order
-	Skills []string         // skill keys active for this run
-	Images []media.Image    // images produced by tools (e.g. Image Generator)
+	Reply                 string
+	Usage                 llm.Usage
+	Model                 string
+	Tools                 []ToolInvocation // tools invoked during the run, in order
+	Steps                 []LLMCall        // each LLM round-trip, in order
+	Skills                []string         // skill keys active for this run
+	Images                []media.Image    // images produced by tools (e.g. Image Generator)
+	ImageModel            string           // image model used this run, "" if none
+	ImagePromptTokens     int
+	ImageCompletionTokens int
+	ImageTotalTokens      int
 }
 
 // Message is a prior conversation turn used as context.
@@ -248,21 +262,31 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys, Images: imageCollector.Images()}, nil
+			return a.buildResult(strings.TrimSpace(msg.Content), total, cfg.Model, used, steps, enabledKeys, imageCollector), nil
 		}
 
 		for _, tc := range msg.ToolCalls {
 			tStart := time.Now()
+			// Snapshot the usage channel so any token usage the tool reports (e.g.
+			// the Image Generator's gpt-image-1 usage) is attributed to this call.
+			usageBefore := imageCollector.UsageCount()
 			var result string
 			if a.provider != nil && a.provider.Handles(tc.Function.Name) {
 				result = a.provider.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 			} else {
 				result = a.execTool(ctx, tc)
 			}
-			used = append(used, ToolInvocation{
+			inv := ToolInvocation{
 				Name: tc.Function.Name, Arguments: tc.Function.Arguments, Result: result,
 				LatencyMs: int(time.Since(tStart).Milliseconds()),
-			})
+			}
+			for _, u := range imageCollector.UsageSince(usageBefore) {
+				inv.Model = u.Model
+				inv.PromptTokens += u.PromptTokens
+				inv.CompletionTokens += u.CompletionTokens
+				inv.TotalTokens += u.TotalTokens
+			}
+			used = append(used, inv)
 			messages = append(messages, llm.Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,
@@ -284,7 +308,27 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	if reply == "" {
 		reply = "I wasn't able to finish that request. Could you rephrase or break it into smaller steps?"
 	}
-	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys, Images: imageCollector.Images()}, nil
+	return a.buildResult(reply, total, cfg.Model, used, steps, enabledKeys, imageCollector), nil
+}
+
+// buildResult assembles the run outcome, folding the per-tool image usage into
+// the run-level Image* aggregate so callers can price image generation apart
+// from the LLM without re-summing the tool list.
+func (a *Agent) buildResult(reply string, total llm.Usage, model string, used []ToolInvocation, steps []LLMCall, skills []string, collector *media.Collector) *Result {
+	r := &Result{
+		Reply: reply, Usage: total, Model: model, Tools: used, Steps: steps,
+		Skills: skills, Images: collector.Images(),
+	}
+	for _, t := range used {
+		if t.Model == "" || t.TotalTokens == 0 {
+			continue
+		}
+		r.ImageModel = t.Model
+		r.ImagePromptTokens += t.PromptTokens
+		r.ImageCompletionTokens += t.CompletionTokens
+		r.ImageTotalTokens += t.TotalTokens
+	}
+	return r
 }
 
 // execTool maps a tool call onto a capability action and runs it via the router.

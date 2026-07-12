@@ -14,6 +14,13 @@ type toolInvocationResp struct {
 	Arguments string `json:"arguments"`
 	Result    string `json:"result"`
 	LatencyMs int    `json:"latency_ms,omitempty"`
+	// Model + tokens + cost are set only for tools that call a paid API of their
+	// own (today the Image Generator on gpt-image-1); zero/empty otherwise.
+	Model            string  `json:"model,omitempty"`
+	PromptTokens     int     `json:"prompt_tokens,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"`
+	TotalTokens      int     `json:"total_tokens,omitempty"`
+	EstimatedCostUSD float64 `json:"estimated_cost_usd,omitempty"`
 }
 
 type llmCallResp struct {
@@ -38,28 +45,39 @@ type scoreResp struct {
 }
 
 type traceResp struct {
-	ID               int64                `json:"id"`
-	Environment      string               `json:"environment,omitempty"`
-	UserID           int64                `json:"user_id"`
-	User             string               `json:"user,omitempty"`
-	Platform         string               `json:"platform"`
-	Source           string               `json:"source,omitempty"`
-	Input            string               `json:"input"`
-	Output           string               `json:"output"`
-	Model            string               `json:"model"`
-	PromptTokens     int                  `json:"prompt_tokens"`
-	CompletionTokens int                  `json:"completion_tokens"`
-	TotalTokens      int                  `json:"total_tokens"`
-	LatencyMs        int                  `json:"latency_ms"`
-	ToolCount        int                  `json:"tool_count"`
-	Tools            []toolInvocationResp `json:"tools,omitempty"`
-	Steps            []llmCallResp        `json:"steps,omitempty"`
-	Skills           []string             `json:"skills,omitempty"`
-	Status           string               `json:"status"`
-	Error            string               `json:"error,omitempty"`
-	EstimatedCostUSD float64              `json:"estimated_cost_usd"`
-	Score            *scoreResp           `json:"score,omitempty"`
-	CreatedAt        string               `json:"created_at"`
+	ID               int64  `json:"id"`
+	Environment      string `json:"environment,omitempty"`
+	UserID           int64  `json:"user_id"`
+	User             string `json:"user,omitempty"`
+	Platform         string `json:"platform"`
+	Source           string `json:"source,omitempty"`
+	Input            string `json:"input"`
+	Output           string `json:"output"`
+	Model            string `json:"model"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	TotalTokens      int    `json:"total_tokens"`
+	// Image* describe this run's image-generation usage (gpt-image-1), tracked
+	// apart from the LLM. CombinedTotalTokens = LLM + image tokens (what the logs
+	// list shows). EstimatedCostUSD is the combined LLM+image cost; LLMCostUSD /
+	// ImageCostUSD are its split (shown in the logs detail).
+	ImageModel            string               `json:"image_model,omitempty"`
+	ImagePromptTokens     int                  `json:"image_prompt_tokens,omitempty"`
+	ImageCompletionTokens int                  `json:"image_completion_tokens,omitempty"`
+	ImageTotalTokens      int                  `json:"image_total_tokens,omitempty"`
+	CombinedTotalTokens   int                  `json:"combined_total_tokens"`
+	LatencyMs             int                  `json:"latency_ms"`
+	ToolCount             int                  `json:"tool_count"`
+	Tools                 []toolInvocationResp `json:"tools,omitempty"`
+	Steps                 []llmCallResp        `json:"steps,omitempty"`
+	Skills                []string             `json:"skills,omitempty"`
+	Status                string               `json:"status"`
+	Error                 string               `json:"error,omitempty"`
+	EstimatedCostUSD      float64              `json:"estimated_cost_usd"`
+	LLMCostUSD            float64              `json:"llm_cost_usd"`
+	ImageCostUSD          float64              `json:"image_cost_usd"`
+	Score                 *scoreResp           `json:"score,omitempty"`
+	CreatedAt             string               `json:"created_at"`
 }
 
 // activeSkills returns the skill keys that were active for a trace, dropping any
@@ -75,26 +93,40 @@ func activeSkills(skills []string) []string {
 }
 
 func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools bool) traceResp {
-	cost, _ := s.pricing.Estimate(t.Model, t.PromptTokens, t.CompletionTokens)
+	// Price the LLM and image generation separately (their rates differ by
+	// orders of magnitude), then combine. The list shows the combined figures;
+	// the detail shows the split.
+	llmCost, _ := s.pricing.Estimate(t.Model, t.PromptTokens, t.CompletionTokens)
+	var imgCost float64
+	if t.ImageModel != "" {
+		imgCost, _ = s.pricing.Estimate(t.ImageModel, t.ImagePromptTokens, t.ImageCompletionTokens)
+	}
 	r := traceResp{
-		ID:               t.ID,
-		Environment:      s.environment,
-		UserID:           t.UserID,
-		Platform:         t.Platform,
-		Source:           t.Source,
-		Input:            t.Input,
-		Output:           t.Output,
-		Model:            t.Model,
-		PromptTokens:     t.PromptTokens,
-		CompletionTokens: t.CompletionTokens,
-		TotalTokens:      t.TotalTokens,
-		LatencyMs:        t.LatencyMs,
-		ToolCount:        t.ToolCount,
-		Skills:           activeSkills(t.Skills),
-		Status:           t.Status,
-		Error:            t.Error,
-		EstimatedCostUSD: cost,
-		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
+		ID:                    t.ID,
+		Environment:           s.environment,
+		UserID:                t.UserID,
+		Platform:              t.Platform,
+		Source:                t.Source,
+		Input:                 t.Input,
+		Output:                t.Output,
+		Model:                 t.Model,
+		PromptTokens:          t.PromptTokens,
+		CompletionTokens:      t.CompletionTokens,
+		TotalTokens:           t.TotalTokens,
+		ImageModel:            t.ImageModel,
+		ImagePromptTokens:     t.ImagePromptTokens,
+		ImageCompletionTokens: t.ImageCompletionTokens,
+		ImageTotalTokens:      t.ImageTotalTokens,
+		CombinedTotalTokens:   t.TotalTokens + t.ImageTotalTokens,
+		LatencyMs:             t.LatencyMs,
+		ToolCount:             t.ToolCount,
+		Skills:                activeSkills(t.Skills),
+		Status:                t.Status,
+		Error:                 t.Error,
+		EstimatedCostUSD:      llmCost + imgCost,
+		LLMCostUSD:            llmCost,
+		ImageCostUSD:          imgCost,
+		CreatedAt:             t.CreatedAt.Format(time.RFC3339),
 	}
 	if t.Score != nil {
 		r.Score = &scoreResp{
@@ -116,7 +148,15 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 	}
 	if includeTools {
 		for _, tv := range t.Tools {
-			r.Tools = append(r.Tools, toolInvocationResp{Name: tv.Name, Arguments: tv.Arguments, Result: tv.Result, LatencyMs: tv.LatencyMs})
+			tr := toolInvocationResp{
+				Name: tv.Name, Arguments: tv.Arguments, Result: tv.Result, LatencyMs: tv.LatencyMs,
+				Model: tv.Model, PromptTokens: tv.PromptTokens,
+				CompletionTokens: tv.CompletionTokens, TotalTokens: tv.TotalTokens,
+			}
+			if tv.Model != "" {
+				tr.EstimatedCostUSD, _ = s.pricing.Estimate(tv.Model, tv.PromptTokens, tv.CompletionTokens)
+			}
+			r.Tools = append(r.Tools, tr)
 		}
 		for _, st := range t.Steps {
 			c, _ := s.pricing.Estimate(st.Model, st.PromptTokens, st.CompletionTokens)
