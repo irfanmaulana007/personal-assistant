@@ -241,7 +241,11 @@ export interface LifeGoalPayload {
   note: string;
 }
 
-export type Channel = '' | 'web' | 'whatsapp';
+/** A single message channel. Filters select any subset — [] means "all". */
+export type ChannelValue = 'web' | 'whatsapp';
+
+/** The channels a filter can offer, in display order. */
+export const CHANNEL_VALUES: readonly ChannelValue[] = ['web', 'whatsapp'];
 
 export interface ToolInvocation {
   name: string;
@@ -298,8 +302,11 @@ export interface TraceScore {
   judge_model?: string;
 }
 
-/** Judge-score filter for the logs list. */
-export type ScoreState = '' | 'scored' | 'unscored' | 'low';
+/** A judge-score bucket for the logs list. Filters select any subset — [] = all. */
+export type ScoreValue = 'scored' | 'unscored' | 'low';
+
+/** The score buckets a filter can offer, in display order. */
+export const SCORE_VALUES: readonly ScoreValue[] = ['scored', 'unscored', 'low'];
 
 export interface LogsResponse {
   traces: Trace[];

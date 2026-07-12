@@ -143,24 +143,41 @@ func (m *MongoStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 // ListTraces returns traces matching the filter, ordered by id descending with
 // cursor pagination. Like the SQLite version, the list view does not populate
 // Tools/Steps/Skills — only the scalar fields and the embedded Score.
+// mongoScoreClauses maps score-state filter values to their per-state match
+// documents. Unknown values are ignored. The returned slice is OR-combined by
+// the caller ("" / empty input yields no clauses, i.e. "all").
+func mongoScoreClauses(states []string) []bson.M {
+	var out []bson.M
+	for _, st := range states {
+		switch st {
+		case "scored":
+			out = append(out, bson.M{"score": bson.M{"$ne": nil}})
+		case "unscored":
+			// Only judgeable replies (successful, non-empty) count as "unscored" —
+			// error traces are never judged, so surfacing them here would be noise.
+			out = append(out, bson.M{"score": nil, "status": "ok", "output": bson.M{"$ne": ""}})
+		case "low":
+			out = append(out, bson.M{"score.overall": bson.M{"$lt": LowScoreThreshold}})
+		}
+	}
+	return out
+}
+
 func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error) {
 	filter := bson.M{
 		"created_at": bson.M{"$gte": f.From.UTC(), "$lt": f.To.UTC()},
 	}
-	if f.Platform != "" {
-		filter["platform"] = f.Platform
+	if len(f.Platforms) > 0 {
+		filter["platform"] = bson.M{"$in": f.Platforms}
 	}
-	switch f.ScoreState {
-	case "scored":
-		filter["score"] = bson.M{"$ne": nil}
-	case "unscored":
-		// Only judgeable replies (successful, non-empty) count as "unscored" —
-		// error traces are never judged, so surfacing them here would be noise.
-		filter["score"] = nil
-		filter["status"] = "ok"
-		filter["output"] = bson.M{"$ne": ""}
-	case "low":
-		filter["score.overall"] = bson.M{"$lt": LowScoreThreshold}
+	// Each selected score state contributes a sub-filter; a trace matches if it
+	// satisfies ANY of them (OR). A single state is applied inline.
+	if or := mongoScoreClauses(f.ScoreStates); len(or) == 1 {
+		for k, v := range or[0] {
+			filter[k] = v
+		}
+	} else if len(or) > 1 {
+		filter["$or"] = or
 	}
 	if f.Cursor > 0 {
 		filter["id"] = bson.M{"$lt": f.Cursor}

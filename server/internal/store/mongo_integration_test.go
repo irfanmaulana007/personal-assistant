@@ -122,7 +122,7 @@ func TestMongoAnalytics(t *testing.T) {
 
 	from := time.Now().Add(-24 * time.Hour).UTC()
 	to := time.Now().Add(24 * time.Hour).UTC()
-	st, err := m.UsageStatsBetween(ctx, from, to, "")
+	st, err := m.UsageStatsBetween(ctx, from, to, nil)
 	if err != nil {
 		t.Fatalf("usage stats: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestMongoAnalytics(t *testing.T) {
 	}
 
 	// Per-user/model breakdown.
-	um, err := m.UsageByUserModel(ctx, from, to, "")
+	um, err := m.UsageByUserModel(ctx, from, to, nil)
 	if err != nil {
 		t.Fatalf("usage by user/model: %v", err)
 	}

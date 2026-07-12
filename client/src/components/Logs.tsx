@@ -8,7 +8,9 @@ import { formatTokens } from '../lib/format';
 import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
 import { Skeleton } from './ui/Skeleton';
-import type { Trace, TraceScore, Channel, ScoreState } from '../types';
+import { parseFilterList, serializeFilterList } from '../lib/filters';
+import { CHANNEL_VALUES, SCORE_VALUES } from '../types';
+import type { Trace, TraceScore } from '../types';
 
 const PAGE_SIZE = 25;
 
@@ -144,8 +146,12 @@ export function Logs() {
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
   const to = searchParams.get('to') || def.to;
-  const channel = (searchParams.get('channel') as Channel) || '';
-  const score = (searchParams.get('score') as ScoreState) || '';
+  const channels = parseFilterList(searchParams.get('channel'), CHANNEL_VALUES);
+  const scores = parseFilterList(searchParams.get('score'), SCORE_VALUES);
+  // Stable string keys so the fetch effects re-run only when a selection
+  // actually changes (arrays are new objects on every render).
+  const channelKey = channels.join(',');
+  const scoreKey = scores.join(',');
 
   const [traces, setTraces] = useState<Trace[]>([]);
   const [loading, setLoading] = useState(true); // initial / filter-change load
@@ -173,7 +179,7 @@ export function Logs() {
   useEffect(() => {
     let active = true;
     loadingRef.current = true;
-    getLogs(from, to, channel, PAGE_SIZE, 0, score)
+    getLogs(from, to, channels, PAGE_SIZE, 0, scores)
       .then((d) => {
         if (!active) return;
         setTraces(d.traces ?? []);
@@ -193,14 +199,15 @@ export function Logs() {
     return () => {
       active = false;
     };
-  }, [from, to, channel, score]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, channelKey, scoreKey]);
 
   // Append the next page (cursor-based) for infinite scroll.
   const loadMore = useCallback(() => {
     if (loadingRef.current || nextCursor === 0) return;
     loadingRef.current = true;
     setLoadingMore(true);
-    getLogs(from, to, channel, PAGE_SIZE, nextCursor, score)
+    getLogs(from, to, channels, PAGE_SIZE, nextCursor, scores)
       .then((d) => {
         setTraces((prev) => [...prev, ...(d.traces ?? [])]);
         setNextCursor(d.next_cursor ?? 0);
@@ -210,7 +217,8 @@ export function Logs() {
         setLoadingMore(false);
         loadingRef.current = false;
       });
-  }, [from, to, channel, score, nextCursor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, channelKey, scoreKey, nextCursor]);
 
   // Trigger loadMore when the sentinel scrolls into view.
   useEffect(() => {
@@ -266,8 +274,14 @@ export function Logs() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <ScoreFilter value={score} onChange={(s) => patchParams({ score: s })} />
-            <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
+            <ScoreFilter
+              value={scores}
+              onChange={(s) => patchParams({ score: serializeFilterList(s) })}
+            />
+            <ChannelFilter
+              value={channels}
+              onChange={(c) => patchParams({ channel: serializeFilterList(c) })}
+            />
             <DateRangePicker
               from={from}
               to={to}
