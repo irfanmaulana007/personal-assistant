@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { listSkills, setSkillEnabled } from '../api/client';
+import { listSkills, setSkillEnabled, resetSkillPrompt } from '../api/client';
 import type { Skill } from '../types';
+import { useAuth } from '../hooks/useAuth';
 import { Toggle } from './ui/Toggle';
 import { Skeleton, SkeletonListRow } from './ui/Skeleton';
 
 export function Skills() {
+  const { isAdmin } = useAuth();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [revertingId, setRevertingId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -36,6 +39,18 @@ export function Skills() {
       setError(e instanceof Error ? e.message : 'Failed to update skill');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const revert = async (sk: Skill) => {
+    setRevertingId(sk.id);
+    setError('');
+    try {
+      setSkills(await resetSkillPrompt(sk.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to revert skill prompt');
+    } finally {
+      setRevertingId(null);
     }
   };
 
@@ -86,12 +101,32 @@ export function Skills() {
                 {g.skills.map((sk) => (
                   <div key={sk.id} className="flex items-start gap-4 p-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-                        {sk.name}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                          {sk.name}
+                        </span>
+                        {sk.auto_tuned && (
+                          <span
+                            title="The end-of-day self-tuner has refined this skill's instructions."
+                            className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/30"
+                          >
+                            Auto-tuned
+                          </span>
+                        )}
                       </div>
                       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                         {sk.description}
                       </p>
+                      {sk.auto_tuned && isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => revert(sk)}
+                          disabled={revertingId === sk.id}
+                          className="mt-2 text-xs font-medium text-indigo-700 hover:text-indigo-800 disabled:opacity-50 dark:text-indigo-400 dark:hover:text-indigo-300"
+                        >
+                          {revertingId === sk.id ? 'Reverting…' : 'Revert to default prompt'}
+                        </button>
+                      )}
                     </div>
                     <Toggle on={sk.enabled} busy={busyId === sk.id} onClick={() => toggle(sk)} />
                   </div>

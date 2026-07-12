@@ -184,6 +184,7 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  auto_tuned: boolean; // the end-of-day self-tuner has overridden this skill's prompt
 }
 
 export interface Preferences {

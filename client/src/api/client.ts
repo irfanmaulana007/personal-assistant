@@ -255,6 +255,12 @@ export async function setSkillEnabled(id: number, enabled: boolean): Promise<Ski
   });
 }
 
+// resetSkillPrompt clears a skill's auto-tuned prompt override, reverting it to
+// the shipped default. Admin-only.
+export async function resetSkillPrompt(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/reset-prompt`, { method: 'POST' });
+}
+
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await request('/api/auth/password', {
     method: 'POST',

@@ -17,6 +17,7 @@ const (
 	CapabilityHiking     Capability = "hiking"
 	CapabilityWebSearch  Capability = "web_search"
 	CapabilityImageGen   Capability = "image_gen"
+	CapabilitySelfTune   Capability = "self_tune"
 	CapabilityHelp       Capability = "help"
 	CapabilityUnknown    Capability = "unknown"
 )
@@ -111,6 +112,12 @@ const (
 const (
 	ActionImageGenerate Action = "image_gen.generate"
 	ActionImageEdit     Action = "image_gen.edit"
+)
+
+// Self-tuning actions (review low-quality runs and refine skill prompts)
+const (
+	ActionSelfTuneReview Action = "self_tune.review"
+	ActionSelfTuneApply  Action = "self_tune.apply"
 )
 
 const (

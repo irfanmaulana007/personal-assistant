@@ -32,7 +32,30 @@ import (
 var ErrNotConfigured = errors.New("llm api key not configured")
 
 // maxIterations bounds the tool-calling loop to avoid runaway LLM/tool cycles.
+// A caller can raise it for a single run via WithMaxIterations (used by the
+// end-of-day self-tuner, which legitimately needs many tool calls); ordinary
+// chat turns keep the default.
 const maxIterations = 5
+
+type ctxKey int
+
+const maxIterKey ctxKey = iota
+
+// WithMaxIterations overrides the tool-loop budget for one agent run. n <= 0 is
+// ignored (the default applies).
+func WithMaxIterations(ctx context.Context, n int) context.Context {
+	if n <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, maxIterKey, n)
+}
+
+func maxIterationsFrom(ctx context.Context) int {
+	if v, ok := ctx.Value(maxIterKey).(int); ok && v > 0 {
+		return v
+	}
+	return maxIterations
+}
 
 // saveIntentRE matches messages that ask the assistant to persist something
 // (add/save/record/remind/schedule) in either Indonesian or English. When it
@@ -243,7 +266,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		})
 	}
 
-	for i := 0; i < maxIterations; i++ {
+	for i, limit := 0, maxIterationsFrom(ctx); i < limit; i++ {
 		start := time.Now()
 		var res *llm.CompletionResult
 		var err error
@@ -412,8 +435,8 @@ Reminders & events (you MUST call a tool to save anything — never claim you di
 	if len(enabledSkills) > 0 {
 		b.WriteString("\n\nThe user has enabled these skills:")
 		for _, sk := range enabledSkills {
-			if sk.Prompt != "" {
-				b.WriteString(fmt.Sprintf("\n\n## %s\n%s", sk.Name, sk.Prompt))
+			if p := sk.EffectivePrompt(); p != "" {
+				b.WriteString(fmt.Sprintf("\n\n## %s\n%s", sk.Name, p))
 			}
 		}
 	}

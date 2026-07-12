@@ -13,6 +13,7 @@ type skillResp struct {
 	Description string `json:"description"`
 	Category    string `json:"category"`
 	Enabled     bool   `json:"enabled"`
+	AutoTuned   bool   `json:"auto_tuned"` // the self-tuner has overridden this skill's prompt
 }
 
 // handleListSkills returns the current user's skills with effective enabled state.
@@ -31,10 +32,40 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	out := make([]skillResp, 0, len(list))
 	for _, u := range list {
 		out = append(out, skillResp{
-			ID: u.ID, Key: u.Key, Name: u.Name, Description: u.Description, Category: u.Category, Enabled: u.Enabled,
+			ID: u.ID, Key: u.Key, Name: u.Name, Description: u.Description, Category: u.Category,
+			Enabled: u.Enabled, AutoTuned: u.TunedPrompt != "",
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleResetSkillPrompt clears a skill's auto-tuned prompt override, reverting
+// it to the shipped default. Admin-only (it affects the shared skill catalog).
+func (s *Server) handleResetSkillPrompt(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill id"})
+		return
+	}
+	sk, err := s.store.GetSkill(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if sk == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+		return
+	}
+	if err := s.store.UpdateSkillTunedPrompt(r.Context(), sk.Key, ""); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset skill prompt"})
+		return
+	}
+	s.handleListSkills(w, r)
 }
 
 // handleSetSkill enables/disables a skill for the current user.
