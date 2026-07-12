@@ -166,9 +166,9 @@ func main() {
 	// LLM tool-calling agent (replaces the regex parser).
 	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, personaSvc, router, cfg.Owner, composioTools, log)
 
-	// LLM-as-judge that scores the assistant's own replies (inline sample +
-	// nightly batch). Shared by the web and WhatsApp ingress paths.
-	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, timezone, log)
+	// LLM-as-judge that scores the assistant's own replies inline (async, one
+	// judgement per reply). Shared by the web and WhatsApp ingress paths.
+	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, log)
 
 	// Daily routines ("scheduled skills"): editable start-of-day / end-of-day
 	// prompts run through the agent and delivered over WhatsApp. Supersedes the
@@ -382,9 +382,6 @@ func main() {
 		go reminderHandler.StartScheduler(ctx)
 		log.Info("reminder scheduler started")
 	}
-
-	// Start the response-evaluation scheduler (nightly LLM-as-judge batch).
-	go evalJudge.StartScheduler(ctx)
 
 	// Start the daily routine scheduler (start-of-day / end-of-day briefings).
 	go routineSvc.StartScheduler(ctx)

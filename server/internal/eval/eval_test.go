@@ -34,28 +34,6 @@ func TestParseVerdict(t *testing.T) {
 	}
 }
 
-func TestParseHM(t *testing.T) {
-	cases := []struct {
-		in     string
-		hh, mm int
-		ok     bool
-	}{
-		{"02:00", 2, 0, true},
-		{"23:59", 23, 59, true},
-		{" 9:05 ", 9, 5, true},
-		{"24:00", 0, 0, false},
-		{"12:60", 0, 0, false},
-		{"noon", 0, 0, false},
-		{"", 0, 0, false},
-	}
-	for _, c := range cases {
-		hh, mm, ok := parseHM(c.in)
-		if ok != c.ok || (ok && (hh != c.hh || mm != c.mm)) {
-			t.Errorf("parseHM(%q) = %d,%d,%v; want %d,%d,%v", c.in, hh, mm, ok, c.hh, c.mm, c.ok)
-		}
-	}
-}
-
 func TestClamp15(t *testing.T) {
 	for in, want := range map[int]int{-3: 1, 0: 1, 1: 1, 3: 3, 5: 5, 9: 5} {
 		if got := clamp15(in); got != want {
