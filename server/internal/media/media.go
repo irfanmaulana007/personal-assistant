@@ -64,12 +64,25 @@ func Inbound(ctx context.Context) *Image {
 	return img
 }
 
-// Collector accumulates images produced by tools during a single agent run. It
-// is safe for concurrent use (tool calls in one step may run in sequence today,
-// but the mutex keeps this correct regardless).
+// ToolUsage is the token usage a tool reported for one call, tagged with the
+// model that produced it (e.g. "gpt-image-1"). Tool results flow back to the
+// model as text, so a tool's token/cost usage can't ride that channel either —
+// it is collected here alongside images and read back by the agent, which
+// attributes each entry to the tool call that produced it.
+type ToolUsage struct {
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// Collector accumulates images and tool token usage produced by tools during a
+// single agent run. It is safe for concurrent use (tool calls in one step may
+// run in sequence today, but the mutex keeps this correct regardless).
 type Collector struct {
 	mu     sync.Mutex
 	images []Image
+	usage  []ToolUsage
 }
 
 // Add records a produced image.
@@ -85,6 +98,35 @@ func (c *Collector) Images() []Image {
 	defer c.mu.Unlock()
 	out := make([]Image, len(c.images))
 	copy(out, c.images)
+	return out
+}
+
+// AddUsage records the token usage a tool reported for one call.
+func (c *Collector) AddUsage(u ToolUsage) {
+	c.mu.Lock()
+	c.usage = append(c.usage, u)
+	c.mu.Unlock()
+}
+
+// UsageCount returns how many usage entries have been collected so far. The
+// agent snapshots this before running a tool and drains everything appended
+// after it, so a single tool call is attributed exactly its own usage.
+func (c *Collector) UsageCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.usage)
+}
+
+// UsageSince returns a copy of the usage entries recorded at or after index n
+// (as returned by an earlier UsageCount). Out-of-range indices yield nil.
+func (c *Collector) UsageSince(n int) []ToolUsage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if n < 0 || n >= len(c.usage) {
+		return nil
+	}
+	out := make([]ToolUsage, len(c.usage)-n)
+	copy(out, c.usage[n:])
 	return out
 }
 

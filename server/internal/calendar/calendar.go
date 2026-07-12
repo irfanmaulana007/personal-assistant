@@ -188,6 +188,14 @@ func (s *Service) DeleteEvent(ctx context.Context, userID int64, connID, eventID
 	return s.deleteInCalendar(ctx, userID, connID, "primary", eventID)
 }
 
+// DeleteEventIn removes an event from a specific calendar within a connection.
+// It is the general form of DeleteEvent used when deleting an arbitrary listed
+// event (which may live in a non-primary calendar). An empty calID falls back
+// to "primary".
+func (s *Service) DeleteEventIn(ctx context.Context, userID int64, connID, calID, eventID string) error {
+	return s.deleteInCalendar(ctx, userID, connID, calID, eventID)
+}
+
 // deleteInCalendar removes an event from a specific calendar within a connection.
 // An empty calID falls back to "primary".
 func (s *Service) deleteInCalendar(ctx context.Context, userID int64, connID, calID, eventID string) error {
@@ -232,7 +240,13 @@ func (s *Service) ListEvents(ctx context.Context, userID int64, from, to time.Ti
 	var out []Event
 	for _, c := range conns {
 		for _, cal := range s.calendarIDs(ctx, key, uid, c.ID) {
-			out = append(out, s.eventsFor(ctx, key, uid, c.ID, cal, from, to)...)
+			evs := s.eventsFor(ctx, key, uid, c.ID, cal, from, to)
+			// Tag each event with the connection it came from so callers can
+			// delete/update it later (parseEvents only knows the calendar id).
+			for i := range evs {
+				evs[i].Account = c.ID
+			}
+			out = append(out, evs...)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })

@@ -364,6 +364,10 @@ func (s *SQLiteStore) migrate() error {
 		{"users", "name", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "skills", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "steps_json", "TEXT NOT NULL DEFAULT ''"},
+		{"traces", "image_model", "TEXT NOT NULL DEFAULT ''"},
+		{"traces", "image_prompt_tokens", "INTEGER NOT NULL DEFAULT 0"},
+		{"traces", "image_completion_tokens", "INTEGER NOT NULL DEFAULT 0"},
+		{"traces", "image_total_tokens", "INTEGER NOT NULL DEFAULT 0"},
 		{"reminders", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"reminders", "title", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "enabled", "BOOLEAN NOT NULL DEFAULT 1"},
@@ -1025,9 +1029,10 @@ func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) 
 		status = "ok"
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO traces (user_id, platform, input, output, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO traces (user_id, platform, input, output, model, prompt_tokens, completion_tokens, total_tokens, image_model, image_prompt_tokens, image_completion_tokens, image_total_tokens, latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.UserID, t.Platform, t.Input, t.Output, t.Model, t.PromptTokens, t.CompletionTokens, t.TotalTokens,
+		t.ImageModel, t.ImagePromptTokens, t.ImageCompletionTokens, t.ImageTotalTokens,
 		t.LatencyMs, t.ToolCount, toolsJSON, strings.Join(t.Skills, ","), stepsJSON, status, t.Error, time.Now().UTC(),
 	)
 	if err != nil {
@@ -1078,12 +1083,41 @@ func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, p
 		}
 		out = append(out, u)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Image-generation usage (gpt-image-1) contributes its own per-day rows, so
+	// the by-day cost series priced in the API layer covers LLM + image combined.
+	iq := `SELECT date(created_at) AS d, image_model,
+	              COALESCE(SUM(image_prompt_tokens), 0), COALESCE(SUM(image_completion_tokens), 0)
+	       FROM traces WHERE created_at >= ? AND created_at < ? AND image_total_tokens > 0`
+	iargs := []any{from.UTC(), to.UTC()}
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		iq += clause
+		iargs = append(iargs, a...)
+	}
+	iq += ` GROUP BY d, image_model ORDER BY d ASC`
+	irows, err := s.db.QueryContext(ctx, iq, iargs...)
+	if err != nil {
+		return nil, fmt.Errorf("usage image by day/model: %w", err)
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var u DayModelUsage
+		if err := irows.Scan(&u.Date, &u.Model, &u.PromptTokens, &u.CompletionTokens); err != nil {
+			return nil, fmt.Errorf("scan image day/model: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, irows.Err()
 }
 
 func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error) {
 	q := `SELECT t.id, t.user_id, t.platform, t.input, t.output, t.model, t.prompt_tokens,
-	             t.completion_tokens, t.total_tokens, t.latency_ms, t.tool_count, t.status, t.error, t.created_at,
+	             t.completion_tokens, t.total_tokens,
+	             t.image_model, t.image_prompt_tokens, t.image_completion_tokens, t.image_total_tokens,
+	             t.latency_ms, t.tool_count, t.status, t.error, t.created_at,
 	             sc.accuracy, sc.helpfulness, sc.safety, sc.overall, sc.rationale, sc.judge_model
 	      FROM traces t
 	      LEFT JOIN trace_scores sc ON sc.trace_id = t.id
@@ -1137,7 +1171,9 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 		var overall sql.NullFloat64
 		var rationale, judgeModel sql.NullString
 		if err := rows.Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
-			&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
+			&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens,
+			&t.ImageModel, &t.ImagePromptTokens, &t.ImageCompletionTokens, &t.ImageTotalTokens,
+			&t.LatencyMs, &t.ToolCount,
 			&t.Status, &t.Error, &t.CreatedAt,
 			&acc, &help, &safe, &overall, &rationale, &judgeModel); err != nil {
 			return nil, fmt.Errorf("scan trace: %w", err)
@@ -1184,10 +1220,13 @@ func (s *SQLiteStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	var toolsJSON, stepsJSON, skills string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, user_id, platform, input, output, model, prompt_tokens, completion_tokens,
-		        total_tokens, latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at
+		        total_tokens, image_model, image_prompt_tokens, image_completion_tokens, image_total_tokens,
+		        latency_ms, tool_count, tools_json, skills, steps_json, status, error, created_at
 		 FROM traces WHERE id = ?`, id,
 	).Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model,
-		&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens, &t.LatencyMs, &t.ToolCount,
+		&t.PromptTokens, &t.CompletionTokens, &t.TotalTokens,
+		&t.ImageModel, &t.ImagePromptTokens, &t.ImageCompletionTokens, &t.ImageTotalTokens,
+		&t.LatencyMs, &t.ToolCount,
 		&toolsJSON, &skills, &stepsJSON, &t.Status, &t.Error, &t.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1372,6 +1411,64 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 		return nil, err
 	}
 
+	// Fold image-generation usage (gpt-image-1) into the aggregates as its own
+	// model. Image tokens live in dedicated columns and are priced with a much
+	// higher rate, so they are summed here rather than through the LLM columns
+	// above: this keeps the summary and per-day token totals combined (LLM +
+	// image) while the by-model breakdown still shows the two apart.
+	imgModelRows, err := s.db.QueryContext(ctx,
+		`SELECT image_model, COUNT(*),
+		        COALESCE(SUM(image_prompt_tokens), 0),
+		        COALESCE(SUM(image_completion_tokens), 0),
+		        COALESCE(SUM(image_total_tokens), 0)
+		 FROM traces WHERE created_at >= ? AND created_at < ? AND image_total_tokens > 0`+pc+`
+		 GROUP BY image_model ORDER BY SUM(image_total_tokens) DESC`, base...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage by image model: %w", err)
+	}
+	defer imgModelRows.Close()
+	for imgModelRows.Next() {
+		var m UsageModel
+		if err := imgModelRows.Scan(&m.Model, &m.Requests, &m.PromptTokens, &m.CompletionTokens, &m.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan image model: %w", err)
+		}
+		stats.ByModel = append(stats.ByModel, m)
+		stats.Summary.PromptTokens += m.PromptTokens
+		stats.Summary.CompletionTokens += m.CompletionTokens
+		stats.Summary.TotalTokens += m.TotalTokens
+	}
+	if err := imgModelRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Image tokens per day, added onto the combined by-day token series so the
+	// tokens line tracks the (combined) cost line on the dashboard.
+	imgDayRows, err := s.db.QueryContext(ctx,
+		`SELECT date(created_at) AS d, COALESCE(SUM(image_total_tokens), 0)
+		 FROM traces WHERE created_at >= ? AND created_at < ? AND image_total_tokens > 0`+pc+`
+		 GROUP BY d`, base...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("usage image by day: %w", err)
+	}
+	defer imgDayRows.Close()
+	imgByDay := map[string]int{}
+	for imgDayRows.Next() {
+		var day string
+		var tok int
+		if err := imgDayRows.Scan(&day, &tok); err != nil {
+			return nil, fmt.Errorf("scan image day: %w", err)
+		}
+		imgByDay[day] = tok
+	}
+	if err := imgDayRows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range stats.ByDay {
+		stats.ByDay[i].TotalTokens += imgByDay[stats.ByDay[i].Date]
+	}
+
 	// By platform (ignores the platform filter so the split is always visible)
 	platRows, err := s.db.QueryContext(ctx,
 		`SELECT platform, COUNT(*), COALESCE(SUM(total_tokens), 0)
@@ -1507,7 +1604,37 @@ func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, 
 		}
 		out = append(out, u)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Image-generation usage (gpt-image-1) as its own per-user rows so per-user
+	// cost includes image generation. Requests/Errors are left at zero: the run
+	// is already counted by its LLM row above, so counting it again here would
+	// double the user's request total.
+	iq := `SELECT user_id, image_model,
+	              COALESCE(SUM(image_prompt_tokens), 0), COALESCE(SUM(image_completion_tokens), 0),
+	              COALESCE(SUM(image_total_tokens), 0)
+	       FROM traces WHERE created_at >= ? AND created_at < ? AND image_total_tokens > 0`
+	iargs := []any{from.UTC(), to.UTC()}
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		iq += clause
+		iargs = append(iargs, a...)
+	}
+	iq += ` GROUP BY user_id, image_model`
+	irows, err := s.db.QueryContext(ctx, iq, iargs...)
+	if err != nil {
+		return nil, fmt.Errorf("usage image by user/model: %w", err)
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var u UserModelUsage
+		if err := irows.Scan(&u.UserID, &u.Model, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens); err != nil {
+			return nil, fmt.Errorf("scan image user/model: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, irows.Err()
 }
 
 func (s *SQLiteStore) Close() error {

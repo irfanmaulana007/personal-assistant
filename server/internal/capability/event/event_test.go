@@ -18,6 +18,8 @@ import (
 type fakeCalendar struct {
 	has     bool
 	created []calendar.Event
+	events  []calendar.Event
+	deleted []string // event ids passed to DeleteEventIn
 }
 
 func (f *fakeCalendar) HasCalendar(context.Context, int64) bool { return f.has }
@@ -26,6 +28,10 @@ func (f *fakeCalendar) CreateEvent(_ context.Context, _ int64, ev calendar.Event
 	return nil
 }
 func (f *fakeCalendar) ListEvents(context.Context, int64, time.Time, time.Time) []calendar.Event {
+	return f.events
+}
+func (f *fakeCalendar) DeleteEventIn(_ context.Context, _ int64, _, _, eventID string) error {
+	f.deleted = append(f.deleted, eventID)
 	return nil
 }
 
@@ -70,5 +76,99 @@ func TestEvent_AsksWhenMissingParts(t *testing.T) {
 	}
 	if msg, _ := h.create(ctx, createReq("Lunch", "")); !strings.Contains(strings.ToLower(msg), "when") {
 		t.Errorf("should ask when, got %q", msg)
+	}
+}
+
+var testTZ = time.FixedZone("WIB", 7*3600)
+
+func deleteReq(title, datetime string) *intent.ParseResult {
+	ent := map[string]string{"title": title}
+	if datetime != "" {
+		ent["datetime"] = datetime
+	}
+	return &intent.ParseResult{Capability: intent.CapabilityEvent, Action: intent.ActionEventDelete, Entities: ent}
+}
+
+func TestEvent_DeleteSingle(t *testing.T) {
+	cal := &fakeCalendar{has: true, events: []calendar.Event{
+		{ID: "e1", Title: "Team Sync", Start: time.Date(2026, 8, 5, 14, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+	}}
+	h, _, ctx := newHandler(t, cal)
+	msg, err := h.delete(ctx, deleteReq("Team Sync", ""))
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(cal.deleted) != 1 || cal.deleted[0] != "e1" {
+		t.Fatalf("expected e1 deleted, got %v", cal.deleted)
+	}
+	if !strings.Contains(msg, "Deleted") {
+		t.Errorf("unexpected msg %q", msg)
+	}
+}
+
+func TestEvent_DeleteClearsDuplicatesAtSameTime(t *testing.T) {
+	at := time.Date(2026, 7, 13, 18, 0, 0, 0, testTZ)
+	cal := &fakeCalendar{has: true, events: []calendar.Event{
+		{ID: "d1", Title: "Unregister Old Number", Start: at, Account: "c1", Calendar: "primary"},
+		{ID: "d2", Title: "Unregister Old Number", Start: at, Account: "c1", Calendar: "primary"},
+	}}
+	h, _, ctx := newHandler(t, cal)
+	msg, _ := h.delete(ctx, deleteReq("Unregister Old Number", ""))
+	if len(cal.deleted) != 2 {
+		t.Fatalf("expected both duplicates deleted, got %v", cal.deleted)
+	}
+	if !strings.Contains(msg, "2 duplicate") {
+		t.Errorf("unexpected msg %q", msg)
+	}
+}
+
+func TestEvent_DeleteAmbiguousDifferentTimesAsks(t *testing.T) {
+	cal := &fakeCalendar{has: true, events: []calendar.Event{
+		{ID: "a1", Title: "Standup", Start: time.Date(2026, 8, 5, 9, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+		{ID: "a2", Title: "Standup", Start: time.Date(2026, 8, 6, 9, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+	}}
+	h, _, ctx := newHandler(t, cal)
+	msg, _ := h.delete(ctx, deleteReq("Standup", ""))
+	if len(cal.deleted) != 0 {
+		t.Fatalf("should not delete anything when ambiguous, deleted %v", cal.deleted)
+	}
+	if !strings.Contains(strings.ToLower(msg), "which one") {
+		t.Errorf("expected a disambiguation prompt, got %q", msg)
+	}
+}
+
+func TestEvent_DeleteAmbiguousResolvedByDatetime(t *testing.T) {
+	cal := &fakeCalendar{has: true, events: []calendar.Event{
+		{ID: "a1", Title: "Standup", Start: time.Date(2026, 8, 5, 9, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+		{ID: "a2", Title: "Standup", Start: time.Date(2026, 8, 6, 9, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+	}}
+	h, _, ctx := newHandler(t, cal)
+	if _, err := h.delete(ctx, deleteReq("Standup", "2026-08-06 09:00")); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(cal.deleted) != 1 || cal.deleted[0] != "a2" {
+		t.Fatalf("expected only a2 deleted, got %v", cal.deleted)
+	}
+}
+
+func TestEvent_DeleteNoMatch(t *testing.T) {
+	cal := &fakeCalendar{has: true, events: []calendar.Event{
+		{ID: "e1", Title: "Team Sync", Start: time.Date(2026, 8, 5, 14, 0, 0, 0, testTZ), Account: "c1", Calendar: "primary"},
+	}}
+	h, _, ctx := newHandler(t, cal)
+	msg, _ := h.delete(ctx, deleteReq("Nonexistent", ""))
+	if len(cal.deleted) != 0 {
+		t.Fatalf("nothing should be deleted, got %v", cal.deleted)
+	}
+	if !strings.Contains(strings.ToLower(msg), "couldn't find") {
+		t.Errorf("unexpected msg %q", msg)
+	}
+}
+
+func TestEvent_DeleteNoCalendar(t *testing.T) {
+	h, _, ctx := newHandler(t, &fakeCalendar{has: false})
+	msg, _ := h.delete(ctx, deleteReq("Team Sync", ""))
+	if !strings.Contains(msg, "No Google Calendar") {
+		t.Errorf("unexpected msg %q", msg)
 	}
 }

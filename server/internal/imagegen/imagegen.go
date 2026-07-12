@@ -1,6 +1,8 @@
 // Package imagegen is a minimal HTTP client for OpenAI's Images API using the
-// gpt-image-1 model. It supports text-to-image generation and editing an input
-// image, returning the raw image bytes (the model always replies with base64).
+// gpt-image-1-mini model (the cheaper sibling of gpt-image-1). It supports
+// text-to-image generation and editing an input image, returning the raw image
+// bytes (the model always replies with base64) together with the token usage
+// the API reports for cost tracking.
 package imagegen
 
 import (
@@ -22,9 +24,27 @@ import (
 const (
 	// baseURL is the OpenAI Images API host.
 	baseURL = "https://api.openai.com/v1"
-	// model is the image model used for both generation and editing.
-	model = "gpt-image-1"
+	// Model is the image model used for both generation and editing. It doubles
+	// as the pricing key so cost estimates line up with the LLM price table.
+	// gpt-image-1-mini is the low-cost variant of gpt-image-1.
+	Model = "gpt-image-1-mini"
 )
+
+// Usage is the token usage gpt-image-1 reports for a single request. The Images
+// API bills per token: InputTokens covers the text prompt (and, for edits, the
+// input image), OutputTokens covers the generated image. Callers price it via
+// the model's InputPer1M/OutputPer1M rate.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
+// Result is a generated/edited image plus the usage the API reported for it.
+type Result struct {
+	Image media.Image
+	Usage Usage
+}
 
 // Client calls the OpenAI Images API.
 type Client struct {
@@ -39,11 +59,17 @@ func NewClient() *Client {
 }
 
 // imageResponse is the shape returned by both /images/generations and
-// /images/edits. gpt-image-1 always returns base64 (never a URL).
+// /images/edits. gpt-image-1 always returns base64 (never a URL) and includes a
+// usage object with the token counts used for cost tracking.
 type imageResponse struct {
 	Data []struct {
 		B64JSON string `json:"b64_json"`
 	} `json:"data"`
+	Usage *struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
@@ -52,8 +78,8 @@ type imageResponse struct {
 
 // Generate creates a new image from a text prompt. size and quality are
 // optional; empty values let the API pick its defaults.
-func (c *Client) Generate(ctx context.Context, apiKey, prompt, size, quality string) (*media.Image, error) {
-	body := map[string]any{"model": model, "prompt": prompt, "n": 1}
+func (c *Client) Generate(ctx context.Context, apiKey, prompt, size, quality string) (*Result, error) {
+	body := map[string]any{"model": Model, "prompt": prompt, "n": 1}
 	if size != "" {
 		body["size"] = size
 	}
@@ -75,10 +101,10 @@ func (c *Client) Generate(ctx context.Context, apiKey, prompt, size, quality str
 }
 
 // Edit produces a new image from an input image and an edit instruction.
-func (c *Client) Edit(ctx context.Context, apiKey, prompt string, input media.Image, size, quality string) (*media.Image, error) {
+func (c *Client) Edit(ctx context.Context, apiKey, prompt string, input media.Image, size, quality string) (*Result, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	if err := mw.WriteField("model", model); err != nil {
+	if err := mw.WriteField("model", Model); err != nil {
 		return nil, err
 	}
 	if err := mw.WriteField("prompt", prompt); err != nil {
@@ -134,7 +160,7 @@ func imagePartHeader(mime string) textproto.MIMEHeader {
 	return h
 }
 
-func (c *Client) do(req *http.Request) (*media.Image, error) {
+func (c *Client) do(req *http.Request) (*Result, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call image api: %w", err)
@@ -164,5 +190,13 @@ func (c *Client) do(req *http.Request) (*media.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
 	}
-	return &media.Image{MimeType: "image/png", Data: data}, nil
+	res := &Result{Image: media.Image{MimeType: "image/png", Data: data}}
+	if parsed.Usage != nil {
+		res.Usage = Usage{
+			InputTokens:  parsed.Usage.InputTokens,
+			OutputTokens: parsed.Usage.OutputTokens,
+			TotalTokens:  parsed.Usage.TotalTokens,
+		}
+	}
+	return res, nil
 }
