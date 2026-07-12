@@ -13,9 +13,9 @@ function splitGrammar(body: string): { grammar: string | null; reply: string } {
 }
 
 export function Message({ message }: { message: ChatMessage }) {
-  const { formatChatTime } = usePreferences();
+  const { formatChatTime, assistantName } = usePreferences();
   const isUser = message.direction === 'out';
-  const name = isUser ? 'You' : 'Assistant';
+  const name = isUser ? 'You' : assistantName;
   const time = message.timestamp ? formatChatTime(message.timestamp) : '';
   const { grammar, reply } = isUser
     ? { grammar: null, reply: message.body }
