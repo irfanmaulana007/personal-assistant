@@ -184,6 +184,12 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  // Prompt management fields. Present only for admins (the API omits them for
+  // members). `prompt_updated_at` is null when the prompt is still the default.
+  prompt?: string;
+  default_prompt?: string;
+  prompt_updated_at?: string | null;
+  prompt_updated_by?: string;
 }
 
 export interface Preferences {
