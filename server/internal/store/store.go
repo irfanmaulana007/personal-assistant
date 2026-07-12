@@ -125,6 +125,7 @@ type BucketItem struct {
 // maps each key to a display label. Unknown values normalize to CategoryOther.
 const (
 	CategorySelfImprovement = "self_improvement"
+	CategoryLearning        = "learning"
 	CategoryHiking          = "hiking"
 	CategoryCountry         = "country"
 	CategoryLocal           = "local"
@@ -134,6 +135,7 @@ const (
 // bucketCategories is the set of recognized category keys.
 var bucketCategories = map[string]bool{
 	CategorySelfImprovement: true,
+	CategoryLearning:        true,
 	CategoryHiking:          true,
 	CategoryCountry:         true,
 	CategoryLocal:           true,

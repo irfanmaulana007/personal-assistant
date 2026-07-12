@@ -227,7 +227,8 @@ export interface RemindersConfig {
 
 // Bucket-list category keys, mirrored from the server. The UI maps each to a
 // display label; unknown values are stored as 'other'.
-export type BucketCategory = 'self_improvement' | 'hiking' | 'country' | 'local' | 'other';
+export type BucketCategory =
+  'self_improvement' | 'learning' | 'hiking' | 'country' | 'local' | 'other';
 
 export interface BucketItem {
   id: number;

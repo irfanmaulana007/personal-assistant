@@ -31,6 +31,12 @@ const CATEGORIES: CategoryMeta[] = [
     badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   },
   {
+    key: 'learning',
+    label: 'Learning',
+    dot: 'bg-rose-500',
+    badge: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+  },
+  {
     key: 'hiking',
     label: 'Hiking Destination',
     dot: 'bg-emerald-500',
