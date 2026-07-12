@@ -33,6 +33,7 @@ type mongoTrace struct {
 	ID               int64            `bson:"id"`
 	UserID           int64            `bson:"user_id"`
 	Platform         string           `bson:"platform"`
+	Source           string           `bson:"source"`
 	Input            string           `bson:"input"`
 	Output           string           `bson:"output"`
 	Model            string           `bson:"model"`
@@ -80,10 +81,15 @@ func (m *MongoStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) {
 	if status == "" {
 		status = "ok"
 	}
+	source := t.Source
+	if source == "" {
+		source = "chat"
+	}
 	doc := mongoTrace{
 		ID:               id,
 		UserID:           t.UserID,
 		Platform:         t.Platform,
+		Source:           source,
 		Input:            t.Input,
 		Output:           t.Output,
 		Model:            t.Model,
@@ -121,6 +127,7 @@ func (m *MongoStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 		ID:               doc.ID,
 		UserID:           doc.UserID,
 		Platform:         doc.Platform,
+		Source:           doc.Source,
 		Input:            doc.Input,
 		Output:           doc.Output,
 		Model:            doc.Model,
@@ -210,6 +217,7 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 			ID:               d.ID,
 			UserID:           d.UserID,
 			Platform:         d.Platform,
+			Source:           d.Source,
 			Input:            d.Input,
 			Output:           d.Output,
 			Model:            d.Model,

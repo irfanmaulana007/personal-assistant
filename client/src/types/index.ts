@@ -306,6 +306,9 @@ export interface Trace {
   user_id: number;
   user?: string;
   platform: string;
+  /** What triggered the run: "chat" for an interactive message, or a routine
+   *  key ("start_of_day" / "end_of_day") for a scheduled run. */
+  source?: string;
   input: string;
   output: string;
   model: string;

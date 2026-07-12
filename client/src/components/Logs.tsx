@@ -63,6 +63,7 @@ function buildDebugText(t: Trace): string {
   add('Created', t.created_at);
   add('User', t.user ? `${t.user} (#${t.user_id})` : `#${t.user_id}`);
   add('Channel', t.platform);
+  add('Source', sourceLabel(t.source) ?? t.source);
   add('Model', t.model);
   add(
     'Tokens',
@@ -126,6 +127,24 @@ const channelBadge: Record<string, string> = {
   web: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   whatsapp: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
 };
+
+// Human labels for non-interactive trace sources (scheduled routines). An
+// interactive run has source "chat" (or empty) and gets no badge — only runs
+// triggered by a routine are worth marking apart from ordinary chats.
+const SOURCE_LABELS: Record<string, string> = {
+  start_of_day: 'Start of day',
+  end_of_day: 'End of day',
+};
+
+// sourceLabel returns a display label for a routine-triggered run, or null for
+// an ordinary interactive chat (which needs no badge).
+function sourceLabel(source: string | undefined): string | null {
+  if (!source || source === 'chat') return null;
+  return SOURCE_LABELS[source] ?? source;
+}
+
+const sourceBadgeClass =
+  'rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300';
 
 // scoreTone maps an overall 1–5 judge score to a traffic-light colour.
 function scoreTone(overall: number): string {
@@ -386,11 +405,16 @@ export function Logs() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-xs font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}
-                        >
-                          {t.platform}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${channelBadge[t.platform] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}
+                          >
+                            {t.platform}
+                          </span>
+                          {sourceLabel(t.source) && (
+                            <span className={sourceBadgeClass}>{sourceLabel(t.source)}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {t.model || '—'}
@@ -548,6 +572,12 @@ function TraceDetail({
           <span>
             <span className="text-gray-400 dark:text-gray-500">Channel:</span> {trace.platform}
           </span>
+          {sourceLabel(trace.source) && (
+            <span className="flex items-center gap-1">
+              <span className="text-gray-400 dark:text-gray-500">Source:</span>
+              <span className={sourceBadgeClass}>{sourceLabel(trace.source)}</span>
+            </span>
+          )}
           {trace.skills && trace.skills.length > 0 && (
             <span className="flex flex-wrap items-center gap-1">
               <span className="text-gray-400 dark:text-gray-500">Skills:</span>

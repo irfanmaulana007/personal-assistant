@@ -250,7 +250,10 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 	}
 	uctx := authctx.WithUserID(ctx, owner.ID)
 
-	res, err := s.agent.Run(uctx, s.promptOf(ctx, d), nil, "")
+	prompt := s.promptOf(ctx, d)
+	start := time.Now()
+	res, err := s.agent.Run(uctx, prompt, nil, "")
+	s.recordTrace(uctx, owner.ID, d, prompt, res, err, int(time.Since(start).Milliseconds()))
 	if err != nil {
 		return false, "", fmt.Errorf("agent run: %w", err)
 	}
@@ -265,6 +268,46 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 		return false, reply, fmt.Errorf("send: %w", err)
 	}
 	return true, reply, nil
+}
+
+// recordTrace persists one agent run as a trace so scheduled routines show up on
+// the Logs page alongside interactive chats. The trace is tagged Source=d.Key
+// ("start_of_day" / "end_of_day") so the log can be attributed to the routine
+// that triggered it, and Platform="whatsapp" since that is the delivery channel.
+// Trace persistence is best-effort: a failure here must not abort the routine.
+func (s *Service) recordTrace(ctx context.Context, userID int64, d Def, prompt string, res *agent.Result, runErr error, latencyMs int) {
+	trace := &store.Trace{
+		UserID:    userID,
+		Platform:  "whatsapp",
+		Source:    d.Key,
+		Input:     prompt,
+		LatencyMs: latencyMs,
+	}
+	if runErr != nil {
+		trace.Status = "error"
+		trace.Error = runErr.Error()
+	} else if res != nil {
+		trace.Output = res.Reply
+		trace.Model = res.Model
+		trace.PromptTokens = res.Usage.PromptTokens
+		trace.CompletionTokens = res.Usage.CompletionTokens
+		trace.TotalTokens = res.Usage.TotalTokens
+		trace.ToolCount = len(res.Tools)
+		trace.Skills = res.Skills
+		for _, tool := range res.Tools {
+			trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result, LatencyMs: tool.LatencyMs})
+		}
+		for _, st := range res.Steps {
+			trace.Steps = append(trace.Steps, store.LLMCall{
+				Step: st.Step, Model: st.Model, PromptTokens: st.PromptTokens,
+				CompletionTokens: st.CompletionTokens, TotalTokens: st.TotalTokens,
+				LatencyMs: st.LatencyMs, FinishReason: st.FinishReason, ToolCalls: st.ToolCalls,
+			})
+		}
+	}
+	if _, err := s.store.CreateTrace(ctx, trace); err != nil {
+		s.log.Warn("record routine trace", "routine", d.Key, "error", err)
+	}
 }
 
 // MigrateFromDigest carries the legacy reminder daily-recap time over to the

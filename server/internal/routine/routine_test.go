@@ -2,6 +2,7 @@ package routine
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -18,8 +19,9 @@ var testTZ = time.FixedZone("WIB", 7*3600) // UTC+7, no DST
 // other Store call panics (nil embedded interface), surfacing unexpected usage.
 type fakeStore struct {
 	store.Store
-	kv    map[string][]byte
-	admin *store.User
+	kv     map[string][]byte
+	admin  *store.User
+	traces []store.Trace
 }
 
 func newFakeStore() *fakeStore {
@@ -32,6 +34,10 @@ func (f *fakeStore) SetSetting(_ context.Context, key string, val []byte) error 
 	return nil
 }
 func (f *fakeStore) FirstAdmin(_ context.Context) (*store.User, error) { return f.admin, nil }
+func (f *fakeStore) CreateTrace(_ context.Context, t *store.Trace) (int64, error) {
+	f.traces = append(f.traces, *t)
+	return int64(len(f.traces)), nil
+}
 
 // fakeAgent records its calls and returns a canned reply/error.
 type fakeAgent struct {
@@ -118,7 +124,7 @@ func TestUpdate_PersistsAndValidates(t *testing.T) {
 
 func TestRunNow_SendsReply(t *testing.T) {
 	ag := &fakeAgent{reply: "Good morning ☀️"}
-	svc, _, sent := newSvc(t, ag)
+	svc, fs, sent := newSvc(t, ag)
 	ok, msg, err := svc.RunNow(context.Background(), "start_of_day")
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -128,6 +134,32 @@ func TestRunNow_SendsReply(t *testing.T) {
 	}
 	if len(*sent) != 1 || (*sent)[0] != "Good morning ☀️" {
 		t.Errorf("send func should receive the reply, got %v", *sent)
+	}
+	// The run is logged as a trace attributed to the routine, so it shows up on
+	// the Logs page tagged with its source.
+	if len(fs.traces) != 1 {
+		t.Fatalf("expected one trace recorded, got %d", len(fs.traces))
+	}
+	tr := fs.traces[0]
+	if tr.Source != "start_of_day" || tr.Platform != "whatsapp" || tr.Output != "Good morning ☀️" {
+		t.Errorf("trace not tagged correctly: %+v", tr)
+	}
+}
+
+func TestRunNow_RecordsTraceOnAgentError(t *testing.T) {
+	ag := &fakeAgent{err: errors.New("llm down")}
+	svc, fs, _ := newSvc(t, ag)
+	if _, _, err := svc.RunNow(context.Background(), "end_of_day"); err == nil {
+		t.Fatal("expected an error when the agent fails")
+	}
+	// A failed run is still logged (as an error trace) so it is visible on the
+	// Logs page rather than silently vanishing.
+	if len(fs.traces) != 1 {
+		t.Fatalf("expected one trace recorded, got %d", len(fs.traces))
+	}
+	tr := fs.traces[0]
+	if tr.Source != "end_of_day" || tr.Status != "error" || tr.Error == "" {
+		t.Errorf("error trace not recorded correctly: %+v", tr)
 	}
 }
 
