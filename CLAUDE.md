@@ -68,7 +68,14 @@ change in both before considering it done.
 
 ## Pull requests
 
-- Always open a PR and merge it to `main`.
+- **Always target `staging`, never `main`.** Open every PR against the
+  `staging` branch (`gh pr create --base staging …`) and merge it there. Do
+  **not** open PRs against `main` or commit to `main` directly. `main` is the
+  released branch and is only ever updated by promoting `staging` to it.
+- **The one exception is a release.** `main` is advanced solely by running the
+  `/release` command (see `.claude/commands/release.md`), which bumps the app
+  version, opens the `staging → main` PR, merges it, and tags the version. Only
+  cut a release when you intentionally want to ship a new version.
 - **The description must give the reader the bigger context — enough to review
   without reading the diff first.** Write it for someone who has not seen the
   change. Every PR description must cover:
