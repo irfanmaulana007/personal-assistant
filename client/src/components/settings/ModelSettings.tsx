@@ -13,9 +13,11 @@ export function ModelSettings() {
   const [providerInput, setProviderInput] = useState<string | null>(null);
   const [modelInput, setModelInput] = useState<string | null>(null);
   const [baseURLInput, setBaseURLInput] = useState<string | null>(null);
+  const [visionInput, setVisionInput] = useState<boolean | null>(null);
   const provider = providerInput ?? settings?.provider ?? 'deepseek';
   const model = modelInput ?? settings?.model ?? '';
   const baseURL = baseURLInput ?? settings?.base_url ?? '';
+  const vision = visionInput ?? settings?.vision ?? false;
   const providers = settings?.providers ?? [];
 
   const [saving, setSaving] = useState(false);
@@ -37,10 +39,17 @@ export function ModelSettings() {
     setSaving(true);
     setSaved(false);
     setTestResult(null);
-    const update: { provider: string; model: string; base_url: string; api_key?: string } = {
+    const update: {
+      provider: string;
+      model: string;
+      base_url: string;
+      vision: boolean;
+      api_key?: string;
+    } = {
       provider,
       model: model.trim(),
       base_url: baseURL.trim(),
+      vision,
     };
     if (apiKey !== '') update.api_key = apiKey.trim();
     const ok = await save(update);
@@ -49,6 +58,7 @@ export function ModelSettings() {
       setProviderInput(null);
       setModelInput(null);
       setBaseURLInput(null);
+      setVisionInput(null);
       setSaved(true);
     }
     setSaving(false);
@@ -157,6 +167,27 @@ export function ModelSettings() {
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Any OpenAI-compatible endpoint works (DeepSeek, OpenAI, …).
           </p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={vision}
+              onChange={(e) => setVisionInput(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-indigo-500 dark:focus:ring-indigo-400"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                Send images to the model (vision)
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">
+                Only enable for a vision-capable model. Text-only models (e.g. deepseek-v4-flash)
+                reject attached images and the request fails. Image editing still works with this
+                off.
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 

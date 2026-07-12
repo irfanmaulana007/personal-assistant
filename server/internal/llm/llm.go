@@ -26,6 +26,11 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	// Vision reports whether the configured model can ingest image content
+	// parts. When false, callers must not attach image_url blocks — most
+	// OpenAI-compatible text models (e.g. deepseek-v4-flash) reject them with a
+	// deserialization 400.
+	Vision bool
 }
 
 // Message is a single chat message in the OpenAI-compatible format.

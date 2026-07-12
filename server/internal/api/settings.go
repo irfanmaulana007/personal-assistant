@@ -16,6 +16,9 @@ type llmSettingsUpdate struct {
 	APIKey  *string `json:"api_key"`
 	Model   *string `json:"model"`
 	BaseURL *string `json:"base_url"`
+	// Vision enables attaching inbound images to the chat request. Only turn on
+	// for a vision-capable model; text-only models reject image content.
+	Vision *bool `json:"vision"`
 }
 
 // handleSettings handles GET (masked view) and PUT (update) of LLM settings.
@@ -41,6 +44,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			APIKey:   req.APIKey,
 			Model:    req.Model,
 			BaseURL:  req.BaseURL,
+			Vision:   req.Vision,
 		}); err != nil {
 			s.log.Error("failed to update settings", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})

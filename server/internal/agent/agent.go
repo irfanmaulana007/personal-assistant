@@ -113,7 +113,10 @@ type Message struct {
 
 // Run executes the tool-calling loop for a single user message. history holds
 // prior turns (oldest first) for conversational context. image, when non-empty,
-// is a data: URL attached to the user message (requires a vision-capable model).
+// is a data: URL for a user-attached image. It is always exposed to tools via
+// the media context (so edit_image can read it), and additionally sent inline
+// to the model as an image_url block only when the configured model is
+// vision-capable (cfg.Vision) — text-only providers reject image content.
 func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, image string) (*Result, error) {
 	cfg, err := a.settings.LLMConfig(ctx)
 	if err != nil {
@@ -161,7 +164,13 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
-	if image != "" {
+	// Only attach the image to the chat request when the configured model can
+	// actually ingest it. Text-only providers (e.g. deepseek-v4-flash) reject an
+	// image_url content block with a deserialization 400. The image is always
+	// stashed on the context above via media.WithInbound, so tools like
+	// edit_image can still read its bytes out of band even when it's not sent
+	// inline to the model.
+	if image != "" && cfg.Vision {
 		messages = append(messages, llm.Message{Role: "user", ContentParts: []llm.ContentPart{
 			{Type: "text", Text: userMessage},
 			{Type: "image_url", ImageURL: &llm.ImageURL{URL: image}},
