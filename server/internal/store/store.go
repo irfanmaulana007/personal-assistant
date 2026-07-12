@@ -513,6 +513,7 @@ type DataStore interface {
 	GetSkill(ctx context.Context, id int64) (*Skill, error)
 	ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error)
 	SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error
+	UpdateSkillPrompt(ctx context.Context, skillID int64, prompt string) error
 	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
 
 	// Reminders (scoped to a user; scheduler passes the owner's id)

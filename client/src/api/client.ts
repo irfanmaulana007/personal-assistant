@@ -255,6 +255,14 @@ export async function setSkillEnabled(id: number, enabled: boolean): Promise<Ski
   });
 }
 
+// Admin-only: overwrite a skill's system-prompt fragment (global master data).
+export async function setSkillPrompt(id: number, prompt: string): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await request('/api/auth/password', {
     method: 'POST',

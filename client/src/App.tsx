@@ -62,7 +62,7 @@ function App() {
         <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
           <Route index element={<Chat />} />
           <Route path="chat" element={<Chat />} />
-          <Route path="skills" element={<Skills />} />
+          <Route path="skills" element={<Skills isAdmin={isAdmin} />} />
           <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
           <Route path="bucket-list" element={<BucketList />} />
           <Route path="profile" element={<Profile />} />

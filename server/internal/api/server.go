@@ -130,6 +130,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("DELETE /api/bucket-list/{id}", protect(s.handleDeleteBucketItem))
 
 	// Admin only
+	mux.Handle("PUT /api/skills/{id}/prompt", admin(s.handleSetSkillPrompt))
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", admin(s.handleUpdatePreferences))

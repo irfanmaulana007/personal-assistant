@@ -31,13 +31,16 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 		}
 	}
 	for _, sk := range skillSeed {
+		// The skill prompt is DB-owned and editable from the UI, so it is only
+		// written on first insert — the ON CONFLICT branch deliberately leaves
+		// `prompt` untouched so a boot never clobbers an edited prompt. The rest
+		// of the fields stay code-owned and re-sync on every boot.
 		if _, err := s.pool.Exec(ctx,
 			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7)
 			 ON CONFLICT (key) DO UPDATE SET
 			   name = EXCLUDED.name,
 			   description = EXCLUDED.description,
-			   prompt = EXCLUDED.prompt,
 			   category = EXCLUDED.category,
 			   default_enabled = EXCLUDED.default_enabled,
 			   sort_order = EXCLUDED.sort_order`,
@@ -117,6 +120,16 @@ func (s *PostgresStore) SetSkillEnabled(ctx context.Context, userID, skillID int
 		userID, skillID, enabled,
 	)
 	return err
+}
+
+// UpdateSkillPrompt overwrites a skill's system-prompt fragment. The prompt is
+// DB-owned master data, so this change is global and persists across boots.
+func (s *PostgresStore) UpdateSkillPrompt(ctx context.Context, skillID int64, prompt string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE skills SET prompt = $1 WHERE id = $2`, prompt, skillID)
+	if err != nil {
+		return fmt.Errorf("update skill prompt: %w", err)
+	}
+	return nil
 }
 
 func (s *PostgresStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error) {

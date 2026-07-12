@@ -184,6 +184,9 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  // The skill's system-prompt fragment. Only present for admins (who manage it
+  // from the Skills page); omitted for non-admin members.
+  prompt?: string;
 }
 
 export interface Preferences {
