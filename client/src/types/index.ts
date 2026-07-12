@@ -221,8 +221,26 @@ export type ReminderPayload = Omit<Reminder, 'id'>;
 
 export interface RemindersConfig {
   enabled: boolean;
-  digest_time: string; // 'HH:MM' or '' when the daily recap is off
   default_time: string; // 'HH:MM' used when a reminder has no explicit time
+}
+
+// A daily routine ("scheduled skill") — a prompt that runs once a day at a set
+// time, through the assistant, and delivers its reply over WhatsApp.
+export interface Routine {
+  key: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  time: string; // local 'HH:MM'
+  prompt: string; // effective prompt (override or built-in default)
+  default_prompt: string; // built-in default, for a "reset" affordance
+  last_run: string; // 'YYYY-MM-DD' of the last fire, or ''
+}
+
+export interface RoutineUpdate {
+  enabled?: boolean;
+  time?: string;
+  prompt?: string;
 }
 
 export interface LifeGoal {

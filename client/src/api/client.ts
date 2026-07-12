@@ -7,6 +7,8 @@ import type {
   Reminder,
   ReminderPayload,
   RemindersConfig,
+  Routine,
+  RoutineUpdate,
   ModelPrice,
   LifeGoal,
   LifeGoalPayload,
@@ -155,6 +157,23 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
   return request<RemindersConfig>('/api/reminders/config', {
     method: 'PUT',
     body: JSON.stringify(cfg),
+  });
+}
+
+export async function getRoutines(): Promise<Routine[]> {
+  return request<Routine[]>('/api/routines');
+}
+
+export async function updateRoutine(key: string, update: RoutineUpdate): Promise<Routine> {
+  return request<Routine>(`/api/routines/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify(update),
+  });
+}
+
+export async function runRoutine(key: string): Promise<{ sent: boolean; message: string }> {
+  return request<{ sent: boolean; message: string }>(`/api/routines/${key}/run`, {
+    method: 'POST',
   });
 }
 

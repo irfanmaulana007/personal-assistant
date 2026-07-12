@@ -65,13 +65,10 @@ function summarize(r: Reminder): string {
   }
 }
 
-const DEFAULT_DIGEST_TIME = '08:00';
-
 export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [config, setConfig] = useState<RemindersConfig>({
     enabled: true,
-    digest_time: '',
     default_time: '09:00',
   });
   const [loading, setLoading] = useState(true);
@@ -109,9 +106,6 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   };
 
   const toggleGlobal = () => saveConfig({ ...config, enabled: !config.enabled });
-  const toggleDigest = () =>
-    saveConfig({ ...config, digest_time: config.digest_time ? '' : DEFAULT_DIGEST_TIME });
-  const setDigestTime = (t: string) => saveConfig({ ...config, digest_time: t });
   const setDefaultTime = (t: string) => t && saveConfig({ ...config, default_time: t });
 
   const toggleReminder = async (r: Reminder) => {
@@ -180,27 +174,6 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
             onChange={(e) => setDefaultTime(e.target.value)}
             className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30"
           />
-        </div>
-        <div className="flex items-start justify-between gap-4 p-4">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">Daily recap</div>
-            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-              Send one WhatsApp message at a set time with your upcoming reminders (today &amp;
-              tomorrow).
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {config.digest_time && (
-              <input
-                type="time"
-                value={config.digest_time}
-                disabled={!isAdmin}
-                onChange={(e) => setDigestTime(e.target.value)}
-                className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30"
-              />
-            )}
-            <Toggle on={!!config.digest_time} disabled={!isAdmin} onClick={toggleDigest} />
-          </div>
         </div>
         {!isAdmin && (
           <p className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500">
