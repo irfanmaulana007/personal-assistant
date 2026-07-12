@@ -1,12 +1,21 @@
 // Package routine runs daily "scheduled skills": code-owned prompts that fire
-// once a day at a configurable local time, run through the assistant agent (with
-// full tool access — reminders, calendar, etc.), and deliver the agent's reply
-// to the owner over WhatsApp.
+// once a day at a configurable local time, run through the assistant agent with
+// full tool access, and (when the agent produces a message) deliver its reply to
+// the owner over WhatsApp.
 //
-// There are two routines out of the box — a start-of-day and an end-of-day
-// briefing. Each routine's time, prompt, and on/off state are editable and
-// persisted in settings; the code owns only the catalog and the defaults. This
-// replaces the older, hard-coded reminder "digest".
+// A routine is deliberately general — it is just a prompt run once a day as the
+// owner, so it can do anything the agent can do; the shipped defaults merely set
+// up two useful jobs. There are two out of the box:
+//
+//   - start_of_day: a morning briefing that also checks the calendar and
+//     reminders and messages the owner about anything on for today or tomorrow.
+//   - end_of_day: a self-improvement pass that reviews the day's low-quality
+//     conversations and refines the prompts of the skills involved (requires the
+//     Self-Tuning skill to be enabled).
+//
+// Each routine's time, prompt, and on/off state are editable and persisted in
+// settings; the code owns only the catalog and the defaults. This replaces the
+// older, hard-coded reminder "digest".
 package routine
 
 import (
@@ -50,6 +59,9 @@ type Def struct {
 	DefaultTime    string // local "HH:MM"
 	DefaultEnabled bool
 	DefaultPrompt  string
+	// MaxIterations overrides the agent's tool-loop budget for this routine (0 =
+	// agent default). Tool-heavy routines like the self-tuner need more room.
+	MaxIterations int
 }
 
 // Catalog is the fixed set of daily routines the app ships with.
@@ -57,29 +69,30 @@ var Catalog = []Def{
 	{
 		Key:            "start_of_day",
 		Name:           "Start of day",
-		Description:    "A morning briefing of your reminders and calendar for today and tomorrow, sent over WhatsApp.",
+		Description:    "A morning run: whatever you tell it to do. The default puts together a briefing and checks your calendar and reminders for today and tomorrow, messaging you on WhatsApp if anything is coming up.",
 		DefaultTime:    "07:00",
 		DefaultEnabled: false,
-		DefaultPrompt: `Good morning! Put together my briefing for the day ahead.
+		DefaultPrompt: `Good morning! Put together my start-of-day briefing.
 
-1. List all of my reminders for today and tomorrow.
-2. List all of my calendar events for today and tomorrow.
-3. If there is at least one reminder or event, write me a short, friendly WhatsApp good-morning message that groups everything under "Today" and "Tomorrow" in chronological order, each item on its own line with its time. Keep it warm and concise.
-4. If there are no reminders and no events at all for today or tomorrow, reply with exactly NOTHING_TO_REPORT and nothing else.
+1. Check my calendar events and my reminders for today and tomorrow (use your tools to look them up).
+2. If there is at least one event or reminder across today or tomorrow, write me a short, friendly WhatsApp good-morning message that groups everything under "Today" and "Tomorrow" in chronological order, each item on its own line with its time. Keep it warm and concise.
+3. If there are no events and no reminders at all for either today or tomorrow, reply with exactly NOTHING_TO_REPORT and nothing else.
 
 Reply with ONLY the message to send me — no preamble, no explanation.`,
 	},
 	{
 		Key:            "end_of_day",
 		Name:           "End of day",
-		Description:    "An evening wind-down that recaps what's coming up tomorrow, sent over WhatsApp.",
+		Description:    "An evening run: whatever you tell it to do. The default is a self-improvement pass — it reviews today's low-quality conversations and refines the prompts of the skills involved. Requires the Self-Tuning skill to be enabled.",
 		DefaultTime:    "21:00",
 		DefaultEnabled: false,
-		DefaultPrompt: `It's the end of the day — help me wind down and get ready for tomorrow.
+		MaxIterations:  12,
+		DefaultPrompt: `It's the end of the day. Improve my assistant by learning from today's conversations that didn't go well.
 
-1. List all of my reminders and calendar events for tomorrow.
-2. Write me a short, friendly WhatsApp end-of-day message that recaps what's coming up tomorrow, in chronological order with each item's time, so I can plan ahead. Add a brief, encouraging sign-off.
-3. If there is nothing scheduled for tomorrow, reply with exactly NOTHING_TO_REPORT and nothing else.
+1. Call review_skill_performance (no arguments) to pull recent low-quality conversations that involved a skill, along with each involved skill's current prompt.
+2. If it reports there is nothing to review, reply with exactly NOTHING_TO_REPORT and nothing else — do not send a message.
+3. Otherwise, for each skill that clearly underperformed, work out WHY from the conversation's input, the reply, the tools called, and the judge's rationale. Then call update_skill_prompt with an improved prompt for that skill: keep what already works, make a focused fix for the observed problem, and preserve tool names and any required output markers exactly. Prioritise the worst-scoring skills first. Do not tune a skill you have no evidence is failing, and never touch the self_tuning skill.
+4. When done, write me a short WhatsApp message summarising which skills you improved and, in one line each, what you changed. If you ended up changing nothing, reply with exactly NOTHING_TO_REPORT instead.
 
 Reply with ONLY the message to send me — no preamble, no explanation.`,
 	},
@@ -249,6 +262,9 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 		return false, "", fmt.Errorf("no admin user configured")
 	}
 	uctx := authctx.WithUserID(ctx, owner.ID)
+	if d.MaxIterations > 0 {
+		uctx = agent.WithMaxIterations(uctx, d.MaxIterations)
+	}
 
 	prompt := s.promptOf(ctx, d)
 	start := time.Now()

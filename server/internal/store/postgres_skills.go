@@ -37,7 +37,9 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 			 ON CONFLICT (key) DO UPDATE SET
 			   name = EXCLUDED.name,
 			   description = EXCLUDED.description,
-			   prompt = EXCLUDED.prompt,
+			   -- Preserve an admin-customized prompt; only re-seed the default
+			   -- while the prompt has never been edited (prompt_updated_at IS NULL).
+			   prompt = CASE WHEN skills.prompt_updated_at IS NULL THEN EXCLUDED.prompt ELSE skills.prompt END,
 			   category = EXCLUDED.category,
 			   default_enabled = EXCLUDED.default_enabled,
 			   sort_order = EXCLUDED.sort_order`,
@@ -53,7 +55,7 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 
 func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order
+		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by
 		 FROM skills ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list skills: %w", err)
@@ -63,7 +65,7 @@ func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	var out []Skill
 	for rows.Next() {
 		var sk Skill
-		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder); err != nil {
+		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy); err != nil {
 			return nil, fmt.Errorf("scan skill: %w", err)
 		}
 		out = append(out, sk)
@@ -74,8 +76,8 @@ func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 func (s *PostgresStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 	var sk Skill
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order FROM skills WHERE id = $1`, id,
-	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder)
+		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by FROM skills WHERE id = $1`, id,
+	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -89,7 +91,8 @@ func (s *PostgresStore) GetSkill(ctx context.Context, id int64) (*Skill, error) 
 // (the user's override if present, otherwise the skill's default).
 func (s *PostgresStore) ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.category, s.default_enabled, s.sort_order,
+		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.tuned_prompt, s.category, s.default_enabled, s.sort_order,
+		        s.prompt_updated_at, s.prompt_updated_by,
 		        COALESCE(us.enabled, s.default_enabled) AS effective
 		 FROM skills s
 		 LEFT JOIN user_skills us ON us.skill_id = s.id AND us.user_id = $1
@@ -102,12 +105,30 @@ func (s *PostgresStore) ListUserSkills(ctx context.Context, userID int64) ([]Use
 	var out []UserSkill
 	for rows.Next() {
 		var us UserSkill
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.Enabled); err != nil {
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.Enabled); err != nil {
 			return nil, fmt.Errorf("scan user skill: %w", err)
 		}
 		out = append(out, us)
 	}
 	return out, rows.Err()
+}
+
+// SetSkillPrompt updates a skill's prompt. A non-empty updatedBy marks the
+// change as an admin customization (protected from the boot seed); an empty
+// updatedBy resets to the code default and lets the seed manage it again.
+func (s *PostgresStore) SetSkillPrompt(ctx context.Context, skillID int64, prompt, updatedBy string) error {
+	if updatedBy == "" {
+		_, err := s.pool.Exec(ctx,
+			`UPDATE skills SET prompt = $1, prompt_updated_at = NULL, prompt_updated_by = '' WHERE id = $2`,
+			prompt, skillID,
+		)
+		return err
+	}
+	_, err := s.pool.Exec(ctx,
+		`UPDATE skills SET prompt = $1, prompt_updated_at = now(), prompt_updated_by = $2 WHERE id = $3`,
+		prompt, updatedBy, skillID,
+	)
+	return err
 }
 
 func (s *PostgresStore) SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error {
@@ -117,6 +138,20 @@ func (s *PostgresStore) SetSkillEnabled(ctx context.Context, userID, skillID int
 		userID, skillID, enabled,
 	)
 	return err
+}
+
+// UpdateSkillTunedPrompt sets a skill's auto-tuned prompt override (or clears it
+// with an empty string). It never touches `prompt`, so the shipped default is
+// preserved as the reset target.
+func (s *PostgresStore) UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE skills SET tuned_prompt = $2 WHERE key = $1`, key, tuned)
+	if err != nil {
+		return fmt.Errorf("update skill tuned prompt: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("skill %q not found", key)
+	}
+	return nil
 }
 
 func (s *PostgresStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error) {

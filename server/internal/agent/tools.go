@@ -273,6 +273,22 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
 		},
 	},
+	"self_tuning": {
+		{
+			name:        "review_skill_performance",
+			description: "Review recent low-quality conversations (judged at or below a quality threshold) that involved a skill, so you can improve that skill's prompt. Returns each conversation's user input, your reply, the tools you called, the judge's score and rationale, and — for every skill that appears — that skill's current prompt. Call this first, with no arguments, to get everything you need in one shot.",
+			capability:  intent.CapabilitySelfTune,
+			action:      intent.ActionSelfTuneReview,
+			parameters:  `{"type":"object","properties":{"max_score":{"type":"number","description":"Only include conversations whose overall quality score is at or below this (1-5 scale). Default 4.0."},"hours":{"type":"integer","description":"How many hours back to look. Default 24."}}}`,
+		},
+		{
+			name:        "update_skill_prompt",
+			description: "Save an improved instruction prompt for one of the assistant's skills. The new prompt fully replaces that skill's current prompt and takes effect immediately for every future conversation, so include everything the skill needs (keep what already works; make a focused fix). It persists across restarts and can be reverted to the shipped default from the Skills page. Never target the 'self_tuning' skill.",
+			capability:  intent.CapabilitySelfTune,
+			action:      intent.ActionSelfTuneApply,
+			parameters:  `{"type":"object","properties":{"skill":{"type":"string","description":"The stable key of the skill to update (e.g. 'web_search', 'bucket_list'), exactly as shown by review_skill_performance."},"prompt":{"type":"string","description":"The complete new instruction prompt for the skill. This replaces the whole prompt — do not send only a diff. Preserve tool names and any required output markers exactly."},"reason":{"type":"string","description":"A one-line note on what you changed and why (for the audit log)."}},"required":["skill","prompt"]}`,
+		},
+	},
 }
 
 // toolByName indexes every tool (base + all skill tools) so execTool can route a

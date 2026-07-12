@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // skillSeed is the master list of skills, owned by code and upserted on boot.
@@ -14,6 +15,18 @@ import (
 // model to call the non-existent lifegoal_add tool) is dropped so only
 // bucket_list remains.
 var prunedSkillKeys = []string{"scheduled_reminder", "life_goals"}
+
+// DefaultSkillPrompt returns the code-owned default prompt for a skill key, or
+// "" if the key is unknown. Used to reset an admin-customized prompt back to
+// the shipped default.
+func DefaultSkillPrompt(key string) string {
+	for _, sk := range skillSeed {
+		if sk.Key == key {
+			return sk.Prompt
+		}
+	}
+	return ""
+}
 
 var skillSeed = []Skill{
 	{
@@ -110,6 +123,15 @@ var skillSeed = []Skill{
 		Description:    "Estimate the calories in a meal from a photo. Send a picture of your food and the assistant identifies the items and gives an approximate calorie count and macros. Needs a vision-capable model.",
 		Prompt:         "The user may send a photo of a meal. Identify the food items, estimate the portion sizes, and give an approximate per-item and total calorie count plus a rough protein/carbs/fat breakdown — always clearly labelled as estimates that vary with portion and preparation. If the user only describes a meal in text, estimate from the description. This needs a vision-capable model; if you cannot see the image, say so.",
 	},
+	{
+		Key:            "self_tuning",
+		Name:           "Self-Tuning",
+		Category:       "System",
+		DefaultEnabled: false,
+		SortOrder:      11,
+		Description:    "Let the assistant improve its own skills. When on, it can review recent low-quality conversations (where a skill was involved) and rewrite that skill's instructions so it does better next time. Meant to run from the End of day routine; the improved prompt persists and can be reverted from this page.",
+		Prompt:         "You can review your own recent low-quality conversations and refine the instruction prompts of your other skills so they work better next time. Use review_skill_performance to pull recent low-scoring conversations that involved a skill, together with each involved skill's current prompt. Study each conversation's input, your output, the tools you called, and the judge's rationale to diagnose WHY the skill underperformed (missing instruction, ambiguous guidance, a tool it should have called but didn't, wrong format). Then use update_skill_prompt to save an improved prompt for that skill: keep everything that already works, make a focused, surgical change that fixes the observed failure, preserve the tool names and any required output markers exactly, and pass a one-line reason. Do not rewrite a prompt wholesale, invent skills that don't exist, or tune a skill you have no evidence is failing. Never touch the self_tuning skill itself.",
+	},
 }
 
 func (s *SQLiteStore) seedSkills() error {
@@ -138,7 +160,9 @@ func (s *SQLiteStore) seedSkills() error {
 			 ON CONFLICT(key) DO UPDATE SET
 			   name = excluded.name,
 			   description = excluded.description,
-			   prompt = excluded.prompt,
+			   -- Preserve an admin-customized prompt; only re-seed the default
+			   -- while the prompt has never been edited (prompt_updated_at IS NULL).
+			   prompt = CASE WHEN skills.prompt_updated_at IS NULL THEN excluded.prompt ELSE skills.prompt END,
 			   category = excluded.category,
 			   default_enabled = excluded.default_enabled,
 			   sort_order = excluded.sort_order`,
@@ -161,7 +185,7 @@ func boolToInt(b bool) int {
 
 func (s *SQLiteStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order
+		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by
 		 FROM skills ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list skills: %w", err)
@@ -173,9 +197,10 @@ func (s *SQLiteStore) ListSkills(ctx context.Context) ([]Skill, error) {
 func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 	var sk Skill
 	var de int
+	var updatedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order FROM skills WHERE id = ?`, id,
-	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder)
+		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by FROM skills WHERE id = ?`, id,
+	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder, &updatedAt, &sk.PromptUpdatedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -183,6 +208,10 @@ func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 		return nil, fmt.Errorf("get skill: %w", err)
 	}
 	sk.DefaultEnabled = de != 0
+	if updatedAt.Valid {
+		t := updatedAt.Time
+		sk.PromptUpdatedAt = &t
+	}
 	return &sk, nil
 }
 
@@ -191,6 +220,7 @@ func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 func (s *SQLiteStore) ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.category, s.default_enabled, s.sort_order,
+		        s.prompt_updated_at, s.prompt_updated_by,
 		        COALESCE(us.enabled, s.default_enabled) AS effective
 		 FROM skills s
 		 LEFT JOIN user_skills us ON us.skill_id = s.id AND us.user_id = ?
@@ -204,14 +234,37 @@ func (s *SQLiteStore) ListUserSkills(ctx context.Context, userID int64) ([]UserS
 	for rows.Next() {
 		var us UserSkill
 		var de, eff int
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.Category, &de, &us.SortOrder, &eff); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.Category, &de, &us.SortOrder, &updatedAt, &us.PromptUpdatedBy, &eff); err != nil {
 			return nil, fmt.Errorf("scan user skill: %w", err)
 		}
 		us.DefaultEnabled = de != 0
 		us.Enabled = eff != 0
+		if updatedAt.Valid {
+			t := updatedAt.Time
+			us.PromptUpdatedAt = &t
+		}
 		out = append(out, us)
 	}
 	return out, rows.Err()
+}
+
+// SetSkillPrompt updates a skill's prompt. A non-empty updatedBy marks the
+// change as an admin customization (protected from the boot seed); an empty
+// updatedBy resets to the code default and lets the seed manage it again.
+func (s *SQLiteStore) SetSkillPrompt(ctx context.Context, skillID int64, prompt, updatedBy string) error {
+	if updatedBy == "" {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE skills SET prompt = ?, prompt_updated_at = NULL, prompt_updated_by = '' WHERE id = ?`,
+			prompt, skillID,
+		)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skills SET prompt = ?, prompt_updated_at = ?, prompt_updated_by = ? WHERE id = ?`,
+		prompt, time.Now().UTC(), updatedBy, skillID,
+	)
+	return err
 }
 
 func (s *SQLiteStore) SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error {
@@ -221,6 +274,17 @@ func (s *SQLiteStore) SetSkillEnabled(ctx context.Context, userID, skillID int64
 		userID, skillID, boolToInt(enabled),
 	)
 	return err
+}
+
+func (s *SQLiteStore) UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE skills SET tuned_prompt = ? WHERE key = ?`, tuned, key)
+	if err != nil {
+		return fmt.Errorf("update skill tuned prompt: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("skill %q not found", key)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error) {
@@ -249,10 +313,15 @@ func scanSkills(rows *sql.Rows) ([]Skill, error) {
 	for rows.Next() {
 		var sk Skill
 		var de int
-		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder, &updatedAt, &sk.PromptUpdatedBy); err != nil {
 			return nil, fmt.Errorf("scan skill: %w", err)
 		}
 		sk.DefaultEnabled = de != 0
+		if updatedAt.Valid {
+			t := updatedAt.Time
+			sk.PromptUpdatedAt = &t
+		}
 		out = append(out, sk)
 	}
 	return out, rows.Err()

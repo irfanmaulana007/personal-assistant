@@ -206,9 +206,12 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			prompt TEXT NOT NULL DEFAULT '',
+			tuned_prompt TEXT NOT NULL DEFAULT '',
 			category TEXT NOT NULL DEFAULT '',
 			default_enabled INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
+			prompt_updated_at DATETIME,
+			prompt_updated_by TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 
@@ -362,6 +365,7 @@ func (s *SQLiteStore) migrate() error {
 	// Additive column migrations for tables created by earlier versions.
 	addColumns := []struct{ table, column, ddl string }{
 		{"users", "name", "TEXT NOT NULL DEFAULT ''"},
+		{"skills", "tuned_prompt", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "skills", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "steps_json", "TEXT NOT NULL DEFAULT ''"},
 		{"traces", "image_model", "TEXT NOT NULL DEFAULT ''"},
@@ -388,6 +392,8 @@ func (s *SQLiteStore) migrate() error {
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"skills", "prompt_updated_at", "DATETIME"},
+		{"skills", "prompt_updated_by", "TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range addColumns {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
@@ -1192,6 +1198,60 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 		traces = append(traces, t)
 	}
 	return traces, rows.Err()
+}
+
+// ListLowScoreTracesWithSkills mirrors the Mongo implementation for the legacy
+// SQLite backend (used by the migrate-db ETL, not the live app). The SQLite
+// traces table has no `source` column, so excludeSources is ignored here.
+func (s *SQLiteStore) ListLowScoreTracesWithSkills(ctx context.Context, userID int64, from, to time.Time, maxOverall float64, excludeSources []string, limit int) ([]Trace, error) {
+	q := `SELECT t.id, t.user_id, t.platform, t.input, t.output, t.model, t.latency_ms,
+	             t.tool_count, t.tools_json, t.skills, t.status, t.error, t.created_at,
+	             sc.accuracy, sc.helpfulness, sc.safety, sc.overall, sc.rationale, sc.judge_model
+	      FROM traces t
+	      JOIN trace_scores sc ON sc.trace_id = t.id
+	      WHERE t.user_id = ? AND t.created_at >= ? AND t.created_at < ?
+	        AND sc.overall <= ? AND t.skills != ''`
+	args := []any{userID, from.UTC(), to.UTC(), maxOverall}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q += ` ORDER BY sc.overall ASC, t.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list low-score traces: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Trace
+	for rows.Next() {
+		var t Trace
+		var toolsJSON, skills string
+		var acc, help, safe sql.NullInt64
+		var overall sql.NullFloat64
+		var rationale, judgeModel sql.NullString
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Platform, &t.Input, &t.Output, &t.Model, &t.LatencyMs,
+			&t.ToolCount, &toolsJSON, &skills, &t.Status, &t.Error, &t.CreatedAt,
+			&acc, &help, &safe, &overall, &rationale, &judgeModel); err != nil {
+			return nil, fmt.Errorf("scan trace: %w", err)
+		}
+		if toolsJSON != "" {
+			_ = json.Unmarshal([]byte(toolsJSON), &t.Tools)
+		}
+		if skills != "" {
+			t.Skills = strings.Split(skills, ",")
+		}
+		if overall.Valid {
+			t.Score = &TraceScore{
+				TraceID: t.ID, Accuracy: int(acc.Int64), Helpfulness: int(help.Int64),
+				Safety: int(safe.Int64), Overall: overall.Float64,
+				Rationale: rationale.String, JudgeModel: judgeModel.String,
+			}
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // GetUserActivity returns per-user counts for the profile page.

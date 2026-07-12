@@ -184,6 +184,13 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  auto_tuned: boolean; // the end-of-day self-tuner has overridden this skill's prompt
+  // Prompt management fields. Present only for admins (the API omits them for
+  // members). `prompt_updated_at` is null when the prompt is still the default.
+  prompt?: string;
+  default_prompt?: string;
+  prompt_updated_at?: string | null;
+  prompt_updated_by?: string;
 }
 
 export interface Preferences {
