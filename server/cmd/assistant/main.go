@@ -241,10 +241,18 @@ func main() {
 				response = res.Reply
 			}
 
+			// Reply into the chat the message came from. For a group this is the
+			// group JID; for a 1:1 chat it equals the sender. Fall back to the
+			// sender if the chat is somehow unset.
+			replyTo := msg.Chat
+			if replyTo == "" {
+				replyTo = msg.From
+			}
+
 			// Send response
-			if err := wa.SendMessage(ctx, msg.From, response); err != nil {
+			if err := wa.SendMessage(ctx, replyTo, response); err != nil {
 				log.Error("failed to send response",
-					"to", msg.From,
+					"to", replyTo,
 					"error", err,
 				)
 				return
@@ -253,8 +261,8 @@ func main() {
 			// Deliver any images the agent produced (e.g. Image Generator skill).
 			if res != nil {
 				for _, img := range res.Images {
-					if err := wa.SendImage(ctx, msg.From, img.Data, img.MimeType, ""); err != nil {
-						log.Error("failed to send image", "to", msg.From, "error", err)
+					if err := wa.SendImage(ctx, replyTo, img.Data, img.MimeType, ""); err != nil {
+						log.Error("failed to send image", "to", replyTo, "error", err)
 					}
 				}
 			}
