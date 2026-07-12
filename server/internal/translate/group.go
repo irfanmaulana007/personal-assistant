@@ -19,13 +19,24 @@ type skillChecker interface {
 	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
 }
 
-// pairStore reads and writes a group chat's configured language pair (satisfied
-// by *settings.Service).
+// pairStore reads and writes a group chat's translator config — the language
+// pair plus its display mode and formality preferences (satisfied by
+// *settings.Service).
 type pairStore interface {
-	GroupTranslatePair(ctx context.Context, chatJID string) (langA, langB string)
+	GroupTranslateConfig(ctx context.Context, chatJID string) (langA, langB, mode, formality string)
 	SetGroupTranslatePair(ctx context.Context, chatJID, langA, langB string) error
+	SetGroupTranslateMode(ctx context.Context, chatJID, mode string) error
+	SetGroupTranslateFormality(ctx context.Context, chatJID, formality string) error
 	ClearGroupTranslatePair(ctx context.Context, chatJID string) error
 }
+
+// Display modes for the group translator. modeOnly (the default) posts just the
+// translation; modeBoth posts the original message and its translation too.
+// These strings are persisted per group via pairStore.
+const (
+	modeBoth = "both"
+	modeOnly = "only"
+)
 
 // GroupService handles the `/t` translator command in WhatsApp group chats. It
 // is deliberately separate from the LLM tool-calling agent: a `/t` message is a
@@ -73,7 +84,7 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 			return "Sorry, I couldn't save those languages. Please try again.", true
 		}
 		return fmt.Sprintf(
-			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now mention me with `/t <message>` and I'll post it in both languages.",
+			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now mention me with `/t <message>` and I'll reply with the translation.\nUse `/t mode both` to also show the original, or `/t formality casual`/`formal` to set the tone.",
 			cmd.langA, cmd.langB,
 		), true
 
@@ -84,24 +95,52 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 		return "🌐 Translator languages cleared for this group. Set a new pair with `/t set <language A> <language B>`.", true
 
 	case cmdStatus:
-		a, b := g.settings.GroupTranslatePair(ctx, chatJID)
+		a, b, mode, formality := g.settings.GroupTranslateConfig(ctx, chatJID)
 		if a == "" || b == "" {
 			return "🌐 No languages set for this group yet. Set them with `/t set Indonesian Japanese` (use your two languages).", true
 		}
-		return fmt.Sprintf("🌐 This group translates between *%s* and *%s*.\nMention me with `/t <message>` to translate.", a, b), true
+		return statusText(a, b, mode, formality), true
+
+	case cmdMode:
+		_, _, mode, _ := g.settings.GroupTranslateConfig(ctx, chatJID)
+		next := cmd.mode
+		if !cmd.hasArg {
+			next = toggleMode(mode) // bare "/t mode" flips the current setting
+		} else if next == "" {
+			return modeUsage(), true // an argument was given but not recognised
+		}
+		if err := g.settings.SetGroupTranslateMode(ctx, chatJID, next); err != nil {
+			g.log.Error("save group translate mode", "chat", chatJID, "error", err)
+			return "Sorry, I couldn't update the display mode. Please try again.", true
+		}
+		return modeConfirm(next), true
+
+	case cmdFormality:
+		if !cmd.hasArg {
+			_, _, _, formality := g.settings.GroupTranslateConfig(ctx, chatJID)
+			return formalityStatus(formality), true // bare "/t formality" reports the current setting
+		}
+		if cmd.formality == "" {
+			return formalityUsage(), true // an argument was given but not recognised
+		}
+		if err := g.settings.SetGroupTranslateFormality(ctx, chatJID, cmd.formality); err != nil {
+			g.log.Error("save group translate formality", "chat", chatJID, "error", err)
+			return "Sorry, I couldn't update the formality. Please try again.", true
+		}
+		return formalityConfirm(cmd.formality), true
 
 	case cmdHelp:
 		return helpText(), true
 
 	case cmdTranslate:
-		a, b := g.settings.GroupTranslatePair(ctx, chatJID)
+		a, b, mode, formality := g.settings.GroupTranslateConfig(ctx, chatJID)
 		if a == "" || b == "" {
 			return "🌐 No languages set for this group yet. First run `/t set Indonesian Japanese` (use your two languages), then `/t <message>` to translate.", true
 		}
 		if strings.TrimSpace(cmd.text) == "" {
 			return helpText(), true // bare "/t" with nothing to translate
 		}
-		source, translated, err := g.tr.Between(ctx, a, b, cmd.text)
+		source, translated, err := g.tr.Between(ctx, a, b, formality, cmd.text)
 		if err != nil {
 			if err == ErrNotConfigured {
 				return "The assistant isn't configured yet — set the LLM API key in the web Settings page.", true
@@ -109,7 +148,7 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 			g.log.Warn("group translation failed", "chat", chatJID, "error", err)
 			return "Sorry, I couldn't translate that right now. Please try again.", true
 		}
-		return formatBoth(a, b, source, cmd.text, translated), true
+		return formatTranslation(a, b, source, cmd.text, translated, mode), true
 	}
 
 	return "", false
@@ -141,7 +180,9 @@ const (
 	cmdTranslate cmdKind = iota // "/t <message>" — translate a line
 	cmdSet                      // "/t set <A> <B>" — configure the pair
 	cmdOff                      // "/t off" — clear the pair
-	cmdStatus                   // "/t status" — show the current pair
+	cmdStatus                   // "/t status" — show the current settings
+	cmdMode                     // "/t mode [both|only]" — set/toggle display mode
+	cmdFormality                // "/t formality [asis|casual|formal]" — set the register
 	cmdHelp                     // "/t help" — usage
 )
 
@@ -150,6 +191,9 @@ type command struct {
 	kind         cmdKind
 	langA, langB string // set only for cmdSet
 	text         string // the payload to translate (cmdTranslate)
+	mode         string // canonical display mode for cmdMode (modeBoth/modeOnly), "" if none/unrecognised
+	formality    string // canonical formality for cmdFormality, "" if none/unrecognised
+	hasArg       bool   // an explicit argument followed cmdMode/cmdFormality (distinguishes "toggle/status" from "bad value")
 }
 
 var (
@@ -192,6 +236,12 @@ func parseCommand(raw string) (command, bool) {
 		return command{kind: cmdOff}, true
 	case "status", "show", "current", "lang", "langs", "languages":
 		return command{kind: cmdStatus}, true
+	case "mode", "display", "view":
+		m, hasArg := parseMode(remainder)
+		return command{kind: cmdMode, mode: m, hasArg: hasArg}, true
+	case "formality", "tone", "register", "style":
+		f, hasArg := parseFormality(remainder)
+		return command{kind: cmdFormality, formality: f, hasArg: hasArg}, true
 	case "help", "?":
 		return command{kind: cmdHelp}, true
 	default:
@@ -273,7 +323,91 @@ func tidyLang(s string) string {
 	return string(r)
 }
 
+// parseMode maps a "/t mode" argument to a canonical display mode. hasArg is
+// false when no argument was given (the caller then toggles). When an argument
+// is present but unrecognised, mode is "" and hasArg is true so the caller can
+// show usage rather than silently guessing.
+func parseMode(s string) (mode string, hasArg bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return "", false
+	}
+	switch s {
+	case "both", "full", "dual", "two", "all", "input", "bilingual", "original":
+		return modeBoth, true
+	case "only", "single", "translation", "translated", "translation-only", "translationonly", "translated-only", "output", "just":
+		return modeOnly, true
+	}
+	return "", true
+}
+
+// parseFormality maps a "/t formality" argument to a canonical formality
+// (translate.Formality*). hasArg mirrors parseMode: false when no argument was
+// given (report current), and true with an empty result when the argument was
+// not recognised (show usage). Aliases cover common English and Indonesian words.
+func parseFormality(s string) (formality string, hasArg bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return "", false
+	}
+	switch s {
+	case "asis", "as-is", "as", "original", "keep", "same", "default", "normal", "auto", "apaadanya":
+		return FormalityAsIs, true
+	case "casual", "informal", "relaxed", "friendly", "santai", "akrab":
+		return FormalityCasual, true
+	case "formal", "polite", "professional", "respectful", "sopan", "resmi":
+		return FormalityFormal, true
+	}
+	return "", true
+}
+
+// normalizeMode resolves a stored mode (possibly "" from an older row or an
+// unset default) to a concrete mode. The default is modeOnly — a group shows
+// just the translation until someone opts into modeBoth.
+func normalizeMode(m string) string {
+	if m == modeBoth {
+		return modeBoth
+	}
+	return modeOnly
+}
+
+// toggleMode flips between the two display modes, treating any unset/unknown
+// current value as the default (modeOnly).
+func toggleMode(current string) string {
+	if normalizeMode(current) == modeBoth {
+		return modeOnly
+	}
+	return modeBoth
+}
+
 // --- reply formatting ---
+
+// formatTranslation renders a translation reply according to the group's
+// display mode: modeBoth shows the original and the translation; modeOnly shows
+// just the translation.
+func formatTranslation(langA, langB, source, original, translated, mode string) string {
+	if normalizeMode(mode) == modeOnly {
+		return formatOnly(langA, langB, source, translated)
+	}
+	return formatBoth(langA, langB, source, original, translated)
+}
+
+// formatOnly renders just the translation, prefixed with the target language's
+// flag when it can be determined (falling back to the 🌐 globe otherwise) so the
+// line still signals which language it is in.
+func formatOnly(langA, langB, source, translated string) string {
+	if source == "" {
+		return "🌐 " + translated
+	}
+	target := langB
+	if strings.EqualFold(source, langB) {
+		target = langA
+	}
+	if ft := languageFlag(target); ft != "" {
+		return ft + " " + translated
+	}
+	return "🌐 " + translated
+}
 
 // formatBoth renders a translation showing both languages, source line first.
 // It labels each line with a flag emoji when both languages are recognised, and
@@ -307,10 +441,73 @@ func helpText() string {
 	b.WriteString("*Translator* — chat across two languages in this group.\n\n")
 	b.WriteString("• `/t set Indonesian Japanese` — set the two languages\n")
 	b.WriteString("• `/t <message>` — translate a message (auto-detects the direction)\n")
-	b.WriteString("• `/t status` — show the current languages\n")
+	b.WriteString("• `/t mode both` / `/t mode only` — show the original + translation, or just the translation (`/t mode` alone toggles)\n")
+	b.WriteString("• `/t formality asis` / `casual` / `formal` — keep the tone, or make it casual or formal\n")
+	b.WriteString("• `/t status` — show the current settings\n")
 	b.WriteString("• `/t off` — clear the languages\n\n")
-	b.WriteString("Always mention me together with the command. I reply with the message in both languages so everyone follows along.")
+	b.WriteString("Grammar is always corrected in the translation. Always mention me together with the command.")
 	return b.String()
+}
+
+// statusText summarises a group's current translator settings.
+func statusText(langA, langB, mode, formality string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("🌐 This group translates between *%s* and *%s*.\n", langA, langB))
+	if normalizeMode(mode) == modeOnly {
+		b.WriteString("• Display: *translation only*\n")
+	} else {
+		b.WriteString("• Display: *original + translation*\n")
+	}
+	b.WriteString("• Formality: *" + formalityLabel(formality) + "* (grammar always corrected)\n")
+	b.WriteString("\nMention me with `/t <message>` to translate.")
+	return b.String()
+}
+
+// modeConfirm acknowledges a display-mode change.
+func modeConfirm(mode string) string {
+	if normalizeMode(mode) == modeOnly {
+		return "✅ Now showing *only the translation* for `/t` messages. Use `/t mode both` to include the original too."
+	}
+	return "✅ Now showing *both the original and the translation* for `/t` messages. Use `/t mode only` for translation-only."
+}
+
+// modeUsage is shown when `/t mode` is given an unrecognised value.
+func modeUsage() string {
+	return "Set how translations are shown: `/t mode both` (original + translation) or `/t mode only` (translation only). Send `/t mode` alone to toggle."
+}
+
+// formalityLabel renders a formality value for display.
+func formalityLabel(formality string) string {
+	switch formality {
+	case FormalityCasual:
+		return "casual"
+	case FormalityFormal:
+		return "formal"
+	default:
+		return "as-is"
+	}
+}
+
+// formalityConfirm acknowledges a formality change.
+func formalityConfirm(formality string) string {
+	switch formality {
+	case FormalityCasual:
+		return "✅ Formality set to *casual* — I'll make translations friendly and relaxed (grammar is always corrected)."
+	case FormalityFormal:
+		return "✅ Formality set to *formal* — I'll make translations polite and formal (grammar is always corrected)."
+	default:
+		return "✅ Formality set to *as-is* — I'll keep each message's original tone (grammar is always corrected)."
+	}
+}
+
+// formalityStatus reports the current formality and the available options.
+func formalityStatus(formality string) string {
+	return fmt.Sprintf("🌐 Formality is *%s* (grammar is always corrected).\nChange it with `/t formality asis`, `/t formality casual`, or `/t formality formal`.", formalityLabel(formality))
+}
+
+// formalityUsage is shown when `/t formality` is given an unrecognised value.
+func formalityUsage() string {
+	return "Set the tone with `/t formality asis` (keep as-is), `/t formality casual`, or `/t formality formal`. Grammar is always corrected."
 }
 
 // languageFlag maps a language name to a flag emoji for the common cases,

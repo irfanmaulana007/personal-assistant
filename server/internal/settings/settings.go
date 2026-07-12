@@ -367,45 +367,90 @@ func (s *Service) SetReminderDefaultTime(ctx context.Context, hhmm string) error
 	return s.store.SetSetting(ctx, KeyReminderDefaultTime, []byte(hhmm))
 }
 
-// --- Group translator (per WhatsApp group language pair) ---
+// --- Group translator (per WhatsApp group settings) ---
 
-// groupTranslatePair is the persisted language pair for one group chat.
+// groupTranslatePair is the persisted per-group translator config: the language
+// pair plus display and formality preferences. Mode and Formality are stored as
+// opaque strings (their meaning is owned by the translate package); an empty
+// value means "use the default", so older rows saved before these fields
+// existed keep working unchanged.
 type groupTranslatePair struct {
-	A string `json:"a"`
-	B string `json:"b"`
+	A         string `json:"a"`
+	B         string `json:"b"`
+	Mode      string `json:"mode,omitempty"`      // "" (default) shows both; "only" shows the translation alone
+	Formality string `json:"formality,omitempty"` // "" (default) keeps tone as-is; "casual" or "formal"
 }
 
 // groupTranslateKey composes the per-chat setting key for a group's translator
-// language pair, e.g. translate_group_<chatJID>.
+// config, e.g. translate_group_<chatJID>.
 func groupTranslateKey(chatJID string) string {
 	return "translate_group_" + chatJID
+}
+
+// groupTranslate reads the stored config for a chat, or a zero value when none
+// is set. It is the single decode point shared by the accessors below.
+func (s *Service) groupTranslate(ctx context.Context, chatJID string) groupTranslatePair {
+	raw, err := s.getString(ctx, groupTranslateKey(chatJID))
+	if err != nil || raw == "" {
+		return groupTranslatePair{}
+	}
+	var p groupTranslatePair
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return groupTranslatePair{}
+	}
+	return p
 }
 
 // GroupTranslatePair returns the two languages configured for a group chat's
 // translator, or two empty strings when none has been set.
 func (s *Service) GroupTranslatePair(ctx context.Context, chatJID string) (langA, langB string) {
-	raw, err := s.getString(ctx, groupTranslateKey(chatJID))
-	if err != nil || raw == "" {
-		return "", ""
-	}
-	var p groupTranslatePair
-	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return "", ""
-	}
+	p := s.groupTranslate(ctx, chatJID)
 	return p.A, p.B
 }
 
+// GroupTranslateConfig returns the full per-group translator config: the
+// language pair plus the display mode and formality (empty strings mean the
+// defaults).
+func (s *Service) GroupTranslateConfig(ctx context.Context, chatJID string) (langA, langB, mode, formality string) {
+	p := s.groupTranslate(ctx, chatJID)
+	return p.A, p.B, p.Mode, p.Formality
+}
+
 // SetGroupTranslatePair persists the language pair a group chat translates
-// between.
+// between, preserving any existing mode and formality preferences.
 func (s *Service) SetGroupTranslatePair(ctx context.Context, chatJID, langA, langB string) error {
-	data, err := json.Marshal(groupTranslatePair{A: langA, B: langB})
+	p := s.groupTranslate(ctx, chatJID)
+	p.A, p.B = langA, langB
+	return s.saveGroupTranslate(ctx, chatJID, p)
+}
+
+// SetGroupTranslateMode persists a group chat's display mode, preserving the
+// language pair and formality.
+func (s *Service) SetGroupTranslateMode(ctx context.Context, chatJID, mode string) error {
+	p := s.groupTranslate(ctx, chatJID)
+	p.Mode = mode
+	return s.saveGroupTranslate(ctx, chatJID, p)
+}
+
+// SetGroupTranslateFormality persists a group chat's formality preference,
+// preserving the language pair and display mode.
+func (s *Service) SetGroupTranslateFormality(ctx context.Context, chatJID, formality string) error {
+	p := s.groupTranslate(ctx, chatJID)
+	p.Formality = formality
+	return s.saveGroupTranslate(ctx, chatJID, p)
+}
+
+// saveGroupTranslate marshals and stores the full config for a chat.
+func (s *Service) saveGroupTranslate(ctx context.Context, chatJID string, p groupTranslatePair) error {
+	data, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
 	return s.store.SetSetting(ctx, groupTranslateKey(chatJID), data)
 }
 
-// ClearGroupTranslatePair removes a group chat's configured language pair.
+// ClearGroupTranslatePair removes a group chat's translator config (language
+// pair, mode, and formality).
 func (s *Service) ClearGroupTranslatePair(ctx context.Context, chatJID string) error {
 	return s.store.SetSetting(ctx, groupTranslateKey(chatJID), nil)
 }

@@ -34,6 +34,14 @@ func TestParseCommand(t *testing.T) {
 		{"languages alias", "/t languages", true, cmdStatus, "", "", ""},
 		{"help", "/t help", true, cmdHelp, "", "", ""},
 		{"bare t is translate with empty text", "/t", true, cmdTranslate, "", "", ""},
+
+		{"mode without arg", "/t mode", true, cmdMode, "", "", ""},
+		{"mode both", "/t mode both", true, cmdMode, "", "", ""},
+		{"mode only", "/t mode only", true, cmdMode, "", "", ""},
+		{"display alias", "/t display translation", true, cmdMode, "", "", ""},
+		{"formality without arg", "/t formality", true, cmdFormality, "", "", ""},
+		{"formality casual", "/t formality casual", true, cmdFormality, "", "", ""},
+		{"tone alias formal", "/t tone formal", true, cmdFormality, "", "", ""},
 	}
 
 	for _, tt := range tests {
@@ -55,6 +63,75 @@ func TestParseCommand(t *testing.T) {
 				t.Errorf("text = %q, want %q", cmd.text, tt.wantText)
 			}
 		})
+	}
+}
+
+func TestParseMode(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantMode string
+		wantHas  bool
+	}{
+		{"", "", false},
+		{"both", modeBoth, true},
+		{"BOTH", modeBoth, true},
+		{"input", modeBoth, true},
+		{"only", modeOnly, true},
+		{"translation", modeOnly, true},
+		{"translated-only", modeOnly, true},
+		{"nonsense", "", true}, // arg given but unrecognised
+	}
+	for _, c := range cases {
+		mode, has := parseMode(c.in)
+		if mode != c.wantMode || has != c.wantHas {
+			t.Errorf("parseMode(%q) = (%q,%v), want (%q,%v)", c.in, mode, has, c.wantMode, c.wantHas)
+		}
+	}
+}
+
+func TestParseFormality(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantForm string
+		wantHas  bool
+	}{
+		{"", "", false},
+		{"asis", FormalityAsIs, true},
+		{"as-is", FormalityAsIs, true},
+		{"casual", FormalityCasual, true},
+		{"informal", FormalityCasual, true},
+		{"formal", FormalityFormal, true},
+		{"sopan", FormalityFormal, true},
+		{"weird", "", true}, // arg given but unrecognised
+	}
+	for _, c := range cases {
+		form, has := parseFormality(c.in)
+		if form != c.wantForm || has != c.wantHas {
+			t.Errorf("parseFormality(%q) = (%q,%v), want (%q,%v)", c.in, form, has, c.wantForm, c.wantHas)
+		}
+	}
+}
+
+func TestFormatTranslation(t *testing.T) {
+	// modeOnly with a known source → target flag + translation only, no original.
+	got := formatTranslation("Indonesian", "Japanese", "Indonesian", "Apa kabar?", "お元気ですか？", modeOnly)
+	if want := "🇯🇵 お元気ですか？"; got != want {
+		t.Errorf("only: got %q, want %q", got, want)
+	}
+	// Empty mode defaults to translation-only.
+	got = formatTranslation("Indonesian", "Japanese", "Indonesian", "Apa kabar?", "お元気ですか？", "")
+	if want := "🇯🇵 お元気ですか？"; got != want {
+		t.Errorf("default only: got %q, want %q", got, want)
+	}
+	// modeBoth shows both lines (source first) like formatBoth.
+	got = formatTranslation("Indonesian", "Japanese", "Indonesian", "Apa kabar?", "お元気ですか？", modeBoth)
+	if want := "🇮🇩 Apa kabar?\n🇯🇵 お元気ですか？"; got != want {
+		t.Errorf("both: got %q, want %q", got, want)
+	}
+	// modeOnly with unknown source falls back to the globe.
+	got = formatTranslation("Indonesian", "Japanese", "", "whatever", "translated", modeOnly)
+	if want := "🌐 translated"; got != want {
+		t.Errorf("only unknown: got %q, want %q", got, want)
 	}
 }
 
