@@ -52,6 +52,52 @@ func TestCompleteRequiringToolSendsRequired(t *testing.T) {
 	}
 }
 
+func TestCompleteRequiringToolDowngradesForThinkingModel(t *testing.T) {
+	var got struct {
+		ToolChoice any `json:"tool_choice"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`))
+	}))
+	defer srv.Close()
+
+	// A thinking model must never receive tool_choice=required — the provider
+	// 400s with "Thinking mode does not support this tool_choice". It downgrades
+	// to auto instead.
+	cfg := Config{APIKey: "k", BaseURL: srv.URL, Model: "deepseek-reasoner"}
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "t", Parameters: json.RawMessage(`{}`)}}}
+	if _, err := NewClient().CompleteRequiringTool(context.Background(), cfg, []Message{{Role: "user", Content: "catat ini"}}, tools); err != nil {
+		t.Fatalf("CompleteRequiringTool: %v", err)
+	}
+	if got.ToolChoice != "auto" {
+		t.Errorf("thinking-model tool_choice = %v, want auto (downgraded from required)", got.ToolChoice)
+	}
+}
+
+func TestIsThinkingModel(t *testing.T) {
+	cases := map[string]bool{
+		"deepseek-reasoner":          true,
+		"deepseek-v4-flash-thinking": true,
+		"DeepSeek-R1":                true,
+		"o1":                         true,
+		"o3-mini":                    true,
+		"o4-mini":                    true,
+		"deepseek-v4-flash":          false,
+		"deepseek-v4-pro":            false,
+		"gpt-4o-mini":                false,
+		"":                           false,
+	}
+	for model, want := range cases {
+		if got := IsThinkingModel(model); got != want {
+			t.Errorf("IsThinkingModel(%q) = %v, want %v", model, got, want)
+		}
+	}
+}
+
 func TestCompleteWithoutToolsOmitsToolChoice(t *testing.T) {
 	var got struct {
 		ToolChoice any `json:"tool_choice"`
