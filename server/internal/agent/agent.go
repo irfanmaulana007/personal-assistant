@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,6 +33,26 @@ var ErrNotConfigured = errors.New("llm api key not configured")
 
 // maxIterations bounds the tool-calling loop to avoid runaway LLM/tool cycles.
 const maxIterations = 5
+
+// saveIntentRE matches messages that ask the assistant to persist something
+// (add/save/record/remind/schedule) in either Indonesian or English. When it
+// matches, the turn is treated as a write and the first LLM step is forced to
+// call a tool (tool_choice=required) — see hasSaveIntent. This is the
+// structural guard against weak models (e.g. deepseek-v4-flash) fabricating a
+// "done ✅" confirmation without ever calling the save tool.
+//
+// Indonesian verbs are matched as prefixes so agglutinated forms are covered
+// (catat→catatan, tambah→tambahkan/tambahin, masuk→masukin/masukkan). English
+// verbs are matched as whole words to avoid false hits inside longer words
+// (add vs. address, log vs. login).
+var saveIntentRE = regexp.MustCompile(`(?i)(\b(catat|catet|simpan|tambah|nambah|masuk|jadwal|ingat|inget|tandai))|(\b(add|save|remind|reminder|schedule|record|remember|jot)\b)`)
+
+// hasSaveIntent reports whether the user message expresses an intent to persist
+// something, so the turn should force a tool call rather than accept a
+// text-only (potentially fabricated) confirmation.
+func hasSaveIntent(msg string) bool {
+	return saveIntentRE.MatchString(msg)
+}
 
 // ToolProvider supplies extra, dynamically-resolved tools (e.g. connected
 // Composio apps) and executes them. Implementations read the current user from
@@ -184,6 +205,13 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	if a.provider != nil {
 		tools = append(tools, a.provider.Tools(ctx)...)
 	}
+	// Save-intent turns must not be answered with a fabricated confirmation.
+	// When the user asks to persist something and tools are available, force the
+	// model to call a tool until at least one has run this turn (tool_choice=
+	// "required"); once a tool has executed, later steps fall back to "auto" so
+	// the model can summarize the real result.
+	forceOnSaveIntent := len(tools) > 0 && hasSaveIntent(userMessage)
+
 	var total llm.Usage
 	var used []ToolInvocation
 	var steps []LLMCall
@@ -203,7 +231,13 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 
 	for i := 0; i < maxIterations; i++ {
 		start := time.Now()
-		res, err := a.client.Complete(ctx, cfg, messages, tools)
+		var res *llm.CompletionResult
+		var err error
+		if forceOnSaveIntent && len(used) == 0 {
+			res, err = a.client.CompleteRequiringTool(ctx, cfg, messages, tools)
+		} else {
+			res, err = a.client.Complete(ctx, cfg, messages, tools)
+		}
 		if err != nil {
 			return nil, err
 		}
