@@ -48,7 +48,20 @@ export function Message({ message }: { message: ChatMessage }) {
                 </Markdown>
               </div>
             )}
-            <Markdown>{reply}</Markdown>
+            {reply && <Markdown>{reply}</Markdown>}
+            {message.images && message.images.length > 0 && (
+              <div className={`flex flex-col gap-2 ${reply ? 'mt-2' : ''}`}>
+                {message.images.map((src, i) => (
+                  <a key={i} href={src} target="_blank" rel="noreferrer">
+                    <img
+                      src={src}
+                      alt="generated image"
+                      className="max-h-80 w-auto rounded-lg border border-gray-200 dark:border-gray-700"
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

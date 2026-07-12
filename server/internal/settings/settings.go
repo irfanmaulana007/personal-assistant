@@ -24,6 +24,8 @@ const (
 
 	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Tavily Search API key)
 
+	KeyOpenAIAPIKey = "openai.api_key" // encrypted (OpenAI key for image generation)
+
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
 	KeyReminderDigestTime  = "reminder_digest_time"  // legacy: local "HH:MM" daily recap (migrated to the start_of_day routine)
@@ -236,6 +238,35 @@ func (s *Service) SetWebSearchKey(ctx context.Context, key string) error {
 		return fmt.Errorf("encrypt web search key: %w", err)
 	}
 	return s.store.SetSetting(ctx, KeyWebSearchAPIKey, enc)
+}
+
+// OpenAIKey returns the decrypted OpenAI API key (used for image generation),
+// or "" if unset.
+func (s *Service) OpenAIKey(ctx context.Context) (string, error) {
+	enc, err := s.store.GetSetting(ctx, KeyOpenAIAPIKey)
+	if err != nil {
+		return "", err
+	}
+	if len(enc) == 0 {
+		return "", nil
+	}
+	dec, err := crypto.Decrypt(s.encKey, enc)
+	if err != nil {
+		return "", fmt.Errorf("decrypt openai key: %w", err)
+	}
+	return string(dec), nil
+}
+
+// SetOpenAIKey stores the OpenAI API key encrypted. An empty value clears it.
+func (s *Service) SetOpenAIKey(ctx context.Context, key string) error {
+	if key == "" {
+		return s.store.SetSetting(ctx, KeyOpenAIAPIKey, []byte{})
+	}
+	enc, err := crypto.Encrypt(s.encKey, []byte(key))
+	if err != nil {
+		return fmt.Errorf("encrypt openai key: %w", err)
+	}
+	return s.store.SetSetting(ctx, KeyOpenAIAPIKey, enc)
 }
 
 // Mask returns a masked view of a secret (e.g. "••••7890"), or "" if empty.

@@ -56,6 +56,9 @@ type integrationsResp struct {
 	// Web search (Tavily) is a standalone API key, independent of Composio.
 	WebSearchConfigured bool   `json:"web_search_configured"`
 	WebSearchKeyMask    string `json:"web_search_key_mask"`
+	// OpenAI key powers the Image Generator skill (gpt-image-1).
+	OpenAIConfigured bool   `json:"openai_configured"`
+	OpenAIKeyMask    string `json:"openai_key_mask"`
 }
 
 func statusFromComposio(s string) string {
@@ -99,6 +102,14 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 		resp.WebSearchKeyMask = settings.Mask(wsKey)
 	} else {
 		s.log.Warn("resolve web search key", "error", err)
+	}
+
+	// OpenAI key status (image generation; independent of Composio).
+	if oaKey, err := s.settings.OpenAIKey(r.Context()); err == nil {
+		resp.OpenAIConfigured = oaKey != ""
+		resp.OpenAIKeyMask = settings.Mask(oaKey)
+	} else {
+		s.log.Warn("resolve openai key", "error", err)
 	}
 
 	// Gather all connections per toolkit slug (a user may have several).
@@ -170,6 +181,22 @@ func (s *Server) handleSetWebSearchKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.settings.SetWebSearchKey(r.Context(), strings.TrimSpace(req.APIKey)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+		return
+	}
+	s.handleListIntegrations(w, r)
+}
+
+// handleSetOpenAIKey stores/clears the OpenAI API key (image generation).
+func (s *Server) handleSetOpenAIKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := s.settings.SetOpenAIKey(r.Context(), strings.TrimSpace(req.APIKey)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
 		return
 	}
