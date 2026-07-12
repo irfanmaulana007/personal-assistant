@@ -7,6 +7,8 @@ import type {
   Reminder,
   ReminderPayload,
   RemindersConfig,
+  Routine,
+  RoutineUpdate,
   ModelPrice,
   BucketItem,
   BucketItemPayload,
@@ -20,9 +22,9 @@ import type {
   UsageStats,
   Integrations,
   WhatsAppStatus,
-  Channel,
+  ChannelValue,
   LogsResponse,
-  ScoreState,
+  ScoreValue,
   Trace,
 } from '../types';
 
@@ -158,6 +160,23 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
   });
 }
 
+export async function getRoutines(): Promise<Routine[]> {
+  return request<Routine[]>('/api/routines');
+}
+
+export async function updateRoutine(key: string, update: RoutineUpdate): Promise<Routine> {
+  return request<Routine>(`/api/routines/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify(update),
+  });
+}
+
+export async function runRoutine(key: string): Promise<{ sent: boolean; message: string }> {
+  return request<{ sent: boolean; message: string }>(`/api/routines/${key}/run`, {
+    method: 'POST',
+  });
+}
+
 export async function listBucketItems(): Promise<BucketItem[]> {
   return request<BucketItem[]>('/api/bucket-list');
 }
@@ -279,26 +298,28 @@ export async function testSettings(): Promise<LlmTestResult> {
   return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
 }
 
+// Multi-value filters (platform, score) are sent as a single comma-separated
+// query param; an empty array omits the param entirely ("all").
 export async function getUsage(
   from: string,
   to: string,
-  platform: Channel = '',
+  platforms: ChannelValue[] = [],
 ): Promise<UsageStats> {
-  const p = platform ? `&platform=${platform}` : '';
+  const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
   return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
 }
 
 export async function getLogs(
   from: string,
   to: string,
-  platform: Channel = '',
+  platforms: ChannelValue[] = [],
   limit = 25,
   cursor = 0,
-  score: ScoreState = '',
+  scores: ScoreValue[] = [],
 ): Promise<LogsResponse> {
-  const p = platform ? `&platform=${platform}` : '';
+  const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
   const c = cursor ? `&cursor=${cursor}` : '';
-  const s = score ? `&score=${score}` : '';
+  const s = scores.length ? `&score=${scores.join(',')}` : '';
   return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}${c}${s}`);
 }
 

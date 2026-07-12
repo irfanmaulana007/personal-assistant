@@ -388,7 +388,6 @@ func (s *Server) handleSetReminderEnabled(w http.ResponseWriter, r *http.Request
 
 type remindersConfigResp struct {
 	Enabled     bool   `json:"enabled"`
-	DigestTime  string `json:"digest_time"`  // local "HH:MM", or "" when the daily recap is off
 	DefaultTime string `json:"default_time"` // local "HH:MM" used when a reminder has no time
 }
 
@@ -396,7 +395,6 @@ type remindersConfigResp struct {
 func (s *Server) handleGetRemindersConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, remindersConfigResp{
 		Enabled:     s.settings.RemindersEnabled(r.Context()),
-		DigestTime:  s.settings.ReminderDigestTime(r.Context()),
 		DefaultTime: s.settings.ReminderDefaultTime(r.Context()),
 	})
 }
@@ -408,15 +406,6 @@ func (s *Server) handleSetRemindersConfig(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	digest := strings.TrimSpace(req.DigestTime)
-	if digest != "" {
-		norm, err := normalizeTimes([]string{digest})
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "digest_time must be HH:MM"})
-			return
-		}
-		digest = norm[0]
-	}
 	// The default reminder time is required (a reminder always needs a fire time).
 	def, err := normalizeTimes([]string{strings.TrimSpace(req.DefaultTime)})
 	if err != nil {
@@ -427,13 +416,9 @@ func (s *Server) handleSetRemindersConfig(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
 	}
-	if err := s.settings.SetReminderDigestTime(r.Context(), digest); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
-		return
-	}
 	if err := s.settings.SetReminderDefaultTime(r.Context(), def[0]); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save"})
 		return
 	}
-	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: req.Enabled, DigestTime: digest, DefaultTime: def[0]})
+	writeJSON(w, http.StatusOK, remindersConfigResp{Enabled: req.Enabled, DefaultTime: def[0]})
 }

@@ -1037,15 +1037,30 @@ func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) 
 	return id, nil
 }
 
+// sqliteInClause builds an ` AND <col> IN (?, ?, …)` fragment and its args for a
+// non-empty value list. Returns ("", nil) when vals is empty, i.e. "all".
+func sqliteInClause(col string, vals []string) (string, []any) {
+	if len(vals) == 0 {
+		return "", nil
+	}
+	ph := make([]string, len(vals))
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		ph[i] = "?"
+		args[i] = v
+	}
+	return " AND " + col + " IN (" + strings.Join(ph, ", ") + ")", args
+}
+
 // UsageByDayModel returns per-day, per-model token sums for a cost time series.
-func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error) {
+func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error) {
 	q := `SELECT date(created_at) AS d, model,
 	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
 	      FROM traces WHERE created_at >= ? AND created_at < ?`
 	args := []any{from.UTC(), to.UTC()}
-	if platform != "" {
-		q += ` AND platform = ?`
-		args = append(args, platform)
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
 	q += ` GROUP BY d, model ORDER BY d ASC`
 
@@ -1074,20 +1089,29 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 	      LEFT JOIN trace_scores sc ON sc.trace_id = t.id
 	      WHERE t.created_at >= ? AND t.created_at < ?`
 	args := []any{f.From.UTC(), f.To.UTC()}
-	if f.Platform != "" {
-		q += ` AND t.platform = ?`
-		args = append(args, f.Platform)
+	if clause, a := sqliteInClause("t.platform", f.Platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
-	switch f.ScoreState {
-	case "scored":
-		q += ` AND sc.trace_id IS NOT NULL`
-	case "unscored":
-		// Only judgeable replies (successful, non-empty) count as "unscored" —
-		// error traces are never judged, so surfacing them here would be noise.
-		q += ` AND sc.trace_id IS NULL AND t.status = 'ok' AND t.output != ''`
-	case "low":
-		q += ` AND sc.trace_id IS NOT NULL AND sc.overall < ?`
-		args = append(args, LowScoreThreshold)
+	// Each selected score state is an OR-branch; a trace matches if it is in ANY
+	// of the states. Empty = all. (The `low` branch carries a threshold arg,
+	// appended in the same order its placeholder appears in the query.)
+	var scoreOr []string
+	for _, st := range f.ScoreStates {
+		switch st {
+		case "scored":
+			scoreOr = append(scoreOr, `sc.trace_id IS NOT NULL`)
+		case "unscored":
+			// Only judgeable replies (successful, non-empty) count as "unscored" —
+			// error traces are never judged, so surfacing them here would be noise.
+			scoreOr = append(scoreOr, `(sc.trace_id IS NULL AND t.status = 'ok' AND t.output != '')`)
+		case "low":
+			scoreOr = append(scoreOr, `(sc.trace_id IS NOT NULL AND sc.overall < ?)`)
+			args = append(args, LowScoreThreshold)
+		}
+	}
+	if len(scoreOr) > 0 {
+		q += ` AND (` + strings.Join(scoreOr, " OR ") + `)`
 	}
 	if f.Cursor > 0 {
 		q += ` AND t.id < ?`
@@ -1255,18 +1279,14 @@ func (s *SQLiteStore) ListUnscoredTraces(ctx context.Context, since time.Time, l
 
 // UsageStatsBetween aggregates traces in the half-open interval [from, to),
 // optionally restricted to a platform ("" = all).
-func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error) {
+func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error) {
 	fromUTC := from.UTC()
 	toUTC := to.UTC()
 	stats := &UsageStats{}
 
 	// Optional platform filter appended after the [from,to) args.
-	pc := ""
-	base := []any{fromUTC, toUTC}
-	if platform != "" {
-		pc = " AND platform = ?"
-		base = append(base, platform)
-	}
+	pc, pcArgs := sqliteInClause("platform", platforms)
+	base := append([]any{fromUTC, toUTC}, pcArgs...)
 
 	// Summary
 	var avgLatency sql.NullFloat64
@@ -1377,12 +1397,8 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 	}
 
 	// Top tools
-	toolArgs := []any{fromUTC, toUTC}
-	toolPC := ""
-	if platform != "" {
-		toolPC = " AND platform = ?"
-		toolArgs = append(toolArgs, platform)
-	}
+	toolPC, toolPCArgs := sqliteInClause("platform", platforms)
+	toolArgs := append([]any{fromUTC, toUTC}, toolPCArgs...)
 	toolRows, err := s.db.QueryContext(ctx,
 		`SELECT tool, COUNT(*) AS c
 		 FROM tool_usage WHERE created_at >= ? AND created_at < ?`+toolPC+`
@@ -1463,16 +1479,16 @@ func (s *SQLiteStore) usageByBucket(ctx context.Context, strftimeFmt, pc string,
 
 // UsageByUserModel returns per-user, per-model usage for the Users section
 // (cost is priced in the API layer, like UsageByDayModel).
-func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error) {
+func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error) {
 	q := `SELECT user_id, model, COUNT(*),
 	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
 	             COALESCE(SUM(total_tokens), 0),
 	             COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0)
 	      FROM traces WHERE created_at >= ? AND created_at < ?`
 	args := []any{from.UTC(), to.UTC()}
-	if platform != "" {
-		q += ` AND platform = ?`
-		args = append(args, platform)
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
 	q += ` GROUP BY user_id, model`
 

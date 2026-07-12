@@ -316,14 +316,15 @@ type TraceScore struct {
 // the id of the last trace from the previous page (0 = first page); results are
 // ordered by id descending, so the next page is everything with id < Cursor.
 type TraceFilter struct {
-	Platform string // "" = all
-	From     time.Time
-	To       time.Time
-	Limit    int
-	Cursor   int64
-	// ScoreState filters by judge verdict: "" = all, "scored", "unscored", or
-	// "low" (judged and overall below lowScoreThreshold).
-	ScoreState string
+	Platforms []string // nil/empty = all; otherwise match any listed platform
+	From      time.Time
+	To        time.Time
+	Limit     int
+	Cursor    int64
+	// ScoreStates filters by judge verdict; nil/empty = all. Each entry is
+	// "scored", "unscored", or "low" (judged and overall below
+	// LowScoreThreshold). Multiple entries match traces in ANY of the states.
+	ScoreStates []string
 }
 
 // LowScoreThreshold is the overall rating below which a judged trace is
@@ -611,9 +612,10 @@ type LogStore interface {
 	ListUnscoredTraces(ctx context.Context, since time.Time, limit int) ([]Trace, error)
 
 	// Usage analytics (aggregates over traces & tool_usage)
-	UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error)
-	UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error)
-	UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error)
+	// platforms nil/empty = all; otherwise restricted to any listed platform.
+	UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error)
+	UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error)
+	UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error)
 
 	// Lifecycle
 	Close() error

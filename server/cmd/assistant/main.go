@@ -37,6 +37,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -166,6 +167,12 @@ func main() {
 	// nightly batch). Shared by the web and WhatsApp ingress paths.
 	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, timezone, log)
 
+	// Daily routines ("scheduled skills"): editable start-of-day / end-of-day
+	// prompts run through the agent and delivered over WhatsApp. Supersedes the
+	// old reminder digest — carry its configured time over on first boot.
+	routineSvc := routine.New(settingsSvc, db, assistant, timezone, cfg.Owner.WhatsAppJID, log)
+	routineSvc.MigrateFromDigest(ctx)
+
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
@@ -196,18 +203,27 @@ func main() {
 			// Recent conversation history for context (before logging this message).
 			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
 
-			// Log incoming message
+			// Log incoming message. Note when a photo is attached so image-only
+			// messages don't show up as empty in the logs.
+			logBody := msg.Text
+			if msg.Image != "" {
+				if logBody == "" {
+					logBody = "[image]"
+				} else {
+					logBody += " [image]"
+				}
+			}
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
 				Sender:    msg.From,
-				Body:      msg.Text,
+				Body:      logBody,
 			})
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(uctx, msg.Text, history, "")
+			res, err := assistant.Run(uctx, msg.Text, history, msg.Image)
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
@@ -270,9 +286,10 @@ func main() {
 			evalJudge.JudgeInline(ctx, traceID)
 		})
 
-		// Reminders are delivered to the paired WhatsApp account (derived from
-		// pairing), regardless of the reminder's stored recipient.
-		reminderHandler.SetSendFunc(func(ctx context.Context, _ string, text string) error {
+		// Proactive messages (reminders + daily routines) are delivered to the
+		// paired WhatsApp account (derived from pairing), regardless of any stored
+		// recipient.
+		deliver := func(ctx context.Context, _ string, text string) error {
 			// Deliver to the primary (first) allowlisted number. Fall back to the
 			// paired account itself ("message yourself" mode) when none is set.
 			to := ""
@@ -286,7 +303,9 @@ func main() {
 				return fmt.Errorf("whatsapp not connected")
 			}
 			return wa.SendMessage(ctx, to, text)
-		})
+		}
+		reminderHandler.SetSendFunc(deliver)
+		routineSvc.SetSendFunc(deliver)
 
 		if err := wa.Init(ctx); err != nil {
 			log.Error("failed to initialize WhatsApp", "error", err)
@@ -318,6 +337,7 @@ func main() {
 			settingsSvc,
 			llmClient,
 			evalJudge,
+			routineSvc,
 			composioClient,
 			waCtl,
 			db,
@@ -344,6 +364,9 @@ func main() {
 
 	// Start the response-evaluation scheduler (nightly LLM-as-judge batch).
 	go evalJudge.StartScheduler(ctx)
+
+	// Start the daily routine scheduler (start-of-day / end-of-day briefings).
+	go routineSvc.StartScheduler(ctx)
 
 	log.Info("personal assistant is running — press Ctrl+C to stop")
 

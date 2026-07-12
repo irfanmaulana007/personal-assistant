@@ -10,6 +10,7 @@ import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { WhatsAppSettings } from './components/settings/WhatsAppSettings';
+import { RoutinesSettings } from './components/settings/RoutinesSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
 import { Dashboard } from './components/Dashboard';
@@ -70,6 +71,7 @@ function App() {
             <Route index element={<AgentSettings />} />
             {isAdmin && <Route path="model" element={<ModelSettings />} />}
             {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
+            {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
             <Route path="display" element={<DisplaySettings />} />
             {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
           </Route>
