@@ -160,6 +160,15 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
   });
 }
 
+// Deletes every event on the user's Composio-connected Google Calendar(s).
+// Destructive recovery action for wiping a flood of duplicate events; returns
+// how many were deleted and how many delete calls failed.
+export async function clearAllCalendarEvents(): Promise<{ deleted: number; failed: number }> {
+  return request<{ deleted: number; failed: number }>('/api/calendar/events', {
+    method: 'DELETE',
+  });
+}
+
 export async function getRoutines(): Promise<Routine[]> {
   return request<Routine[]>('/api/routines');
 }
