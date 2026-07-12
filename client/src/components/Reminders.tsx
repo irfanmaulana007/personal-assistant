@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   listReminders,
   createReminder,
@@ -26,6 +27,85 @@ const MODES: { value: RepeatMode; label: string }[] = [
 ];
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Repeat modes the list can be filtered by. 'all' shows everything (including
+// any legacy 'specific' reminders); the rest mirror MODES above.
+type ReminderFilter = 'all' | 'once' | 'daily' | 'weekly' | 'monthly';
+const FILTERS: { value: ReminderFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  ...MODES.map((m) => ({ value: m.value as ReminderFilter, label: m.label })),
+];
+
+// Timestamp (ms) of a reminder's next upcoming fire, so the list can show the
+// closest event first. Reminders with no future fire (e.g. a past one-off) sort
+// last via Infinity.
+function nextOccurrence(r: Reminder, now: Date): number {
+  const times = r.times.length ? r.times : ['00:00'];
+  const parse = (hm: string) => {
+    const [hh, mm] = hm.split(':').map(Number);
+    return { hh: hh || 0, mm: mm || 0 };
+  };
+  const at = (dayOffset: number, hh: number, mm: number) =>
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hh, mm, 0, 0).getTime();
+
+  const nowT = now.getTime();
+  let best = Infinity;
+  const consider = (t: number) => {
+    if (t >= nowT && t < best) best = t;
+  };
+
+  switch (r.repeat_mode) {
+    case 'once': {
+      const d = new Date(r.once_date + 'T00:00:00');
+      if (!isNaN(d.getTime())) {
+        for (const t of times) {
+          const { hh, mm } = parse(t);
+          consider(new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm).getTime());
+        }
+      }
+      break;
+    }
+    case 'specific': {
+      const d = new Date(r.event_at);
+      if (!isNaN(d.getTime())) consider(d.getTime());
+      break;
+    }
+    case 'daily': {
+      for (let off = 0; off <= 1; off++) {
+        for (const t of times) {
+          const { hh, mm } = parse(t);
+          consider(at(off, hh, mm));
+        }
+      }
+      break;
+    }
+    case 'weekly': {
+      const days = r.weekdays.length ? r.weekdays : [now.getDay()];
+      for (let off = 0; off <= 7; off++) {
+        const dow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + off).getDay();
+        if (!days.includes(dow)) continue;
+        for (const t of times) {
+          const { hh, mm } = parse(t);
+          consider(at(off, hh, mm));
+        }
+      }
+      break;
+    }
+    case 'monthly': {
+      for (let off = 0; off <= 2; off++) {
+        const base = new Date(now.getFullYear(), now.getMonth() + off, 1);
+        const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+        const day = Math.min(r.day_of_month || 1, lastDay);
+        for (const t of times) {
+          const { hh, mm } = parse(t);
+          consider(new Date(base.getFullYear(), base.getMonth(), day, hh, mm).getTime());
+        }
+      }
+      break;
+    }
+  }
+  return best;
+}
 
 function todayISO(): string {
   const d = new Date();
@@ -82,6 +162,40 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState('');
   const [clearResult, setClearResult] = useState<{ deleted: number; failed: number } | null>(null);
+
+  // Persist the active repeat-mode filter in the URL so it survives reloads and
+  // is shareable, matching the Logs page convention.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterParam = searchParams.get('repeat');
+  const filter: ReminderFilter = FILTERS.some((f) => f.value === filterParam)
+    ? (filterParam as ReminderFilter)
+    : 'all';
+  const setFilter = (next: ReminderFilter) => {
+    const sp = new URLSearchParams(searchParams);
+    if (next === 'all') sp.delete('repeat');
+    else sp.set('repeat', next);
+    setSearchParams(sp);
+  };
+
+  // Count per repeat mode for the filter pills.
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of reminders) c[r.repeat_mode] = (c[r.repeat_mode] ?? 0) + 1;
+    return c;
+  }, [reminders]);
+
+  // Apply the filter, then sort by next fire (closest first), breaking ties by
+  // title A–Z.
+  const visible = useMemo(() => {
+    const now = new Date();
+    const list = filter === 'all' ? reminders : reminders.filter((r) => r.repeat_mode === filter);
+    return [...list].sort((a, b) => {
+      const ta = nextOccurrence(a, now);
+      const tb = nextOccurrence(b, now);
+      if (ta !== tb) return ta - tb;
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    });
+  }, [reminders, filter]);
 
   useEffect(() => {
     let active = true;
@@ -302,6 +416,38 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
         )}
       </Modal>
 
+      {!loading && reminders.length > 0 && (
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          {FILTERS.map((f) => {
+            const count = f.value === 'all' ? reminders.length : (counts[f.value] ?? 0);
+            const active = filter === f.value;
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setFilter(f.value)}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${
+                  active
+                    ? 'border-indigo-600 bg-indigo-50 font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/60'
+                }`}
+              >
+                {f.label}
+                <span
+                  className={`rounded-full px-1.5 text-xs ${
+                    active
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div className="mt-5 space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -310,9 +456,11 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
         </div>
       ) : reminders.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No reminders yet.</p>
+      ) : visible.length === 0 ? (
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No {filter} reminders.</p>
       ) : (
-        <div className="mt-5 space-y-2">
-          {reminders.map((r) => (
+        <div className="mt-4 space-y-2">
+          {visible.map((r) => (
             <div
               key={r.id}
               className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
