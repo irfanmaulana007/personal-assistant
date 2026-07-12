@@ -20,6 +20,15 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
     if (!disabled) inputRef.current?.focus();
   }, [disabled]);
 
+  // Grow the textarea to fit its content (up to the CSS max-height, after which
+  // it scrolls). Runs whenever the text changes, including the reset on send.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+
   const canSend = (text.trim() !== '' || image !== null) && !disabled;
 
   const submit = () => {
@@ -118,7 +127,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
             placeholder="Type a message..."
             rows={1}
             disabled={disabled}
-            className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
+            className="max-h-40 flex-1 resize-none overflow-y-auto rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
           />
           <button
             type="submit"
