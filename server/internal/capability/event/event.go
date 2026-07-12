@@ -22,6 +22,7 @@ import (
 // interface so the agenda logic is unit-testable without Composio).
 type Calendar interface {
 	ListEvents(ctx context.Context, userID int64, from, to time.Time) []calendar.Event
+	HasCalendar(ctx context.Context, userID int64) bool
 }
 
 // Handler creates one-time events (calendar-first, reminder-fallback).
@@ -63,7 +64,7 @@ func (h *Handler) agenda(ctx context.Context, result *intent.ParseResult) (strin
 	}
 	userID := authctx.UserID(ctx)
 	days := 7
-	if d, err := strconv.Atoi(result.Entities["days"]); err == nil && d > 0 && d <= 60 {
+	if d, err := strconv.Atoi(result.Entities["days"]); err == nil && d > 0 && d <= 366 {
 		days = d
 	}
 	now := time.Now().In(h.timezone)
@@ -72,7 +73,12 @@ func (h *Handler) agenda(ctx context.Context, result *intent.ParseResult) (strin
 
 	events := h.calendar.ListEvents(ctx, userID, from, to)
 	if len(events) == 0 {
-		return "No calendar events in that window (or no Google Calendar connected).", nil
+		// Distinguish "no calendar connected" from "connected but empty window"
+		// so we never tell the user their calendar is disconnected when it isn't.
+		if h.calendar.HasCalendar(ctx, userID) {
+			return fmt.Sprintf("Your Google Calendar is connected, but I found no events in the next %d days.", days), nil
+		}
+		return "No Google Calendar is connected.", nil
 	}
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("*Calendar* (next %d days):\n", days))

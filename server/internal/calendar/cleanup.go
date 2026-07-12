@@ -52,8 +52,8 @@ func (s *Service) mastersFor(ctx context.Context, key, uid, connID, calID string
 	for page := 0; page < 200; page++ { // safety cap on pagination
 		args := map[string]any{
 			"calendar_id":   calID,
-			"timeMin":       from.In(s.tz).Format(time.RFC3339),
-			"timeMax":       to.In(s.tz).Format(time.RFC3339),
+			"time_min":      from.In(s.tz).Format(time.RFC3339),
+			"time_max":      to.In(s.tz).Format(time.RFC3339),
 			"single_events": false,
 			"max_results":   250,
 			"timezone":      s.tz.String(),
