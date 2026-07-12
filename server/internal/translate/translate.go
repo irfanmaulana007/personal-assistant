@@ -7,6 +7,9 @@ package translate
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -14,6 +17,9 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 )
+
+// ErrNotConfigured is returned by Between when no LLM API key is configured.
+var ErrNotConfigured = errors.New("llm api key not configured")
 
 // timeout bounds a single translation call so a create/update is never blocked
 // for long on a slow provider (translation is short — a title or a note).
@@ -82,6 +88,96 @@ func (t *Translator) run(ctx context.Context, system, s string) string {
 		return s
 	}
 	return out
+}
+
+// pairPrompt drives a single, bidirectional translation between two languages
+// for the group Translator skill. The model detects which of the two languages
+// the message is in and translates it into the other, returning a strict JSON
+// object so the caller can label both sides deterministically.
+const pairPrompt = `You translate messages in a WhatsApp group that uses exactly two languages.
+Language A is "%s". Language B is "%s".
+The message you are given is written in either language A or language B.
+Detect which one it is, then translate the message into the OTHER language.
+Preserve the meaning, tone, names, numbers, and any emoji. Do not add anything, explain, or answer the message — only translate it.
+Respond with ONLY a compact one-line JSON object, no code fences and nothing else:
+{"source":"A" or "B","translation":"<the message translated into the other language>"}
+Here "source" is the language the message is ALREADY written in (use the single letter A or B).`
+
+// pairResult is the model's structured reply for Between.
+type pairResult struct {
+	Source      string `json:"source"`
+	Translation string `json:"translation"`
+}
+
+// Between detects which of langA/langB the text is written in and translates it
+// into the other. It returns the resolved source language (equal to langA or
+// langB) and the translated text. On success source is always one of the two
+// inputs; if the model's reply cannot be parsed as JSON, source is returned
+// empty and translated holds the best-effort raw output so the caller can still
+// show something. It never mutates global state and is safe to call per message.
+func (t *Translator) Between(ctx context.Context, langA, langB, text string) (source, translated string, err error) {
+	if strings.TrimSpace(text) == "" {
+		return "", "", errors.New("empty text")
+	}
+	cfg, err := t.settings.LLMConfig(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if cfg.APIKey == "" {
+		return "", "", ErrNotConfigured
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	res, err := t.client.Complete(cctx, cfg, []llm.Message{
+		{Role: "system", Content: fmt.Sprintf(pairPrompt, langA, langB)},
+		{Role: "user", Content: text},
+	}, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	raw := stripFences(clean(res.Message.Content))
+	var pr pairResult
+	if err := json.Unmarshal([]byte(raw), &pr); err != nil {
+		// Model didn't honour the JSON contract. Fall back to showing the raw
+		// output as the translation with an unknown source, rather than failing.
+		if out := strings.TrimSpace(raw); out != "" {
+			return "", out, nil
+		}
+		return "", "", errors.New("empty translation")
+	}
+	translated = strings.TrimSpace(pr.Translation)
+	if translated == "" {
+		return "", "", errors.New("empty translation")
+	}
+	switch strings.ToUpper(strings.TrimSpace(pr.Source)) {
+	case "B":
+		source = langB
+	default:
+		// "A" or anything unexpected defaults to language A as the source.
+		source = langA
+	}
+	return source, translated, nil
+}
+
+// stripFences removes a wrapping ```-fenced block (optionally tagged, e.g.
+// ```json) that a model sometimes puts around JSON output.
+func stripFences(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	s = strings.TrimPrefix(s, "```")
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		// Drop an optional language tag on the opening fence line.
+		if !strings.Contains(s[:i], "{") {
+			s = s[i+1:]
+		}
+	}
+	s = strings.TrimSuffix(strings.TrimSpace(s), "```")
+	return strings.TrimSpace(s)
 }
 
 // clean trims whitespace and strips a single pair of wrapping quotes the model
