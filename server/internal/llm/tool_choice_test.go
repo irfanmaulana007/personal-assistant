@@ -52,6 +52,49 @@ func TestCompleteRequiringToolSendsRequired(t *testing.T) {
 	}
 }
 
+// TestCompleteRequiringToolFallsBackToAuto verifies the reactive safety net:
+// when the provider still rejects tool_choice=required at request time (e.g. a
+// thinking model whose alias IsThinkingModel doesn't recognize), the client
+// retries with "auto" and the turn completes instead of erroring. Model is a
+// non-thinking name so the proactive downgrade doesn't fire — the 400 does.
+func TestCompleteRequiringToolFallsBackToAuto(t *testing.T) {
+	var choices []any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got struct {
+			ToolChoice any `json:"tool_choice"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		choices = append(choices, got.ToolChoice)
+		w.Header().Set("Content-Type", "application/json")
+		if got.ToolChoice == "required" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Thinking mode does not support this tool_choice","type":"invalid_request_error"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{APIKey: "k", BaseURL: srv.URL, Model: "test-model"}
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "t", Parameters: json.RawMessage(`{}`)}}}
+	res, err := NewClient().CompleteRequiringTool(context.Background(), cfg, []Message{{Role: "user", Content: "catat ini"}}, tools)
+	if err != nil {
+		t.Fatalf("CompleteRequiringTool: %v", err)
+	}
+	if res.Message.Content != "ok" {
+		t.Errorf("content = %q, want ok", res.Message.Content)
+	}
+	want := []any{"required", "auto"}
+	if len(choices) != len(want) || choices[0] != want[0] || choices[1] != want[1] {
+		t.Errorf("tool_choice sequence = %v, want %v", choices, want)
+	}
+}
+
+// TestCompleteRequiringToolDowngradesForThinkingModel verifies the proactive
+// path: a recognized thinking model never receives tool_choice=required — it is
+// downgraded to auto before the request is sent, avoiding the 400 round-trip.
 func TestCompleteRequiringToolDowngradesForThinkingModel(t *testing.T) {
 	var got struct {
 		ToolChoice any `json:"tool_choice"`
