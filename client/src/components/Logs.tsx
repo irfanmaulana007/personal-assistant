@@ -38,11 +38,22 @@ function pretty(s: string): string {
 // buildDebugText renders a full trace into a plain-text block that can be
 // pasted straight into a chat/issue for debugging — every field a maintainer
 // would want, including tool calls, LLM steps, the judge score, and output.
+//
+// Every section is emitted unconditionally, with an explicit empty marker (e.g.
+// "(none)") when it has no data. That's deliberate: a debugger reading the block
+// needs to tell "this run genuinely had no tool calls" apart from "the Tool
+// calls section is absent" — a silently dropped section reads as missing context
+// and sends debugging down the wrong path.
 function buildDebugText(t: Trace): string {
   const L: string[] = [];
   const add = (label: string, value: unknown) => {
-    if (value === undefined || value === null || value === '') return;
-    L.push(`${label}: ${value}`);
+    const empty = value === undefined || value === null || value === '';
+    L.push(`${label}: ${empty ? '(none)' : value}`);
+  };
+  // section opens a labelled block, always leaving a blank line before it.
+  const section = (title: string) => {
+    L.push('');
+    L.push(`--- ${title} ---`);
   };
 
   L.push('=== RUN DETAIL ===');
@@ -59,42 +70,39 @@ function buildDebugText(t: Trace): string {
   );
   add('Latency (ms)', t.latency_ms);
   add('Est. cost (USD)', t.estimated_cost_usd);
-  if (t.skills && t.skills.length > 0) add('Skills', t.skills.join(', '));
+  add('Skills', t.skills && t.skills.length > 0 ? t.skills.join(', ') : '');
 
+  section('Quality score');
   if (t.score) {
-    L.push('');
-    L.push('--- Quality score ---');
     add('Overall', `${t.score.overall} / 5`);
     add('Accuracy', t.score.accuracy);
     add('Helpfulness', t.score.helpfulness);
     add('Safety', t.score.safety);
     add('Judge model', t.score.judge_model);
     add('Rationale', t.score.rationale);
+  } else {
+    L.push('(not scored)');
   }
 
-  L.push('');
-  L.push('--- Input ---');
+  section('Input');
   L.push(t.input || '(none)');
 
-  if (t.error) {
-    L.push('');
-    L.push('--- Error ---');
-    L.push(t.error);
-  }
+  section('Error');
+  L.push(t.error || '(none)');
 
+  section(`Tool calls (${t.tools?.length ?? 0})`);
   if (t.tools && t.tools.length > 0) {
-    L.push('');
-    L.push(`--- Tool calls (${t.tools.length}) ---`);
     t.tools.forEach((tool, i) => {
       L.push(`[${i + 1}] ${tool.name}${tool.latency_ms != null ? ` (${tool.latency_ms}ms)` : ''}`);
       L.push(`  arguments: ${pretty(tool.arguments) || '{}'}`);
       L.push(`  result: ${pretty(tool.result)}`);
     });
+  } else {
+    L.push('(none)');
   }
 
+  section(`LLM calls (${t.steps?.length ?? 0})`);
   if (t.steps && t.steps.length > 0) {
-    L.push('');
-    L.push(`--- LLM calls (${t.steps.length}) ---`);
     t.steps.forEach((st) => {
       const finish =
         st.tool_calls && st.tool_calls.length > 0
@@ -104,10 +112,11 @@ function buildDebugText(t: Trace): string {
         `#${st.step} ${st.model} · ${st.total_tokens} tok (${st.prompt_tokens}/${st.completion_tokens}) · ${st.latency_ms}ms · $${st.estimated_cost_usd} · ${finish}`,
       );
     });
+  } else {
+    L.push('(none)');
   }
 
-  L.push('');
-  L.push('--- Output ---');
+  section('Output');
   L.push(t.output || '(none)');
 
   return L.join('\n');
@@ -440,7 +449,19 @@ export function Logs() {
                   Run detail
                 </h2>
                 <div className="flex items-center gap-1">
-                  <CopyButton getText={() => buildDebugText(selected)} />
+                  {/* Gate the copy until the full trace has loaded: the drawer
+                      first shows the lightweight list-row trace, which carries
+                      no tool calls, LLM calls, or skills. Copying then would
+                      silently produce an incomplete debug dump. */}
+                  <CopyButton
+                    getText={() => buildDebugText(selected)}
+                    disabled={detailLoading || !!detailError}
+                    disabledTitle={
+                      detailError
+                        ? 'Run detail failed to load — reopen the run to copy full context'
+                        : 'Loading full run detail…'
+                    }
+                  />
                   <button
                     onClick={() => setSelected(null)}
                     aria-label="Close"
@@ -755,11 +776,25 @@ function EmptyState({ children }: { children: React.ReactNode }) {
  * CopyButton copies the text produced by getText() to the clipboard, showing a
  * brief check-mark confirmation. Used in the run-detail header to grab the whole
  * trace as a paste-ready debug dump.
+ *
+ * `disabled` gates copying until the source data is complete — the run-detail
+ * drawer opens on a lightweight list-row trace (no tool calls / LLM calls /
+ * skills) and only swaps in the full trace once the detail request resolves.
+ * Copying before then would yield a debug dump missing exactly those sections.
  */
-function CopyButton({ getText }: { getText: () => string }) {
+function CopyButton({
+  getText,
+  disabled = false,
+  disabledTitle,
+}: {
+  getText: () => string;
+  disabled?: boolean;
+  disabledTitle?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
+    if (disabled) return;
     const text = getText();
     try {
       await navigator.clipboard.writeText(text);
@@ -785,12 +820,21 @@ function CopyButton({ getText }: { getText: () => string }) {
   return (
     <button
       onClick={copy}
+      disabled={disabled}
       aria-label={copied ? 'Copied' : 'Copy debug details'}
-      title={copied ? 'Copied!' : 'Copy debug details'}
+      title={
+        disabled
+          ? (disabledTitle ?? 'Copy debug details')
+          : copied
+            ? 'Copied!'
+            : 'Copy debug details'
+      }
       className={`rounded-lg p-1.5 transition ${
-        copied
-          ? 'text-green-600 dark:text-green-400'
-          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50'
+        disabled
+          ? 'cursor-not-allowed text-gray-300 dark:text-gray-600'
+          : copied
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50'
       }`}
     >
       {copied ? (
