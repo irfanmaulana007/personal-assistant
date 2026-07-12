@@ -90,18 +90,46 @@ func (t *Translator) run(ctx context.Context, system, s string) string {
 	return out
 }
 
+// Formality controls the register of a group translation. These string values
+// are what settings persists per group; an empty/unknown value is treated as
+// FormalityAsIs.
+const (
+	FormalityAsIs   = "asis"   // keep the original tone and register
+	FormalityCasual = "casual" // rephrase casually and friendly
+	FormalityFormal = "formal" // rephrase formally and politely
+)
+
 // pairPrompt drives a single, bidirectional translation between two languages
 // for the group Translator skill. The model detects which of the two languages
 // the message is in and translates it into the other, returning a strict JSON
-// object so the caller can label both sides deterministically.
+// object so the caller can label both sides deterministically. The third
+// placeholder is a formality directive (see formalityDirective); the grammar
+// line below is always present so the translation reads cleanly regardless of
+// the register or of typos in the original.
 const pairPrompt = `You translate messages in a WhatsApp group that uses exactly two languages.
 Language A is "%s". Language B is "%s".
 The message you are given is written in either language A or language B.
 Detect which one it is, then translate the message into the OTHER language.
-Preserve the meaning, tone, names, numbers, and any emoji. Do not add anything, explain, or answer the message — only translate it.
+Preserve the meaning, names, numbers, and any emoji. Do not add anything, explain, or answer the message — only translate it.
+%s
+Always make the translation grammatically correct and natural in the target language: fix any spelling, grammar, or punctuation mistakes from the original so the output reads cleanly.
 Respond with ONLY a compact one-line JSON object, no code fences and nothing else:
 {"source":"A" or "B","translation":"<the message translated into the other language>"}
 Here "source" is the language the message is ALREADY written in (use the single letter A or B).`
+
+// formalityDirective returns the one-line register instruction injected into
+// pairPrompt for the given formality. An empty or unknown value falls back to
+// as-is.
+func formalityDirective(formality string) string {
+	switch formality {
+	case FormalityCasual:
+		return "Make the translation casual, friendly, and relaxed, as if chatting with a friend."
+	case FormalityFormal:
+		return "Make the translation formal, polite, and respectful."
+	default:
+		return "Keep the original tone and level of formality — if the message is casual keep it casual, if it is formal keep it formal."
+	}
+}
 
 // pairResult is the model's structured reply for Between.
 type pairResult struct {
@@ -115,7 +143,7 @@ type pairResult struct {
 // inputs; if the model's reply cannot be parsed as JSON, source is returned
 // empty and translated holds the best-effort raw output so the caller can still
 // show something. It never mutates global state and is safe to call per message.
-func (t *Translator) Between(ctx context.Context, langA, langB, text string) (source, translated string, err error) {
+func (t *Translator) Between(ctx context.Context, langA, langB, formality, text string) (source, translated string, err error) {
 	if strings.TrimSpace(text) == "" {
 		return "", "", errors.New("empty text")
 	}
@@ -131,7 +159,7 @@ func (t *Translator) Between(ctx context.Context, langA, langB, text string) (so
 	defer cancel()
 
 	res, err := t.client.Complete(cctx, cfg, []llm.Message{
-		{Role: "system", Content: fmt.Sprintf(pairPrompt, langA, langB)},
+		{Role: "system", Content: fmt.Sprintf(pairPrompt, langA, langB, formalityDirective(formality))},
 		{Role: "user", Content: text},
 	}, nil)
 	if err != nil {
