@@ -16,6 +16,22 @@ const inputClass =
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+// Local YYYY-MM-DD for a Date — the value format a native <input type="date"> uses.
+function toDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Human-friendly completion date, e.g. "Jul 12, 2026". Empty string when unset.
+function formatDoneDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 interface CategoryMeta {
   key: BucketCategory;
   label: string;
@@ -211,6 +227,8 @@ export function BucketList() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  // The item awaiting a completion-date choice when being checked off.
+  const [doneItem, setDoneItem] = useState<BucketItem | null>(null);
 
   // Filters.
   const [filterCat, setFilterCat] = useState<BucketCategory | 'all'>('all');
@@ -245,12 +263,33 @@ export function BucketList() {
     setShowAdd(false);
   };
 
+  // Checking an item opens the date picker so the exact completion date can be
+  // recorded; unchecking clears it straight away.
   const toggleDone = async (g: BucketItem) => {
+    if (!g.done) {
+      setDoneItem(g);
+      return;
+    }
     setBusyId(g.id);
     setError('');
     try {
-      await setBucketItemDone(g.id, !g.done);
+      await setBucketItemDone(g.id, false);
       await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Confirm completion with a chosen date (YYYY-MM-DD from the picker).
+  const confirmDone = async (g: BucketItem, dateISO: string) => {
+    setBusyId(g.id);
+    setError('');
+    try {
+      await setBucketItemDone(g.id, true, dateISO);
+      await reload();
+      setDoneItem(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     } finally {
@@ -529,6 +568,22 @@ export function BucketList() {
         )}
       </Modal>
 
+      {/* Completion date picker — shown when checking an item off. */}
+      <Modal
+        open={doneItem != null}
+        onClose={() => setDoneItem(null)}
+        title="Mark as done"
+        description={doneItem ? `When did you complete "${doneItem.title}"?` : undefined}
+      >
+        {doneItem && (
+          <DoneDateForm
+            saving={busyId === doneItem.id}
+            onConfirm={(dateISO) => confirmDone(doneItem, dateISO)}
+            onCancel={() => setDoneItem(null)}
+          />
+        )}
+      </Modal>
+
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {/* Filters */}
@@ -708,6 +763,19 @@ function ItemRow({
             {g.note}
           </p>
         )}
+        {g.done && g.done_at && (
+          <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Done {formatDoneDate(g.done_at)}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ResolutionStar
@@ -833,6 +901,59 @@ function BucketItemForm({
           className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
         >
           {saving ? 'Saving…' : submitLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 transition hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Completion-date chooser shown inside a Modal when an item is checked off.
+// Defaults to today and disallows future dates.
+function DoneDateForm({
+  saving,
+  onConfirm,
+  onCancel,
+}: {
+  saving: boolean;
+  onConfirm: (dateISO: string) => void;
+  onCancel: () => void;
+}) {
+  const today = toDateInput(new Date());
+  const [date, setDate] = useState(today);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!date) return;
+    onConfirm(date);
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+        Completion date
+      </label>
+      <input
+        type="date"
+        value={date}
+        max={today}
+        onChange={(e) => setDate(e.target.value)}
+        className={`${inputClass} max-w-[12rem]`}
+        autoFocus
+      />
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={saving || !date}
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Mark done'}
         </button>
         <button
           type="button"

@@ -112,7 +112,7 @@ func (h *Handler) check(ctx context.Context, result *intent.ParseResult) (string
 	if g.Done {
 		return fmt.Sprintf("*%s* is already checked off. 🎉", g.Title), nil
 	}
-	if err := h.store.SetBucketItemDone(ctx, authctx.UserID(ctx), g.ID, true); err != nil {
+	if err := h.store.SetBucketItemDone(ctx, authctx.UserID(ctx), g.ID, true, nil); err != nil {
 		return "", fmt.Errorf("check bucket item: %w", err)
 	}
 	return fmt.Sprintf("Checked off *%s* ☑ — nice one! 🎉", g.Title), nil

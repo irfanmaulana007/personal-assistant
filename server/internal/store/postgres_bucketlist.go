@@ -67,14 +67,20 @@ func (s *PostgresStore) UpdateBucketItem(ctx context.Context, userID, id int64, 
 }
 
 // SetBucketItemDone checks/unchecks an item, stamping done_at when checked.
-func (s *PostgresStore) SetBucketItemDone(ctx context.Context, userID, id int64, done bool) error {
-	var doneAt any
+// When done and doneAt is non-nil, that timestamp is recorded; otherwise it
+// falls back to the current time. done_at is cleared when unchecked.
+func (s *PostgresStore) SetBucketItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error {
+	var at any
 	if done {
-		doneAt = time.Now().UTC()
+		if doneAt != nil {
+			at = doneAt.UTC()
+		} else {
+			at = time.Now().UTC()
+		}
 	}
 	_, err := s.pool.Exec(ctx,
 		`UPDATE bucket_list_items SET done = $1, done_at = $2 WHERE id = $3 AND user_id = $4`,
-		done, doneAt, id, userID)
+		done, at, id, userID)
 	if err != nil {
 		return fmt.Errorf("set bucket item done: %w", err)
 	}

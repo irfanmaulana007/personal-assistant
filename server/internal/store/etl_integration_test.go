@@ -29,7 +29,7 @@ func TestETLSQLiteToHybridRoundTrip(t *testing.T) {
 		t.Fatalf("seed contact: %v", err)
 	}
 	g, _ := src.CreateBucketItem(ctx, u.ID, "Learn Go", "", "", CategorySelfImprovement, nil)
-	_ = src.SetBucketItemDone(ctx, u.ID, g.ID, true)
+	_ = src.SetBucketItemDone(ctx, u.ID, g.ID, true, nil)
 
 	trip, _ := src.CreateTrip(ctx, u.ID, "Japan", "Tokyo", "JPY", 5000)
 	if _, err := src.AddExpense(ctx, u.ID, trip.ID, 42.5, "JPY", "food", "ramen", time.Now().UTC()); err != nil {

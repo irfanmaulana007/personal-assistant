@@ -536,7 +536,7 @@ type DataStore interface {
 	ListBucketItems(ctx context.Context, userID int64) ([]BucketItem, error)
 	GetBucketItem(ctx context.Context, userID, id int64) (*BucketItem, error)
 	UpdateBucketItem(ctx context.Context, userID, id int64, title, description, note, category string) error
-	SetBucketItemDone(ctx context.Context, userID, id int64, done bool) error
+	SetBucketItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error
 	SetBucketItemResolution(ctx context.Context, userID, id int64, year *int) error
 	DeleteBucketItem(ctx context.Context, userID, id int64) error
 

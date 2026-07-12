@@ -189,10 +189,16 @@ export async function updateBucketItem(id: number, g: BucketItemPayload): Promis
   return request<BucketItem>(`/api/bucket-list/${id}`, { method: 'PUT', body: JSON.stringify(g) });
 }
 
-export async function setBucketItemDone(id: number, done: boolean): Promise<BucketItem> {
+// Mark an item done/undone. When checking, an optional `doneAt` (RFC3339 or
+// "YYYY-MM-DD") records the exact completion date; omit it to default to now.
+export async function setBucketItemDone(
+  id: number,
+  done: boolean,
+  doneAt?: string,
+): Promise<BucketItem> {
   return request<BucketItem>(`/api/bucket-list/${id}/done`, {
     method: 'PUT',
-    body: JSON.stringify({ done }),
+    body: JSON.stringify({ done, done_at: done ? doneAt : undefined }),
   });
 }
 
