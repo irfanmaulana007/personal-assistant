@@ -4,8 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// clearWorkers bounds how many event deletes run concurrently in ClearAll.
+// Google Calendar has no bulk-delete endpoint, so ClearAll must issue one
+// delete call per event; fanning them out cuts a hundreds-of-events wipe from
+// minutes down to seconds. The cap is deliberately modest so we stay well under
+// Google's per-user rate limits (and a rate-limited call is retried, see
+// deleteWithRetry) rather than triggering a flood of 403s.
+const clearWorkers = 10
 
 // This file supports the one-off duplicate-cleanup maintenance command
 // (server/cmd/calcleanup). Unlike ListEvents (which expands recurrences via
@@ -54,6 +65,12 @@ func (s *Service) ListMasters(ctx context.Context, userID int64, from, to time.T
 // This is a destructive recovery action, surfaced to the user so they can wipe a
 // runaway flood of duplicate events that the agent can no longer clean up on its
 // own and that Google Calendar's own UI refuses to bulk-delete.
+//
+// Deletes are fanned out across clearWorkers goroutines because Google exposes
+// no bulk-delete call — one HTTP round-trip per event, done serially, turns a
+// few hundred events into minutes of wall-clock latency. A rate-limited delete
+// is retried with backoff (deleteWithRetry) so higher concurrency doesn't just
+// convert speed into a wave of 403s.
 func (s *Service) ClearAll(ctx context.Context, userID int64) (deleted, failed int, err error) {
 	now := time.Now().In(s.tz)
 	// A very wide window so long-past and far-future events are both swept up.
@@ -63,16 +80,69 @@ func (s *Service) ClearAll(ctx context.Context, userID int64) (deleted, failed i
 	if err != nil {
 		return 0, 0, err
 	}
+
+	var deletedN, failedN int64
+	sem := make(chan struct{}, clearWorkers)
+	var wg sync.WaitGroup
 	for _, m := range masters {
-		if e := s.deleteInCalendar(ctx, userID, m.Account, m.Calendar, m.ID); e != nil {
-			failed++
-			s.log.Warn("clear-all delete failed", "id", m.ID, "title", m.Title, "error", e)
-			continue
+		if ctx.Err() != nil {
+			break
 		}
-		deleted++
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(m MasterEvent) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if e := s.deleteWithRetry(ctx, userID, m); e != nil {
+				atomic.AddInt64(&failedN, 1)
+				s.log.Warn("clear-all delete failed", "id", m.ID, "title", m.Title, "error", e)
+				return
+			}
+			atomic.AddInt64(&deletedN, 1)
+		}(m)
 	}
+	wg.Wait()
+
+	deleted, failed = int(deletedN), int(failedN)
 	s.log.Info("cleared calendar events", "user", userID, "deleted", deleted, "failed", failed)
 	return deleted, failed, nil
+}
+
+// deleteWithRetry deletes one event, retrying a few times with backoff when
+// Google reports a rate-limit/quota error. Non-rate-limit errors (e.g. the
+// event is already gone) fail fast — retrying them would only slow the sweep.
+func (s *Service) deleteWithRetry(ctx context.Context, userID int64, m MasterEvent) error {
+	const maxAttempts = 4
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			// Backoff: 250ms, 500ms, 1s. Bounded by ctx so a cancelled
+			// request stops waiting immediately.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(250*(1<<(attempt-1))) * time.Millisecond):
+			}
+		}
+		err = s.deleteInCalendar(ctx, userID, m.Account, m.Calendar, m.ID)
+		if err == nil || !isRateLimited(err) {
+			return err
+		}
+	}
+	return err
+}
+
+// isRateLimited reports whether a delete error is Google's rate-limit/quota
+// signal, which is worth retrying (as opposed to e.g. a not-found error).
+func isRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "ratelimit") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "quota") ||
+		strings.Contains(msg, "429")
 }
 
 func (s *Service) mastersFor(ctx context.Context, key, uid, connID, calID string, from, to time.Time) ([]MasterEvent, error) {
