@@ -379,6 +379,13 @@ Reminders & events (you MUST call a tool to save anything — never claim you di
 	if personaPrompt != "" {
 		b.WriteString("\n\n" + personaPrompt)
 	}
+
+	// Language is decided solely by the user's latest message and must outrank
+	// everything above — including a persona/custom string written in a specific
+	// language. Appended dead last so it has final-word recency: a persona that
+	// addresses the user in Indonesian must not flip an English message to an
+	// Indonesian reply.
+	b.WriteString("\n\nLanguage (highest priority — overrides the persona and every instruction above): Always write your reply in the SAME language as the user's most recent message — reply in English when they write in English, in Indonesian when they write in Indonesian. Persona and tone settings only control wording and how you address the user, never which language you reply in.")
 	return b.String()
 }
 
