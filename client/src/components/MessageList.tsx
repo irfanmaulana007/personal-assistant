@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Message } from './Message';
+import { TypingIndicator } from './TypingIndicator';
+import { loadingPhrase } from '../lib/loadingPhrase';
 import type { ChatMessage } from '../types';
 
 interface MessageListProps {
@@ -44,31 +46,17 @@ export function MessageList({ messages, loading }: MessageListProps) {
     );
   }
 
+  // While loading, the last message is always the user's just-sent message —
+  // derive the contextual phrase from it (e.g. "Checking your calendar").
+  const lastOutgoing = [...messages].reverse().find((m) => m.direction === 'out');
+  const phrase = loadingPhrase(lastOutgoing?.body);
+
   return (
     <div className="flex-1 overflow-y-auto bg-white px-4 py-6 dark:bg-gray-900">
       {messages.map((msg) => (
         <Message key={msg.id} message={msg} />
       ))}
-      {loading && (
-        <div className="mb-3 flex justify-start">
-          <div className="rounded-2xl rounded-tl-sm bg-gray-100 px-4 py-2.5 dark:bg-gray-800">
-            <div className="flex gap-1">
-              <span
-                className="w-2 h-2 bg-gray-400 rounded-full animate-bounce dark:bg-gray-600"
-                style={{ animationDelay: '0ms' }}
-              />
-              <span
-                className="w-2 h-2 bg-gray-400 rounded-full animate-bounce dark:bg-gray-600"
-                style={{ animationDelay: '150ms' }}
-              />
-              <span
-                className="w-2 h-2 bg-gray-400 rounded-full animate-bounce dark:bg-gray-600"
-                style={{ animationDelay: '300ms' }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {loading && <TypingIndicator phrase={phrase} />}
       <div ref={bottomRef} />
     </div>
   );
