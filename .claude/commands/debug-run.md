@@ -11,6 +11,7 @@ The user will paste a block that looks like this:
 ```
 === RUN DETAIL ===
 ID: 43
+Environment: production
 Status: ok
 Created: 2026-07-11T03:07:28Z
 User: Irfan (#1)
@@ -21,8 +22,17 @@ Latency (ms): 9587
 Est. cost (USD): 0.0020118000000000002
 Skills: bucket_list, ask_about_contact, travel_control, activity_summary, food_calories, hiking_tracker, english_tutor
 
+--- Quality score ---
+(not scored)
+
 --- Input ---
 Minta braket piala dunia dong
+
+--- Error ---
+(none)
+
+--- Tool calls (0) ---
+(none)
 
 --- LLM calls (1) ---
 #1 deepseek-v4-flash · 13913 tok (13456/457) · 7493ms · $0.0020118000000000002 · stop
@@ -40,8 +50,12 @@ It is a **self-contained snapshot of one conversation turn** (one "trace") — t
 user's message, which model and skills handled it, every LLM call and tool call
 made along the way, the optional LLM-judge quality score, and the final reply.
 It exists so a run can be pasted straight into a chat or issue and debugged
-without database access. Sections are emitted only when they have data, so a
-given block may omit some of the ones below.
+without database access. **Every section is always present**, even when it has
+no data — an empty one shows an explicit marker (`(none)`, or `(not scored)` for
+the quality score) rather than being dropped. So a section that reads `(none)`
+means the run genuinely had nothing there; a section that is *missing entirely*
+means the block was truncated or copied before the run detail finished loading
+(treat that as incomplete context, not as "no data").
 
 ## How to read each field
 
@@ -58,25 +72,26 @@ given block may omit some of the ones below.
   big system prompt, long history, or many skills injected.
 - `Latency (ms)` — wall-clock latency for the whole turn.
 - `Est. cost (USD)` — estimated cost of the turn.
-- `Skills` — the skills that were made available / selected for this turn. A
-  wrong or missing skill here is a common root cause of bad answers.
+- `Skills` — the skills the conversation actually exercised (derived from the
+  tools it invoked), or `(none)` if it used no skill-owned tools. A wrong or
+  missing skill here is a common root cause of bad answers.
 
-**`--- Quality score ---`** (only if the run was judged)
+**`--- Quality score ---`** (`(not scored)` if the run was never judged)
 - `Overall X / 5`, plus `Accuracy` / `Helpfulness` / `Safety` sub-scores, the
   `Judge model`, and a `Rationale`. A low score with a rationale is the fastest
   pointer to what went wrong.
 
 **`--- Input ---`** — the exact user message that triggered the turn.
 
-**`--- Error ---`** (only on failures) — the error string. Read this first when
-`Status` is not `ok`.
+**`--- Error ---`** (`(none)` on a clean run) — the error string. Read this first
+when `Status` is not `ok`.
 
-**`--- Tool calls (N) ---`** (only if tools ran) — each tool in order:
+**`--- Tool calls (N) ---`** (`(none)` when `N` is 0) — each tool in order:
 `[i] name (latency)`, its `arguments`, and its `result` (both pretty-printed
 JSON). Check whether the right tool was called with sane arguments and whether
 its result actually supports the final answer.
 
-**`--- LLM calls (N) ---`** — one line per model step:
+**`--- LLM calls (N) ---`** (`(none)` when `N` is 0) — one line per model step:
 `#step model · total tok (prompt/completion) · latency · $cost · finish`.
 The trailing field is the **finish reason** — either a normal stop reason
 (`stop`, `length`, …) or the list of tool calls that step requested. Multiple

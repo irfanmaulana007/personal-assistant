@@ -38,11 +38,22 @@ function pretty(s: string): string {
 // buildDebugText renders a full trace into a plain-text block that can be
 // pasted straight into a chat/issue for debugging — every field a maintainer
 // would want, including tool calls, LLM steps, the judge score, and output.
+//
+// Every section is emitted unconditionally, with an explicit empty marker (e.g.
+// "(none)") when it has no data. That's deliberate: a debugger reading the block
+// needs to tell "this run genuinely had no tool calls" apart from "the Tool
+// calls section is absent" — a silently dropped section reads as missing context
+// and sends debugging down the wrong path.
 function buildDebugText(t: Trace): string {
   const L: string[] = [];
   const add = (label: string, value: unknown) => {
-    if (value === undefined || value === null || value === '') return;
-    L.push(`${label}: ${value}`);
+    const empty = value === undefined || value === null || value === '';
+    L.push(`${label}: ${empty ? '(none)' : value}`);
+  };
+  // section opens a labelled block, always leaving a blank line before it.
+  const section = (title: string) => {
+    L.push('');
+    L.push(`--- ${title} ---`);
   };
 
   L.push('=== RUN DETAIL ===');
@@ -59,42 +70,39 @@ function buildDebugText(t: Trace): string {
   );
   add('Latency (ms)', t.latency_ms);
   add('Est. cost (USD)', t.estimated_cost_usd);
-  if (t.skills && t.skills.length > 0) add('Skills', t.skills.join(', '));
+  add('Skills', t.skills && t.skills.length > 0 ? t.skills.join(', ') : '');
 
+  section('Quality score');
   if (t.score) {
-    L.push('');
-    L.push('--- Quality score ---');
     add('Overall', `${t.score.overall} / 5`);
     add('Accuracy', t.score.accuracy);
     add('Helpfulness', t.score.helpfulness);
     add('Safety', t.score.safety);
     add('Judge model', t.score.judge_model);
     add('Rationale', t.score.rationale);
+  } else {
+    L.push('(not scored)');
   }
 
-  L.push('');
-  L.push('--- Input ---');
+  section('Input');
   L.push(t.input || '(none)');
 
-  if (t.error) {
-    L.push('');
-    L.push('--- Error ---');
-    L.push(t.error);
-  }
+  section('Error');
+  L.push(t.error || '(none)');
 
+  section(`Tool calls (${t.tools?.length ?? 0})`);
   if (t.tools && t.tools.length > 0) {
-    L.push('');
-    L.push(`--- Tool calls (${t.tools.length}) ---`);
     t.tools.forEach((tool, i) => {
       L.push(`[${i + 1}] ${tool.name}${tool.latency_ms != null ? ` (${tool.latency_ms}ms)` : ''}`);
       L.push(`  arguments: ${pretty(tool.arguments) || '{}'}`);
       L.push(`  result: ${pretty(tool.result)}`);
     });
+  } else {
+    L.push('(none)');
   }
 
+  section(`LLM calls (${t.steps?.length ?? 0})`);
   if (t.steps && t.steps.length > 0) {
-    L.push('');
-    L.push(`--- LLM calls (${t.steps.length}) ---`);
     t.steps.forEach((st) => {
       const finish =
         st.tool_calls && st.tool_calls.length > 0
@@ -104,10 +112,11 @@ function buildDebugText(t: Trace): string {
         `#${st.step} ${st.model} · ${st.total_tokens} tok (${st.prompt_tokens}/${st.completion_tokens}) · ${st.latency_ms}ms · $${st.estimated_cost_usd} · ${finish}`,
       );
     });
+  } else {
+    L.push('(none)');
   }
 
-  L.push('');
-  L.push('--- Output ---');
+  section('Output');
   L.push(t.output || '(none)');
 
   return L.join('\n');
