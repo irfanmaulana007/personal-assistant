@@ -28,8 +28,7 @@ const (
 
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
-	KeyReminderDigestTime  = "reminder_digest_time"  // local "HH:MM"; empty ⇒ no daily recap
-	KeyReminderDigestLast  = "reminder_digest_last"  // "YYYY-MM-DD" of the last recap sent
+	KeyReminderDigestTime  = "reminder_digest_time"  // legacy: local "HH:MM" daily recap (migrated to the start_of_day routine)
 	KeyReminderDefaultTime = "reminder_default_time" // local "HH:MM" used when a reminder has no time
 
 	KeyWhatsAppAllowlist = "whatsapp_allowlist" // comma-joined JIDs allowed to chat with the assistant
@@ -294,14 +293,16 @@ func (s *Service) SetRemindersEnabled(ctx context.Context, enabled bool) error {
 	return s.store.SetSetting(ctx, KeyRemindersEnabled, []byte(val))
 }
 
-// ReminderDigestTime returns the local "HH:MM" at which to send the daily recap,
-// or "" when the recap is disabled.
+// ReminderDigestTime returns the legacy daily-recap time ("HH:MM"), or "".
+// Retained only so the routine service can migrate it into the start_of_day
+// routine; the digest itself has been superseded by daily routines.
 func (s *Service) ReminderDigestTime(ctx context.Context) string {
 	v, _ := s.getString(ctx, KeyReminderDigestTime)
 	return v
 }
 
-// SetReminderDigestTime persists the daily-recap time ("HH:MM" or "" to disable).
+// SetReminderDigestTime persists the legacy daily-recap time (used to clear it
+// once migrated to a routine).
 func (s *Service) SetReminderDigestTime(ctx context.Context, hhmm string) error {
 	return s.store.SetSetting(ctx, KeyReminderDigestTime, []byte(hhmm))
 }
@@ -339,15 +340,24 @@ func (s *Service) SetReminderDefaultTime(ctx context.Context, hhmm string) error
 	return s.store.SetSetting(ctx, KeyReminderDefaultTime, []byte(hhmm))
 }
 
-// ReminderDigestLastSent returns the "YYYY-MM-DD" of the last recap sent, or "".
-func (s *Service) ReminderDigestLastSent(ctx context.Context) string {
-	v, _ := s.getString(ctx, KeyReminderDigestLast)
+// --- Daily routines (scheduled skills) ---
+
+// routineSettingKey composes the persisted key for a routine's field, e.g.
+// routine_start_of_day_time.
+func routineSettingKey(key, field string) string {
+	return "routine_" + key + "_" + field
+}
+
+// RoutineField returns the raw stored value for a routine's field, or "" if
+// unset (callers supply their own defaults).
+func (s *Service) RoutineField(ctx context.Context, key, field string) string {
+	v, _ := s.getString(ctx, routineSettingKey(key, field))
 	return v
 }
 
-// SetReminderDigestLastSent records the date a recap was last sent.
-func (s *Service) SetReminderDigestLastSent(ctx context.Context, date string) error {
-	return s.store.SetSetting(ctx, KeyReminderDigestLast, []byte(date))
+// SetRoutineField persists a routine's field value.
+func (s *Service) SetRoutineField(ctx context.Context, key, field, value string) error {
+	return s.store.SetSetting(ctx, routineSettingKey(key, field), []byte(value))
 }
 
 // --- Response evaluation (LLM-as-judge) ---

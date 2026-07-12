@@ -7,9 +7,11 @@ import type {
   Reminder,
   ReminderPayload,
   RemindersConfig,
+  Routine,
+  RoutineUpdate,
   ModelPrice,
-  LifeGoal,
-  LifeGoalPayload,
+  BucketItem,
+  BucketItemPayload,
   Skill,
   Role,
   ChatResponse,
@@ -20,9 +22,9 @@ import type {
   UsageStats,
   Integrations,
   WhatsAppStatus,
-  Channel,
+  ChannelValue,
   LogsResponse,
-  ScoreState,
+  ScoreValue,
   Trace,
 } from '../types';
 
@@ -158,27 +160,54 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
   });
 }
 
-export async function listLifeGoals(): Promise<LifeGoal[]> {
-  return request<LifeGoal[]>('/api/life-goals');
+export async function getRoutines(): Promise<Routine[]> {
+  return request<Routine[]>('/api/routines');
 }
 
-export async function createLifeGoal(g: LifeGoalPayload): Promise<LifeGoal> {
-  return request<LifeGoal>('/api/life-goals', { method: 'POST', body: JSON.stringify(g) });
+export async function updateRoutine(key: string, update: RoutineUpdate): Promise<Routine> {
+  return request<Routine>(`/api/routines/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify(update),
+  });
 }
 
-export async function updateLifeGoal(id: number, g: LifeGoalPayload): Promise<LifeGoal> {
-  return request<LifeGoal>(`/api/life-goals/${id}`, { method: 'PUT', body: JSON.stringify(g) });
+export async function runRoutine(key: string): Promise<{ sent: boolean; message: string }> {
+  return request<{ sent: boolean; message: string }>(`/api/routines/${key}/run`, {
+    method: 'POST',
+  });
 }
 
-export async function setLifeGoalDone(id: number, done: boolean): Promise<LifeGoal> {
-  return request<LifeGoal>(`/api/life-goals/${id}/done`, {
+export async function listBucketItems(): Promise<BucketItem[]> {
+  return request<BucketItem[]>('/api/bucket-list');
+}
+
+export async function createBucketItem(g: BucketItemPayload): Promise<BucketItem> {
+  return request<BucketItem>('/api/bucket-list', { method: 'POST', body: JSON.stringify(g) });
+}
+
+export async function updateBucketItem(id: number, g: BucketItemPayload): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}`, { method: 'PUT', body: JSON.stringify(g) });
+}
+
+export async function setBucketItemDone(id: number, done: boolean): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}/done`, {
     method: 'PUT',
     body: JSON.stringify({ done }),
   });
 }
 
-export async function deleteLifeGoal(id: number): Promise<void> {
-  await request(`/api/life-goals/${id}`, { method: 'DELETE' });
+export async function setBucketItemResolution(
+  id: number,
+  year: number | null,
+): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}/resolution`, {
+    method: 'PUT',
+    body: JSON.stringify({ year }),
+  });
+}
+
+export async function deleteBucketItem(id: number): Promise<void> {
+  await request(`/api/bucket-list/${id}`, { method: 'DELETE' });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {
@@ -269,26 +298,28 @@ export async function testSettings(): Promise<LlmTestResult> {
   return request<LlmTestResult>('/api/settings/test', { method: 'POST' });
 }
 
+// Multi-value filters (platform, score) are sent as a single comma-separated
+// query param; an empty array omits the param entirely ("all").
 export async function getUsage(
   from: string,
   to: string,
-  platform: Channel = '',
+  platforms: ChannelValue[] = [],
 ): Promise<UsageStats> {
-  const p = platform ? `&platform=${platform}` : '';
+  const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
   return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
 }
 
 export async function getLogs(
   from: string,
   to: string,
-  platform: Channel = '',
+  platforms: ChannelValue[] = [],
   limit = 25,
   cursor = 0,
-  score: ScoreState = '',
+  scores: ScoreValue[] = [],
 ): Promise<LogsResponse> {
-  const p = platform ? `&platform=${platform}` : '';
+  const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
   const c = cursor ? `&cursor=${cursor}` : '';
-  const s = score ? `&score=${score}` : '';
+  const s = scores.length ? `&score=${scores.join(',')}` : '';
   return request<LogsResponse>(`/api/logs?from=${from}&to=${to}&limit=${limit}${p}${c}${s}`);
 }
 

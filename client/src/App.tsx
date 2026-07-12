@@ -5,11 +5,12 @@ import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Skills } from './components/Skills';
 import { Reminders } from './components/Reminders';
-import { LifeGoals } from './components/LifeGoals';
+import { BucketList } from './components/BucketList';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { WhatsAppSettings } from './components/settings/WhatsAppSettings';
+import { RoutinesSettings } from './components/settings/RoutinesSettings';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
 import { Dashboard } from './components/Dashboard';
@@ -62,12 +63,15 @@ function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="skills" element={<Skills />} />
           <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
-          <Route path="life-goals" element={<LifeGoals />} />
+          <Route path="bucket-list" element={<BucketList />} />
+          {/* Legacy path kept so old links/bookmarks still resolve. */}
+          <Route path="life-goals" element={<Navigate to="/bucket-list" replace />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
             <Route index element={<AgentSettings />} />
             {isAdmin && <Route path="model" element={<ModelSettings />} />}
             {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
+            {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
             <Route path="display" element={<DisplaySettings />} />
             {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
           </Route>

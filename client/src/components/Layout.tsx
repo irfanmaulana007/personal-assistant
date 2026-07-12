@@ -64,8 +64,8 @@ const navItems: NavEntry[] = [
     ),
   },
   {
-    to: '/life-goals',
-    label: 'Life Goals',
+    to: '/bucket-list',
+    label: 'Bucket List',
     icon: (
       <path
         strokeLinecap="round"

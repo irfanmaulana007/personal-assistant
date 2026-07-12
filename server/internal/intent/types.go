@@ -4,21 +4,21 @@ package intent
 type Capability string
 
 const (
-	CapabilityCalendar  Capability = "calendar"
-	CapabilityEvent     Capability = "event"
-	CapabilityEmail     Capability = "email"
-	CapabilityReminder  Capability = "reminder"
-	CapabilityKnowledge Capability = "knowledge"
-	CapabilityMemory    Capability = "memory"
-	CapabilityContact   Capability = "contact"
-	CapabilityLifeGoal  Capability = "life_goal"
-	CapabilityActivity  Capability = "activity"
-	CapabilityTravel    Capability = "travel"
-	CapabilityHiking    Capability = "hiking"
-	CapabilityWebSearch Capability = "web_search"
-	CapabilityImageGen  Capability = "image_gen"
-	CapabilityHelp      Capability = "help"
-	CapabilityUnknown   Capability = "unknown"
+	CapabilityCalendar   Capability = "calendar"
+	CapabilityEvent      Capability = "event"
+	CapabilityEmail      Capability = "email"
+	CapabilityReminder   Capability = "reminder"
+	CapabilityKnowledge  Capability = "knowledge"
+	CapabilityMemory     Capability = "memory"
+	CapabilityContact    Capability = "contact"
+	CapabilityBucketList Capability = "bucket_list"
+	CapabilityActivity   Capability = "activity"
+	CapabilityTravel     Capability = "travel"
+	CapabilityHiking     Capability = "hiking"
+	CapabilityWebSearch  Capability = "web_search"
+	CapabilityImageGen   Capability = "image_gen"
+	CapabilityHelp       Capability = "help"
+	CapabilityUnknown    Capability = "unknown"
 )
 
 // Action identifies the specific operation within a capability.
@@ -74,12 +74,12 @@ const (
 	ActionContactSearch Action = "contact.search"
 )
 
-// Life goal actions (a simple life checklist)
+// Bucket list actions (a categorized life checklist)
 const (
-	ActionLifeGoalAdd    Action = "life_goal.add"
-	ActionLifeGoalList   Action = "life_goal.list"
-	ActionLifeGoalCheck  Action = "life_goal.check"
-	ActionLifeGoalDelete Action = "life_goal.delete"
+	ActionBucketListAdd    Action = "bucket_list.add"
+	ActionBucketListList   Action = "bucket_list.list"
+	ActionBucketListCheck  Action = "bucket_list.check"
+	ActionBucketListDelete Action = "bucket_list.delete"
 )
 
 // Activity actions

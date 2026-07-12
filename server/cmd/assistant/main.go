@@ -17,6 +17,7 @@ import (
 	calendarsvc "github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/activity"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/bucketlist"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/contacts"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
@@ -24,7 +25,6 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
 	imagegencap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/imagegen"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
-	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/lifegoal"
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
@@ -39,6 +39,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/skills"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -92,7 +93,7 @@ func main() {
 	llmClient := llm.NewClient()
 	composioClient := composio.NewClient()
 
-	// Normalize reminder/life-goal text to English before persisting, whatever
+	// Normalize reminder/bucket-list text to English before persisting, whatever
 	// language the user typed (REST or chat). Fail-soft: stores as-is on error.
 	db.SetTranslator(translate.New(settingsSvc, llmClient, log))
 
@@ -150,7 +151,7 @@ func main() {
 	// Skill capabilities (gated per user via the skills framework; always
 	// registered so the router can serve them when the skill is enabled).
 	handlers = append(handlers, contacts.New(db, log))
-	handlers = append(handlers, lifegoal.New(db, log))
+	handlers = append(handlers, bucketlist.New(db, log))
 	handlers = append(handlers, activity.New(db, timezone, log))
 	handlers = append(handlers, travel.New(db, timezone, log))
 	handlers = append(handlers, hiking.New(db, timezone, log))
@@ -168,6 +169,12 @@ func main() {
 	// LLM-as-judge that scores the assistant's own replies (inline sample +
 	// nightly batch). Shared by the web and WhatsApp ingress paths.
 	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, timezone, log)
+
+	// Daily routines ("scheduled skills"): editable start-of-day / end-of-day
+	// prompts run through the agent and delivered over WhatsApp. Supersedes the
+	// old reminder digest — carry its configured time over on first boot.
+	routineSvc := routine.New(settingsSvc, db, assistant, timezone, cfg.Owner.WhatsAppJID, log)
+	routineSvc.MigrateFromDigest(ctx)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
@@ -199,18 +206,27 @@ func main() {
 			// Recent conversation history for context (before logging this message).
 			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
 
-			// Log incoming message
+			// Log incoming message. Note when a photo is attached so image-only
+			// messages don't show up as empty in the logs.
+			logBody := msg.Text
+			if msg.Image != "" {
+				if logBody == "" {
+					logBody = "[image]"
+				} else {
+					logBody += " [image]"
+				}
+			}
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
 				Sender:    msg.From,
-				Body:      msg.Text,
+				Body:      logBody,
 			})
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(uctx, msg.Text, history, "")
+			res, err := assistant.Run(uctx, msg.Text, history, msg.Image)
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
@@ -282,9 +298,10 @@ func main() {
 			evalJudge.JudgeInline(ctx, traceID)
 		})
 
-		// Reminders are delivered to the paired WhatsApp account (derived from
-		// pairing), regardless of the reminder's stored recipient.
-		reminderHandler.SetSendFunc(func(ctx context.Context, _ string, text string) error {
+		// Proactive messages (reminders + daily routines) are delivered to the
+		// paired WhatsApp account (derived from pairing), regardless of any stored
+		// recipient.
+		deliver := func(ctx context.Context, _ string, text string) error {
 			// Deliver to the primary (first) allowlisted number. Fall back to the
 			// paired account itself ("message yourself" mode) when none is set.
 			to := ""
@@ -298,7 +315,9 @@ func main() {
 				return fmt.Errorf("whatsapp not connected")
 			}
 			return wa.SendMessage(ctx, to, text)
-		})
+		}
+		reminderHandler.SetSendFunc(deliver)
+		routineSvc.SetSendFunc(deliver)
 
 		if err := wa.Init(ctx); err != nil {
 			log.Error("failed to initialize WhatsApp", "error", err)
@@ -330,6 +349,7 @@ func main() {
 			settingsSvc,
 			llmClient,
 			evalJudge,
+			routineSvc,
 			composioClient,
 			waCtl,
 			db,
@@ -356,6 +376,9 @@ func main() {
 
 	// Start the response-evaluation scheduler (nightly LLM-as-judge batch).
 	go evalJudge.StartScheduler(ctx)
+
+	// Start the daily routine scheduler (start-of-day / end-of-day briefings).
+	go routineSvc.StartScheduler(ctx)
 
 	log.Info("personal assistant is running — press Ctrl+C to stop")
 

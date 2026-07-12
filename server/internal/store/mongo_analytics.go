@@ -11,14 +11,15 @@ import (
 )
 
 // mongoRangeMatch builds the standard analytics $match: the half-open interval
-// [from, to) on created_at, plus an optional platform equality ("" = all). It
-// mirrors the SQLite `created_at >= ? AND created_at < ?`+optional platform
-// filter used by every usage query. A fresh map is returned each call so callers
-// may safely add more keys (e.g. latency_ms) to it.
-func mongoRangeMatch(from, to time.Time, platform string) bson.M {
+// [from, to) on created_at, plus an optional platform filter (nil/empty = all,
+// otherwise "$in" the listed platforms). It mirrors the SQLite
+// `created_at >= ? AND created_at < ?`+optional platform filter used by every
+// usage query. A fresh map is returned each call so callers may safely add more
+// keys (e.g. latency_ms) to it.
+func mongoRangeMatch(from, to time.Time, platforms []string) bson.M {
 	match := bson.M{"created_at": bson.M{"$gte": from.UTC(), "$lt": to.UTC()}}
-	if platform != "" {
-		match["platform"] = platform
+	if len(platforms) > 0 {
+		match["platform"] = bson.M{"$in": platforms}
 	}
 	return match
 }
@@ -26,11 +27,11 @@ func mongoRangeMatch(from, to time.Time, platform string) bson.M {
 // UsageStatsBetween aggregates traces in the half-open interval [from, to),
 // optionally restricted to a platform ("" = all). It is the MongoDB port of
 // SQLiteStore.UsageStatsBetween and is intended to be byte-for-byte equivalent.
-func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error) {
+func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error) {
 	fromUTC := from.UTC()
 	toUTC := to.UTC()
 	stats := &UsageStats{}
-	match := mongoRangeMatch(fromUTC, toUTC, platform)
+	match := mongoRangeMatch(fromUTC, toUTC, platforms)
 
 	// Summary: COUNT(*), SUM(tokens/tool_count), error count, COUNT(DISTINCT
 	// user_id) and AVG(NULLIF(latency_ms,0)). $addToSet+len replicates the
@@ -83,7 +84,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 	}
 
 	// Latency percentiles (loads the latency column for the range).
-	p50, p95, p99, err := m.latencyPercentiles(ctx, fromUTC, toUTC, platform)
+	p50, p95, p99, err := m.latencyPercentiles(ctx, fromUTC, toUTC, platforms)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +97,10 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 	weekdayExpr := bson.M{"$subtract": bson.A{
 		bson.M{"$dayOfWeek": bson.M{"date": "$created_at", "timezone": "UTC"}}, 1,
 	}}
-	if err := m.usageByBucket(ctx, fromUTC, toUTC, platform, hourExpr, stats.ByHour[:]); err != nil {
+	if err := m.usageByBucket(ctx, fromUTC, toUTC, platforms, hourExpr, stats.ByHour[:]); err != nil {
 		return nil, fmt.Errorf("usage by hour: %w", err)
 	}
-	if err := m.usageByBucket(ctx, fromUTC, toUTC, platform, weekdayExpr, stats.ByWeekday[:]); err != nil {
+	if err := m.usageByBucket(ctx, fromUTC, toUTC, platforms, weekdayExpr, stats.ByWeekday[:]); err != nil {
 		return nil, fmt.Errorf("usage by weekday: %w", err)
 	}
 
@@ -182,15 +183,15 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 		}}},
 		{{Key: "$sort", Value: bson.D{{Key: "requests", Value: -1}}}},
 	}
-	var platforms []struct {
+	var platformRows []struct {
 		Platform    string `bson:"_id"`
 		Requests    int    `bson:"requests"`
 		TotalTokens int    `bson:"totalTokens"`
 	}
-	if err := m.aggregateAll(ctx, colTraces, platPipe, &platforms); err != nil {
+	if err := m.aggregateAll(ctx, colTraces, platPipe, &platformRows); err != nil {
 		return nil, fmt.Errorf("usage by platform: %w", err)
 	}
-	for _, p := range platforms {
+	for _, p := range platformRows {
 		row := UsagePlatform{Platform: p.Platform, Requests: p.Requests, TotalTokens: p.TotalTokens}
 		if row.Platform == "" {
 			row.Platform = "unknown"
@@ -200,7 +201,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 
 	// Top tools (from tool_usage), range+platform filtered, top 10 by count.
 	toolPipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(fromUTC, toUTC, platform)}},
+		{{Key: "$match", Value: mongoRangeMatch(fromUTC, toUTC, platforms)}},
 		{{Key: "$group", Value: bson.M{"_id": "$tool", "count": bson.M{"$sum": 1}}}},
 		{{Key: "$sort", Value: bson.D{{Key: "count", Value: -1}}}},
 		{{Key: "$limit", Value: 10}},
@@ -224,8 +225,8 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 // latencyPercentiles loads latency_ms (> 0) for the range and returns p50/p95/p99
 // using the SAME index math as the SQLite version: pull all non-zero latencies
 // sorted ascending, then pick index ceil(p*n)-1 with clamping. Empty -> zeros.
-func (m *MongoStore) latencyPercentiles(ctx context.Context, from, to time.Time, platform string) (p50, p95, p99 int, err error) {
-	match := mongoRangeMatch(from, to, platform)
+func (m *MongoStore) latencyPercentiles(ctx context.Context, from, to time.Time, platforms []string) (p50, p95, p99 int, err error) {
+	match := mongoRangeMatch(from, to, platforms)
 	match["latency_ms"] = bson.M{"$gt": 0}
 	pipe := mongo.Pipeline{
 		{{Key: "$match", Value: match}},
@@ -261,9 +262,9 @@ func (m *MongoStore) latencyPercentiles(ctx context.Context, from, to time.Time,
 // usageByBucket fills out[] with request counts grouped by a date-part expression
 // (bucketExpr must evaluate to an integer bucket), in UTC. Buckets outside
 // [0, len(out)) are ignored, exactly like the SQLite bounds check.
-func (m *MongoStore) usageByBucket(ctx context.Context, from, to time.Time, platform string, bucketExpr interface{}, out []int) error {
+func (m *MongoStore) usageByBucket(ctx context.Context, from, to time.Time, platforms []string, bucketExpr interface{}, out []int) error {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platform)}},
+		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{"_id": bucketExpr, "count": bson.M{"$sum": 1}}}},
 	}
 	var rows []struct {
@@ -283,9 +284,9 @@ func (m *MongoStore) usageByBucket(ctx context.Context, from, to time.Time, plat
 
 // UsageByDayModel returns per-day, per-model token sums for a cost time series.
 // MongoDB port of SQLiteStore.UsageByDayModel.
-func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error) {
+func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error) {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platform)}},
+		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{
 				"day":   bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at", "timezone": "UTC"}},
@@ -322,9 +323,9 @@ func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, pl
 // UsageByUserModel returns per-user, per-model usage for the Users section
 // (cost is priced in the API layer). MongoDB port of
 // SQLiteStore.UsageByUserModel.
-func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error) {
+func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error) {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platform)}},
+		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{
 				"user_id": "$user_id",

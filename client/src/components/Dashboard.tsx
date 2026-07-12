@@ -4,7 +4,8 @@ import { useMetrics } from '../hooks/useMetrics';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
 import { Skeleton, SkeletonCard, SkeletonStatTile } from './ui/Skeleton';
-import type { Channel } from '../types';
+import { parseFilterList, serializeFilterList } from '../lib/filters';
+import { CHANNEL_VALUES } from '../types';
 
 function defaultRange(): { from: string; to: string } {
   const today = new Date();
@@ -19,7 +20,7 @@ export function Dashboard() {
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
   const to = searchParams.get('to') || def.to;
-  const channel = (searchParams.get('channel') as Channel) || '';
+  const channels = parseFilterList(searchParams.get('channel'), CHANNEL_VALUES);
 
   const patchParams = (patch: Record<string, string>) => {
     const sp = new URLSearchParams(searchParams);
@@ -27,7 +28,7 @@ export function Dashboard() {
     setSearchParams(sp);
   };
 
-  const { stats, loading, error } = useMetrics(from, to, channel);
+  const { stats, loading, error } = useMetrics(from, to, channels);
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
@@ -41,7 +42,10 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ChannelFilter value={channel} onChange={(c) => patchParams({ channel: c })} />
+          <ChannelFilter
+            value={channels}
+            onChange={(c) => patchParams({ channel: serializeFilterList(c) })}
+          />
           <DateRangePicker
             from={from}
             to={to}

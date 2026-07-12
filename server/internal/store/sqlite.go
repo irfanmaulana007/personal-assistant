@@ -26,7 +26,7 @@ var (
 type SQLiteStore struct {
 	db *sql.DB
 	// translator, when set, normalizes user text to English before persisting
-	// reminders and life goals. Optional — nil means store text as-is.
+	// reminders and bucket-list items. Optional — nil means store text as-is.
 	translator Translator
 }
 
@@ -74,6 +74,13 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) migrate() error {
+	// Rename life_goals -> bucket_list_items in place so existing data is kept.
+	// Must run before the CREATE TABLE IF NOT EXISTS below, which would otherwise
+	// create an empty bucket_list_items and block the rename.
+	if err := s.renameTableIfNeeded("life_goals", "bucket_list_items"); err != nil {
+		return fmt.Errorf("rename life_goals: %w", err)
+	}
+
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,17 +115,19 @@ func (s *SQLiteStore) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, occurred_at)`,
 
-		`CREATE TABLE IF NOT EXISTS life_goals (
+		`CREATE TABLE IF NOT EXISTS bucket_list_items (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
 			title TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			note TEXT NOT NULL DEFAULT '',
+			category TEXT NOT NULL DEFAULT 'other',
+			resolution_year INTEGER,
 			done INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 			done_at DATETIME
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_life_goals_user ON life_goals(user_id, done)`,
+		`CREATE INDEX IF NOT EXISTS idx_bucket_list_items_user ON bucket_list_items(user_id, done)`,
 
 		`CREATE TABLE IF NOT EXISTS trips (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -369,7 +378,9 @@ func (s *SQLiteStore) migrate() error {
 		{"reminders", "calendar_conn", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "calendar_event_ids", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "calendar_hash", "TEXT NOT NULL DEFAULT ''"},
-		{"life_goals", "description", "TEXT NOT NULL DEFAULT ''"},
+		{"bucket_list_items", "description", "TEXT NOT NULL DEFAULT ''"},
+		{"bucket_list_items", "category", "TEXT NOT NULL DEFAULT 'other'"},
+		{"bucket_list_items", "resolution_year", "INTEGER"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -378,6 +389,15 @@ func (s *SQLiteStore) migrate() error {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", c.table, c.column, err)
 		}
+	}
+
+	// Resolution lookup index. Created after the columns above exist, because a
+	// legacy life_goals table renamed to bucket_list_items gains resolution_year
+	// only in the additive step just above.
+	if _, err := s.db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_bucket_list_items_resolution ON bucket_list_items(user_id, resolution_year)`,
+	); err != nil {
+		return fmt.Errorf("create idx_bucket_list_items_resolution: %w", err)
 	}
 
 	// Partial index for the scheduler's owner lookup. Created after the columns
@@ -421,6 +441,30 @@ func (s *SQLiteStore) addColumnIfMissing(table, column, ddl string) error {
 	}
 
 	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, ddl))
+	return err
+}
+
+// renameTableIfNeeded renames oldName to newName only when oldName still exists
+// and newName does not — so it runs exactly once and is a no-op afterwards.
+func (s *SQLiteStore) renameTableIfNeeded(oldName, newName string) error {
+	exists := func(name string) (bool, error) {
+		var n int
+		err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
+		return n > 0, err
+	}
+	oldExists, err := exists(oldName)
+	if err != nil {
+		return err
+	}
+	newExists, err := exists(newName)
+	if err != nil {
+		return err
+	}
+	if !oldExists || newExists {
+		return nil
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", oldName, newName))
 	return err
 }
 
@@ -993,15 +1037,30 @@ func (s *SQLiteStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) 
 	return id, nil
 }
 
+// sqliteInClause builds an ` AND <col> IN (?, ?, …)` fragment and its args for a
+// non-empty value list. Returns ("", nil) when vals is empty, i.e. "all".
+func sqliteInClause(col string, vals []string) (string, []any) {
+	if len(vals) == 0 {
+		return "", nil
+	}
+	ph := make([]string, len(vals))
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		ph[i] = "?"
+		args[i] = v
+	}
+	return " AND " + col + " IN (" + strings.Join(ph, ", ") + ")", args
+}
+
 // UsageByDayModel returns per-day, per-model token sums for a cost time series.
-func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, platform string) ([]DayModelUsage, error) {
+func (s *SQLiteStore) UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error) {
 	q := `SELECT date(created_at) AS d, model,
 	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
 	      FROM traces WHERE created_at >= ? AND created_at < ?`
 	args := []any{from.UTC(), to.UTC()}
-	if platform != "" {
-		q += ` AND platform = ?`
-		args = append(args, platform)
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
 	q += ` GROUP BY d, model ORDER BY d ASC`
 
@@ -1030,20 +1089,29 @@ func (s *SQLiteStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, e
 	      LEFT JOIN trace_scores sc ON sc.trace_id = t.id
 	      WHERE t.created_at >= ? AND t.created_at < ?`
 	args := []any{f.From.UTC(), f.To.UTC()}
-	if f.Platform != "" {
-		q += ` AND t.platform = ?`
-		args = append(args, f.Platform)
+	if clause, a := sqliteInClause("t.platform", f.Platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
-	switch f.ScoreState {
-	case "scored":
-		q += ` AND sc.trace_id IS NOT NULL`
-	case "unscored":
-		// Only judgeable replies (successful, non-empty) count as "unscored" —
-		// error traces are never judged, so surfacing them here would be noise.
-		q += ` AND sc.trace_id IS NULL AND t.status = 'ok' AND t.output != ''`
-	case "low":
-		q += ` AND sc.trace_id IS NOT NULL AND sc.overall < ?`
-		args = append(args, LowScoreThreshold)
+	// Each selected score state is an OR-branch; a trace matches if it is in ANY
+	// of the states. Empty = all. (The `low` branch carries a threshold arg,
+	// appended in the same order its placeholder appears in the query.)
+	var scoreOr []string
+	for _, st := range f.ScoreStates {
+		switch st {
+		case "scored":
+			scoreOr = append(scoreOr, `sc.trace_id IS NOT NULL`)
+		case "unscored":
+			// Only judgeable replies (successful, non-empty) count as "unscored" —
+			// error traces are never judged, so surfacing them here would be noise.
+			scoreOr = append(scoreOr, `(sc.trace_id IS NULL AND t.status = 'ok' AND t.output != '')`)
+		case "low":
+			scoreOr = append(scoreOr, `(sc.trace_id IS NOT NULL AND sc.overall < ?)`)
+			args = append(args, LowScoreThreshold)
+		}
+	}
+	if len(scoreOr) > 0 {
+		q += ` AND (` + strings.Join(scoreOr, " OR ") + `)`
 	}
 	if f.Cursor > 0 {
 		q += ` AND t.id < ?`
@@ -1211,18 +1279,14 @@ func (s *SQLiteStore) ListUnscoredTraces(ctx context.Context, since time.Time, l
 
 // UsageStatsBetween aggregates traces in the half-open interval [from, to),
 // optionally restricted to a platform ("" = all).
-func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platform string) (*UsageStats, error) {
+func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error) {
 	fromUTC := from.UTC()
 	toUTC := to.UTC()
 	stats := &UsageStats{}
 
 	// Optional platform filter appended after the [from,to) args.
-	pc := ""
-	base := []any{fromUTC, toUTC}
-	if platform != "" {
-		pc = " AND platform = ?"
-		base = append(base, platform)
-	}
+	pc, pcArgs := sqliteInClause("platform", platforms)
+	base := append([]any{fromUTC, toUTC}, pcArgs...)
 
 	// Summary
 	var avgLatency sql.NullFloat64
@@ -1333,12 +1397,8 @@ func (s *SQLiteStore) UsageStatsBetween(ctx context.Context, from, to time.Time,
 	}
 
 	// Top tools
-	toolArgs := []any{fromUTC, toUTC}
-	toolPC := ""
-	if platform != "" {
-		toolPC = " AND platform = ?"
-		toolArgs = append(toolArgs, platform)
-	}
+	toolPC, toolPCArgs := sqliteInClause("platform", platforms)
+	toolArgs := append([]any{fromUTC, toUTC}, toolPCArgs...)
 	toolRows, err := s.db.QueryContext(ctx,
 		`SELECT tool, COUNT(*) AS c
 		 FROM tool_usage WHERE created_at >= ? AND created_at < ?`+toolPC+`
@@ -1419,16 +1479,16 @@ func (s *SQLiteStore) usageByBucket(ctx context.Context, strftimeFmt, pc string,
 
 // UsageByUserModel returns per-user, per-model usage for the Users section
 // (cost is priced in the API layer, like UsageByDayModel).
-func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, platform string) ([]UserModelUsage, error) {
+func (s *SQLiteStore) UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error) {
 	q := `SELECT user_id, model, COUNT(*),
 	             COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
 	             COALESCE(SUM(total_tokens), 0),
 	             COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0)
 	      FROM traces WHERE created_at >= ? AND created_at < ?`
 	args := []any{from.UTC(), to.UTC()}
-	if platform != "" {
-		q += ` AND platform = ?`
-		args = append(args, platform)
+	if clause, a := sqliteInClause("platform", platforms); clause != "" {
+		q += clause
+		args = append(args, a...)
 	}
 	q += ` GROUP BY user_id, model`
 

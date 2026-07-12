@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -301,7 +302,11 @@ func (t *Transport) eventHandler(evt interface{}) {
 }
 
 func (t *Transport) handleMessage(evt *events.Message) {
-	if evt.Message.GetConversation() == "" && evt.Message.GetExtendedTextMessage() == nil {
+	// Accept plain text, extended text, and image messages (a photo may carry
+	// a caption or come on its own). Anything else — stickers, audio, etc. — is
+	// ignored below once we find neither text nor an image to act on.
+	img := evt.Message.GetImageMessage()
+	if evt.Message.GetConversation() == "" && evt.Message.GetExtendedTextMessage() == nil && img == nil {
 		return
 	}
 
@@ -353,10 +358,33 @@ func (t *Transport) handleMessage(evt *events.Message) {
 		text = evt.Message.GetExtendedTextMessage().GetText()
 	}
 
+	// For an image message, download the media and encode it as a data: URL so
+	// the agent can pass it to a vision model (mirrors the web chat path). The
+	// caption, if any, becomes the message text.
+	imageDataURL := ""
+	if img != nil {
+		if text == "" {
+			text = img.GetCaption()
+		}
+		if client != nil {
+			data, err := client.Download(context.Background(), img)
+			if err != nil {
+				t.log.Error("failed to download WhatsApp image", "error", err)
+			} else {
+				mime := img.GetMimetype()
+				if mime == "" {
+					mime = "image/jpeg"
+				}
+				imageDataURL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+			}
+		}
+	}
+
 	msg := &transport.Message{
 		ID:        evt.Info.ID,
 		From:      senderJID,
 		Text:      text,
+		Image:     imageDataURL,
 		Platform:  "whatsapp",
 		Timestamp: evt.Info.Timestamp.Unix(),
 		Raw:       evt,

@@ -87,7 +87,7 @@ func MigrateSQLiteToHybrid(ctx context.Context, src *SQLiteStore, dst *HybridSto
 	if err := m.contacts(); err != nil {
 		return nil, err
 	}
-	if err := m.lifeGoals(); err != nil {
+	if err := m.bucketItems(); err != nil {
 		return nil, err
 	}
 	if err := m.trips(); err != nil {
@@ -221,7 +221,7 @@ func (m *etl) mongoCount(name string) (int, error) {
 // re-seeds them at the end).
 func (m *etl) truncate() error {
 	pgTables := []string{
-		"users", "contacts", "life_goals", "trips", "trip_expenses",
+		"users", "contacts", "bucket_list_items", "trips", "trip_expenses",
 		"hike_mountains", "hike_tracks", "hike_participants", "hikes", "hike_hikers",
 		"user_skills", "reminders", "user_personas", "memories", "notes",
 		"oauth_tokens", "settings", "model_prices",
@@ -311,11 +311,11 @@ func (m *etl) contacts() error {
 	return m.record("contacts", src, "contacts")
 }
 
-func (m *etl) lifeGoals() error {
+func (m *etl) bucketItems() error {
 	rows, err := m.src.QueryContext(m.ctx,
-		`SELECT id, user_id, title, description, note, done, created_at, done_at FROM life_goals`)
+		`SELECT id, user_id, title, description, note, category, resolution_year, done, created_at, done_at FROM bucket_list_items`)
 	if err != nil {
-		return fmt.Errorf("read life_goals: %w", err)
+		return fmt.Errorf("read bucket_list_items: %w", err)
 	}
 	defer rows.Close()
 
@@ -324,29 +324,35 @@ func (m *etl) lifeGoals() error {
 		var (
 			id, userID               int64
 			title, description, note string
+			category                 string
+			resolutionYear           sql.NullInt64
 			done                     int64
 			created                  sql.NullTime
 			doneAt                   sql.NullTime
 		)
-		if err := rows.Scan(&id, &userID, &title, &description, &note, &done, &created, &doneAt); err != nil {
-			return fmt.Errorf("scan life_goal: %w", err)
+		if err := rows.Scan(&id, &userID, &title, &description, &note, &category, &resolutionYear, &done, &created, &doneAt); err != nil {
+			return fmt.Errorf("scan bucket_list_item: %w", err)
+		}
+		var resYear any
+		if resolutionYear.Valid {
+			resYear = resolutionYear.Int64
 		}
 		if err := m.pgExec(
-			`INSERT INTO life_goals (id, user_id, title, description, note, done, created_at, done_at)
-			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			id, userID, title, description, note, boolFromInt(done), nullTime(created), nullTime(doneAt),
+			`INSERT INTO bucket_list_items (id, user_id, title, description, note, category, resolution_year, done, created_at, done_at)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			id, userID, title, description, note, category, resYear, boolFromInt(done), nullTime(created), nullTime(doneAt),
 		); err != nil {
-			return fmt.Errorf("insert life_goal %d: %w", id, err)
+			return fmt.Errorf("insert bucket_list_item %d: %w", id, err)
 		}
 		src++
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read life_goals: %w", err)
+		return fmt.Errorf("read bucket_list_items: %w", err)
 	}
-	if err := m.resetSequence("life_goals"); err != nil {
+	if err := m.resetSequence("bucket_list_items"); err != nil {
 		return err
 	}
-	return m.record("life_goals", src, "life_goals")
+	return m.record("bucket_list_items", src, "bucket_list_items")
 }
 
 func (m *etl) trips() error {

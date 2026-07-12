@@ -15,6 +15,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/pricing"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
@@ -35,6 +36,7 @@ type Server struct {
 	pricing    *pricing.Service
 	llmClient  *llm.Client
 	eval       *eval.Judge
+	routines   *routine.Service
 	composio   *composio.Client
 	whatsapp   WhatsAppController
 	store      store.Store
@@ -53,6 +55,7 @@ func NewServer(
 	settingsSvc *settings.Service,
 	llmClient *llm.Client,
 	judge *eval.Judge,
+	routines *routine.Service,
 	composioClient *composio.Client,
 	whatsapp WhatsAppController,
 	store store.Store,
@@ -68,6 +71,7 @@ func NewServer(
 		pricing:     pricing.New(store),
 		llmClient:   llmClient,
 		eval:        judge,
+		routines:    routines,
 		composio:    composioClient,
 		whatsapp:    whatsapp,
 		store:       store,
@@ -109,20 +113,24 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/reminders", protect(s.handleListReminders))
 	mux.Handle("POST /api/reminders", protect(s.handleCreateReminder))
 	mux.Handle("GET /api/reminders/config", protect(s.handleGetRemindersConfig))
+	mux.Handle("GET /api/routines", protect(s.handleListRoutines))
 	mux.Handle("PUT /api/reminders/{id}", protect(s.handleUpdateReminder))
 	mux.Handle("PUT /api/reminders/{id}/enabled", protect(s.handleSetReminderEnabled))
 	mux.Handle("DELETE /api/reminders/{id}", protect(s.handleDeleteReminder))
-	mux.Handle("GET /api/life-goals", protect(s.handleListLifeGoals))
-	mux.Handle("POST /api/life-goals", protect(s.handleCreateLifeGoal))
-	mux.Handle("PUT /api/life-goals/{id}", protect(s.handleUpdateLifeGoal))
-	mux.Handle("PUT /api/life-goals/{id}/done", protect(s.handleSetLifeGoalDone))
-	mux.Handle("DELETE /api/life-goals/{id}", protect(s.handleDeleteLifeGoal))
+	mux.Handle("GET /api/bucket-list", protect(s.handleListBucketItems))
+	mux.Handle("POST /api/bucket-list", protect(s.handleCreateBucketItem))
+	mux.Handle("PUT /api/bucket-list/{id}", protect(s.handleUpdateBucketItem))
+	mux.Handle("PUT /api/bucket-list/{id}/done", protect(s.handleSetBucketItemDone))
+	mux.Handle("PUT /api/bucket-list/{id}/resolution", protect(s.handleSetBucketItemResolution))
+	mux.Handle("DELETE /api/bucket-list/{id}", protect(s.handleDeleteBucketItem))
 
 	// Admin only
 	mux.Handle("/api/settings", admin(s.handleSettings))
 	mux.Handle("/api/settings/test", admin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", admin(s.handleUpdatePreferences))
 	mux.Handle("PUT /api/reminders/config", admin(s.handleSetRemindersConfig))
+	mux.Handle("PUT /api/routines/{key}", admin(s.handleUpdateRoutine))
+	mux.Handle("POST /api/routines/{key}/run", admin(s.handleRunRoutine))
 	mux.Handle("GET /api/pricing", admin(s.handleListPricing))
 	mux.Handle("PUT /api/pricing", admin(s.handleSetPricing))
 	mux.Handle("DELETE /api/pricing/{model}", admin(s.handleDeletePricing))
