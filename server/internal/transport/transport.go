@@ -5,8 +5,15 @@ import "context"
 // Message represents a platform-agnostic incoming message.
 type Message struct {
 	ID   string
+	// From is the individual author of the message (used for allowlist checks
+	// and logging). In a group this is the participant, not the group.
 	From string
-	Text string
+	// Chat is the conversation the message belongs to and where a reply should
+	// be sent. For a 1:1 chat it equals From; for a group it is the group JID.
+	Chat string
+	// IsGroup reports whether the message arrived in a group chat.
+	IsGroup bool
+	Text    string
 	// Image, when non-empty, is a data: URL (base64) for an image attached to
 	// the message. Requires a vision-capable model to be interpreted.
 	Image     string

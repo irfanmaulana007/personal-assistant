@@ -371,6 +371,18 @@ func (t *Transport) handleMessage(evt *events.Message) {
 		return
 	}
 
+	// Group chats are noisy, so the assistant only speaks up when it is directly
+	// addressed: either @mentioned, or someone replies to one of its own
+	// messages. Any other group chatter is ignored. 1:1 chats always pass.
+	if evt.Info.IsGroup {
+		ctxInfo := messageContextInfo(evt.Message)
+		if !t.botAddressed(ctxInfo, client) {
+			t.log.Info("ignoring WhatsApp group message: assistant not mentioned or replied to",
+				"chat", evt.Info.Chat.String(), "sender", senderJID)
+			return
+		}
+	}
+
 	text := evt.Message.GetConversation()
 	if text == "" && evt.Message.GetExtendedTextMessage() != nil {
 		text = evt.Message.GetExtendedTextMessage().GetText()
@@ -401,6 +413,8 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	msg := &transport.Message{
 		ID:        evt.Info.ID,
 		From:      senderJID,
+		Chat:      evt.Info.Chat.ToNonAD().String(),
+		IsGroup:   evt.Info.IsGroup,
 		Text:      text,
 		Image:     imageDataURL,
 		Platform:  "whatsapp",
@@ -411,4 +425,63 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	if handler != nil {
 		handler(msg)
 	}
+}
+
+// messageContextInfo returns the ContextInfo carried by a text or image
+// message, if any. ContextInfo holds mentions and quoted-message ("reply to")
+// data used to decide whether the assistant was addressed in a group.
+func messageContextInfo(m *waE2E.Message) *waE2E.ContextInfo {
+	if ext := m.GetExtendedTextMessage(); ext != nil {
+		return ext.GetContextInfo()
+	}
+	if img := m.GetImageMessage(); img != nil {
+		return img.GetContextInfo()
+	}
+	return nil
+}
+
+// botAddressed reports whether a group message directly targets the assistant:
+// either the paired account is @mentioned, or the message quotes (replies to) a
+// message the assistant itself sent. Returns false when the assistant's own
+// identity is unknown (client not paired).
+func (t *Transport) botAddressed(ci *waE2E.ContextInfo, client *whatsmeow.Client) bool {
+	if ci == nil || client == nil || client.Store == nil {
+		return false
+	}
+
+	// Collect the assistant's own identities (phone JID and LID) as user parts,
+	// so a mention/quote by either form is recognized.
+	self := map[string]bool{}
+	if client.Store.ID != nil {
+		self[client.Store.ID.ToNonAD().User] = true
+	}
+	if lid := client.Store.LID; lid.User != "" {
+		self[lid.ToNonAD().User] = true
+	}
+	return contextAddressesSelf(ci, self)
+}
+
+// contextAddressesSelf reports whether a message's ContextInfo targets one of
+// the given identities (user parts), by @mention or by quoting one of their
+// messages. Pure so it can be unit-tested without a paired client.
+func contextAddressesSelf(ci *waE2E.ContextInfo, self map[string]bool) bool {
+	if ci == nil || len(self) == 0 {
+		return false
+	}
+
+	// @mention: any mentioned JID whose user part is the assistant's.
+	for _, m := range ci.GetMentionedJID() {
+		if jid, err := types.ParseJID(m); err == nil && self[jid.ToNonAD().User] {
+			return true
+		}
+	}
+
+	// Reply-to: the quoted message's author (Participant) is the assistant.
+	if p := ci.GetParticipant(); p != "" {
+		if jid, err := types.ParseJID(p); err == nil && self[jid.ToNonAD().User] {
+			return true
+		}
+	}
+
+	return false
 }
