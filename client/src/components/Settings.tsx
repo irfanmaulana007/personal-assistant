@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const allSections = [
   { to: '/settings', label: 'Agent', end: true, admin: false },
   { to: '/settings/model', label: 'Model', end: false, admin: true },
+  { to: '/settings/api-keys', label: 'API Keys', end: false, admin: true },
   { to: '/settings/whatsapp', label: 'WhatsApp', end: false, admin: true },
   { to: '/settings/daily-skills', label: 'Daily Skills', end: false, admin: true },
   { to: '/settings/display', label: 'Display', end: false, admin: false },

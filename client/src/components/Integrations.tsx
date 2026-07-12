@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   getIntegrations,
   setComposioKey,
-  setWebSearchKey,
-  setOpenAIKey,
   connectIntegration,
   disconnectIntegration,
 } from '../api/client';
@@ -160,8 +158,6 @@ export function Integrations() {
               ))}
             </div>
           )}
-          <WebSearchKeyCard data={data} onSaved={setData} />
-          <OpenAIKeyCard data={data} onSaved={setData} />
           <WhatsAppCard />
         </>
       ) : null}
@@ -236,157 +232,6 @@ function ComposioKeyCard({
       </div>
       <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
         Stored encrypted on the server. Get a key from the Composio dashboard.
-      </p>
-    </form>
-  );
-}
-
-function WebSearchKeyCard({
-  data,
-  onSaved,
-}: {
-  data: IntegrationsData;
-  onSaved: (d: IntegrationsData) => void;
-}) {
-  const [apiKey, setApiKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setMsg('');
-    try {
-      onSaved(await setWebSearchKey(apiKey.trim()));
-      setApiKey('');
-      setMsg('Saved');
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      onSubmit={save}
-      className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-          Web Search API key
-        </h2>
-        {data.web_search_configured ? (
-          <span className="rounded-full bg-green-100 dark:bg-green-500/15 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300">
-            Configured
-          </span>
-        ) : (
-          <span className="rounded-full bg-amber-100 dark:bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-            Not configured
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={
-            data.web_search_configured
-              ? `Saved (${data.web_search_key_mask}) — leave blank to keep`
-              : 'Paste your Tavily API key'
-          }
-          autoComplete="off"
-          className={`${inputClass} flex-1 min-w-[240px]`}
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
-        >
-          Save
-        </button>
-        {msg && <span className="text-sm text-gray-500 dark:text-gray-400">{msg}</span>}
-      </div>
-      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-        Stored encrypted on the server. Powers the <span className="font-medium">Web Search</span>{' '}
-        skill — enable it under Skills. Get a free key from the Tavily dashboard (1,000
-        searches/month, no card required).
-      </p>
-    </form>
-  );
-}
-
-function OpenAIKeyCard({
-  data,
-  onSaved,
-}: {
-  data: IntegrationsData;
-  onSaved: (d: IntegrationsData) => void;
-}) {
-  const [apiKey, setApiKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setMsg('');
-    try {
-      onSaved(await setOpenAIKey(apiKey.trim()));
-      setApiKey('');
-      setMsg('Saved');
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      onSubmit={save}
-      className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">OpenAI API key</h2>
-        {data.openai_configured ? (
-          <span className="rounded-full bg-green-100 dark:bg-green-500/15 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300">
-            Configured
-          </span>
-        ) : (
-          <span className="rounded-full bg-amber-100 dark:bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-            Not configured
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={
-            data.openai_configured
-              ? `Saved (${data.openai_key_mask}) — leave blank to keep`
-              : 'Paste your OpenAI API key'
-          }
-          autoComplete="off"
-          className={`${inputClass} flex-1 min-w-[240px]`}
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
-        >
-          Save
-        </button>
-        {msg && <span className="text-sm text-gray-500 dark:text-gray-400">{msg}</span>}
-      </div>
-      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-        Stored encrypted on the server. Powers the{' '}
-        <span className="font-medium">Image Generator</span> skill (OpenAI gpt-image-1) — enable it
-        under Skills. Get a key from the OpenAI platform dashboard; image generation is billed
-        per-image (roughly $0.01–0.04 each).
       </p>
     </form>
   );
