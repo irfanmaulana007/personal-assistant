@@ -36,6 +36,7 @@ const (
 const (
 	ActionEventCreate Action = "event.create"
 	ActionEventAgenda Action = "event.agenda"
+	ActionEventDelete Action = "event.delete"
 )
 
 // Email actions

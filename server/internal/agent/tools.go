@@ -20,8 +20,10 @@ type toolSpec struct {
 
 var toolSpecs = []toolSpec{
 	// Calendar is served exclusively through the user's Composio-connected
-	// Google Calendar: reads go through "list_calendar" and writes through
-	// "schedule_event" (stored as a reminder and mirrored to Google Calendar).
+	// Google Calendar: reads go through "list_calendar", creates through
+	// "schedule_event" (stored as a reminder and mirrored to Google Calendar),
+	// and deletes through "delete_calendar_event" (resolves a title/time against
+	// the live calendar and removes the matching event).
 	// The old native-Google "calendar_*" tools were removed: their handler is
 	// gated off by default (calendar.enabled: false), so advertising them let
 	// the model pick a dead tool that always replied "I don't have that
@@ -132,6 +134,13 @@ var toolSpecs = []toolSpec{
 		capability:  intent.CapabilityReminder,
 		action:      intent.ActionReminderCancel,
 		parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Reminder number to cancel."}},"required":["id"]}`,
+	},
+	{
+		name:        "delete_calendar_event",
+		description: "Delete an event from the user's connected Google Calendar. Identify the event by the exact title shown in list_calendar; pass the datetime too when several events share a title so the right instance is removed (with a datetime, all duplicates at that exact time are cleared). Use this to remove wrong, stale, or duplicate calendar events. This does not cancel a recurring reminder — cancel the reminder with reminder_cancel if the event was created by one.",
+		capability:  intent.CapabilityEvent,
+		action:      intent.ActionEventDelete,
+		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Exact event title as shown in list_calendar."},"datetime":{"type":"string","description":"When the event starts, e.g. 'Jul 13 at 6:00 PM', '2026-07-13 18:00'. Provide this to target a specific instance or to clear duplicates at that time."}},"required":["title"]}`,
 	},
 }
 
