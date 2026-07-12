@@ -52,9 +52,11 @@ func TestCompleteRequiringToolSendsRequired(t *testing.T) {
 	}
 }
 
-// TestCompleteRequiringToolFallsBackToAuto verifies that when the provider
-// rejects tool_choice=required (e.g. a reasoning/thinking-mode model), the
-// client retries with "auto" and the turn still completes instead of erroring.
+// TestCompleteRequiringToolFallsBackToAuto verifies the reactive safety net:
+// when the provider still rejects tool_choice=required at request time (e.g. a
+// thinking model whose alias IsThinkingModel doesn't recognize), the client
+// retries with "auto" and the turn completes instead of erroring. Model is a
+// non-thinking name so the proactive downgrade doesn't fire — the 400 does.
 func TestCompleteRequiringToolFallsBackToAuto(t *testing.T) {
 	var choices []any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +89,55 @@ func TestCompleteRequiringToolFallsBackToAuto(t *testing.T) {
 	want := []any{"required", "auto"}
 	if len(choices) != len(want) || choices[0] != want[0] || choices[1] != want[1] {
 		t.Errorf("tool_choice sequence = %v, want %v", choices, want)
+	}
+}
+
+// TestCompleteRequiringToolDowngradesForThinkingModel verifies the proactive
+// path: a recognized thinking model never receives tool_choice=required — it is
+// downgraded to auto before the request is sent, avoiding the 400 round-trip.
+func TestCompleteRequiringToolDowngradesForThinkingModel(t *testing.T) {
+	var got struct {
+		ToolChoice any `json:"tool_choice"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`))
+	}))
+	defer srv.Close()
+
+	// A thinking model must never receive tool_choice=required — the provider
+	// 400s with "Thinking mode does not support this tool_choice". It downgrades
+	// to auto instead.
+	cfg := Config{APIKey: "k", BaseURL: srv.URL, Model: "deepseek-reasoner"}
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "t", Parameters: json.RawMessage(`{}`)}}}
+	if _, err := NewClient().CompleteRequiringTool(context.Background(), cfg, []Message{{Role: "user", Content: "catat ini"}}, tools); err != nil {
+		t.Fatalf("CompleteRequiringTool: %v", err)
+	}
+	if got.ToolChoice != "auto" {
+		t.Errorf("thinking-model tool_choice = %v, want auto (downgraded from required)", got.ToolChoice)
+	}
+}
+
+func TestIsThinkingModel(t *testing.T) {
+	cases := map[string]bool{
+		"deepseek-reasoner":          true,
+		"deepseek-v4-flash-thinking": true,
+		"DeepSeek-R1":                true,
+		"o1":                         true,
+		"o3-mini":                    true,
+		"o4-mini":                    true,
+		"deepseek-v4-flash":          false,
+		"deepseek-v4-pro":            false,
+		"gpt-4o-mini":                false,
+		"":                           false,
+	}
+	for model, want := range cases {
+		if got := IsThinkingModel(model); got != want {
+			t.Errorf("IsThinkingModel(%q) = %v, want %v", model, got, want)
+		}
 	}
 }
 

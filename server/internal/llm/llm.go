@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,36 @@ const (
 	DefaultBaseURL = "https://api.deepseek.com"
 	DefaultModel   = "deepseek-v4-flash"
 )
+
+// thinkingModelMarkers are lower-cased substrings that identify a
+// thinking/reasoning model alias. Providers that expose extended thinking
+// (DeepSeek's reasoner alias, OpenAI's o-series, "*-thinking"/"*-r1" variants)
+// reject any forced tool_choice — only "auto"/"none" are accepted with
+// thinking on. IsThinkingModel is used to downgrade a "required" tool_choice to
+// "auto" so those turns don't 400 (see complete). Keep this list in sync with
+// the thinking aliases noted in pricing.go.
+var thinkingModelMarkers = []string{"reasoner", "thinking", "-r1", "-think"}
+
+// IsThinkingModel reports whether model is a thinking/reasoning variant that
+// does not support a forced tool_choice. Matching is case-insensitive and by
+// substring so agglutinated/prefixed aliases (e.g. "deepseek-reasoner",
+// "deepseek-v4-flash-thinking") are covered.
+func IsThinkingModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" {
+		return false
+	}
+	for _, marker := range thinkingModelMarkers {
+		if strings.Contains(m, marker) {
+			return true
+		}
+	}
+	// OpenAI o-series (o1, o1-mini, o3, o3-mini, o4-…) are thinking models too.
+	if strings.HasPrefix(m, "o1") || strings.HasPrefix(m, "o3") || strings.HasPrefix(m, "o4") {
+		return true
+	}
+	return false
+}
 
 // Config holds the runtime configuration for the LLM provider. It is resolved
 // per request from the settings store (with config/env fallbacks).
@@ -195,6 +226,16 @@ func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, t
 	model := cfg.Model
 	if model == "" {
 		model = DefaultModel
+	}
+
+	// Thinking/reasoning models reject a forced tool_choice ("required" or a
+	// specific tool) — the provider returns 400 "Thinking mode does not support
+	// this tool_choice". Downgrade to "auto" so save-intent turns still run; the
+	// prompt-level guard remains the fallback against a fabricated confirmation.
+	if toolChoice == "required" && IsThinkingModel(model) {
+		slog.Warn("downgrading forced tool_choice to auto for thinking model",
+			"model", model, "from", toolChoice)
+		toolChoice = "auto"
 	}
 
 	reqBody := chatRequest{Model: model, Messages: messages, Tools: tools}
