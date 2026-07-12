@@ -9,13 +9,11 @@ import (
 // skillSeed is the master list of skills, owned by code and upserted on boot.
 // prunedSkillKeys are skills removed from the product; their rows (and any
 // per-user toggles) are deleted on boot. Reminders became a core, always-on
-// capability, so its skill toggle is gone.
-var prunedSkillKeys = []string{"scheduled_reminder"}
-
-// renamedSkillKeys maps a retired skill key to its replacement. Applied before
-// the upsert so the skill row keeps its id — preserving each user's enable /
-// disable toggle in user_skills (which references the skill by id).
-var renamedSkillKeys = map[string]string{"life_goals": "bucket_list"}
+// capability, so its skill toggle is gone. life_goals was replaced by
+// bucket_list: the retired row (which still carried the old prompt telling the
+// model to call the non-existent lifegoal_add tool) is dropped so only
+// bucket_list remains.
+var prunedSkillKeys = []string{"scheduled_reminder", "life_goals"}
 
 var skillSeed = []Skill{
 	{
@@ -117,20 +115,6 @@ func (s *SQLiteStore) seedSkills() error {
 		}
 		if _, err := s.db.Exec(`DELETE FROM skills WHERE id = ?`, id); err != nil {
 			return fmt.Errorf("prune skill %s: %w", key, err)
-		}
-	}
-	// Rename retired skill keys in place so the row (and its per-user toggles)
-	// carry over. Skip if the new key already exists (rename already applied).
-	for oldKey, newKey := range renamedSkillKeys {
-		var exists int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM skills WHERE key = ?`, newKey).Scan(&exists); err != nil {
-			return fmt.Errorf("rename lookup %s: %w", newKey, err)
-		}
-		if exists > 0 {
-			continue
-		}
-		if _, err := s.db.Exec(`UPDATE skills SET key = ? WHERE key = ?`, newKey, oldKey); err != nil {
-			return fmt.Errorf("rename skill %s -> %s: %w", oldKey, newKey, err)
 		}
 	}
 

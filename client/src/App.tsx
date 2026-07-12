@@ -64,8 +64,6 @@ function App() {
           <Route path="skills" element={<Skills />} />
           <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
           <Route path="bucket-list" element={<BucketList />} />
-          {/* Legacy path kept so old links/bookmarks still resolve. */}
-          <Route path="life-goals" element={<Navigate to="/bucket-list" replace />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
             <Route index element={<AgentSettings />} />
