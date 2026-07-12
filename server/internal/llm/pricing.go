@@ -16,12 +16,22 @@ var prices = map[string]ModelPrice{
 	// DeepSeek rates per https://api-docs.deepseek.com/quick_start/pricing
 	// (USD per 1M tokens, cache-miss input). deepseek-chat/reasoner are the
 	// non-thinking/thinking aliases of v4-flash and deprecate 2026-07-24.
-	"deepseek-v4-flash":       {InputPer1M: 0.14, OutputPer1M: 0.28},
-	"deepseek-v4-pro":         {InputPer1M: 0.435, OutputPer1M: 0.87},
-	"deepseek-chat":           {InputPer1M: 0.14, OutputPer1M: 0.28},
-	"deepseek-reasoner":       {InputPer1M: 0.14, OutputPer1M: 0.28},
-	"gpt-4o-mini":             {InputPer1M: 0.15, OutputPer1M: 0.60},
-	"gpt-4o":                  {InputPer1M: 2.50, OutputPer1M: 10.00},
+	"deepseek-v4-flash": {InputPer1M: 0.14, OutputPer1M: 0.28},
+	"deepseek-v4-pro":   {InputPer1M: 0.435, OutputPer1M: 0.87},
+	"deepseek-chat":     {InputPer1M: 0.14, OutputPer1M: 0.28},
+	"deepseek-reasoner": {InputPer1M: 0.14, OutputPer1M: 0.28},
+	"gpt-4o-mini":       {InputPer1M: 0.15, OutputPer1M: 0.60},
+	"gpt-4o":            {InputPer1M: 2.50, OutputPer1M: 10.00},
+	// OpenAI image models (the Image Generator skill) are billed per token, not
+	// per image: prompt tokens as input and generated-image tokens as output.
+	// gpt-image-1-mini is the low-cost variant the skill uses by default;
+	// gpt-image-1 is kept so older traces (and manual overrides) still price.
+	// Editing also feeds an input image (billed at a higher input rate by
+	// OpenAI); it's folded into the input rate here, so edit costs are a slight
+	// underestimate — in line with the rest of this table being approximate.
+	// Override via model_prices if you need exact figures.
+	"gpt-image-1-mini":        {InputPer1M: 2.50, OutputPer1M: 8.00},
+	"gpt-image-1":             {InputPer1M: 5.00, OutputPer1M: 40.00},
 	"openai/gpt-4o-mini":      {InputPer1M: 0.15, OutputPer1M: 0.60},
 	"llama-3.3-70b-versatile": {InputPer1M: 0.59, OutputPer1M: 0.79},
 	"mistral-small-latest":    {InputPer1M: 0.20, OutputPer1M: 0.60},

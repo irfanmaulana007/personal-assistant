@@ -30,25 +30,29 @@ type mongoScore struct {
 // a SQLite limitation), and the judge verdict is embedded as the `score`
 // sub-document. It maps to the public Trace struct.
 type mongoTrace struct {
-	ID               int64            `bson:"id"`
-	UserID           int64            `bson:"user_id"`
-	Platform         string           `bson:"platform"`
-	Source           string           `bson:"source"`
-	Input            string           `bson:"input"`
-	Output           string           `bson:"output"`
-	Model            string           `bson:"model"`
-	PromptTokens     int              `bson:"prompt_tokens"`
-	CompletionTokens int              `bson:"completion_tokens"`
-	TotalTokens      int              `bson:"total_tokens"`
-	LatencyMs        int              `bson:"latency_ms"`
-	ToolCount        int              `bson:"tool_count"`
-	Tools            []ToolInvocation `bson:"tools"`
-	Steps            []LLMCall        `bson:"steps"`
-	Skills           []string         `bson:"skills"`
-	Status           string           `bson:"status"`
-	Error            string           `bson:"error"`
-	CreatedAt        time.Time        `bson:"created_at"`
-	Score            *mongoScore      `bson:"score"`
+	ID                    int64            `bson:"id"`
+	UserID                int64            `bson:"user_id"`
+	Platform              string           `bson:"platform"`
+	Source                string           `bson:"source"`
+	Input                 string           `bson:"input"`
+	Output                string           `bson:"output"`
+	Model                 string           `bson:"model"`
+	PromptTokens          int              `bson:"prompt_tokens"`
+	CompletionTokens      int              `bson:"completion_tokens"`
+	TotalTokens           int              `bson:"total_tokens"`
+	ImageModel            string           `bson:"image_model,omitempty"`
+	ImagePromptTokens     int              `bson:"image_prompt_tokens,omitempty"`
+	ImageCompletionTokens int              `bson:"image_completion_tokens,omitempty"`
+	ImageTotalTokens      int              `bson:"image_total_tokens,omitempty"`
+	LatencyMs             int              `bson:"latency_ms"`
+	ToolCount             int              `bson:"tool_count"`
+	Tools                 []ToolInvocation `bson:"tools"`
+	Steps                 []LLMCall        `bson:"steps"`
+	Skills                []string         `bson:"skills"`
+	Status                string           `bson:"status"`
+	Error                 string           `bson:"error"`
+	CreatedAt             time.Time        `bson:"created_at"`
+	Score                 *mongoScore      `bson:"score"`
 }
 
 // toTraceScore maps an embedded score sub-document to the public TraceScore.
@@ -86,25 +90,29 @@ func (m *MongoStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) {
 		source = "chat"
 	}
 	doc := mongoTrace{
-		ID:               id,
-		UserID:           t.UserID,
-		Platform:         t.Platform,
-		Source:           source,
-		Input:            t.Input,
-		Output:           t.Output,
-		Model:            t.Model,
-		PromptTokens:     t.PromptTokens,
-		CompletionTokens: t.CompletionTokens,
-		TotalTokens:      t.TotalTokens,
-		LatencyMs:        t.LatencyMs,
-		ToolCount:        t.ToolCount,
-		Tools:            t.Tools,
-		Steps:            t.Steps,
-		Skills:           t.Skills,
-		Status:           status,
-		Error:            t.Error,
-		CreatedAt:        time.Now().UTC(),
-		Score:            nil,
+		ID:                    id,
+		UserID:                t.UserID,
+		Platform:              t.Platform,
+		Source:                source,
+		Input:                 t.Input,
+		Output:                t.Output,
+		Model:                 t.Model,
+		PromptTokens:          t.PromptTokens,
+		CompletionTokens:      t.CompletionTokens,
+		TotalTokens:           t.TotalTokens,
+		ImageModel:            t.ImageModel,
+		ImagePromptTokens:     t.ImagePromptTokens,
+		ImageCompletionTokens: t.ImageCompletionTokens,
+		ImageTotalTokens:      t.ImageTotalTokens,
+		LatencyMs:             t.LatencyMs,
+		ToolCount:             t.ToolCount,
+		Tools:                 t.Tools,
+		Steps:                 t.Steps,
+		Skills:                t.Skills,
+		Status:                status,
+		Error:                 t.Error,
+		CreatedAt:             time.Now().UTC(),
+		Score:                 nil,
 	}
 	if _, err := m.col(colTraces).InsertOne(ctx, doc); err != nil {
 		return 0, fmt.Errorf("insert trace: %w", err)
@@ -124,25 +132,29 @@ func (m *MongoStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 		return nil, fmt.Errorf("get trace: %w", err)
 	}
 	t := Trace{
-		ID:               doc.ID,
-		UserID:           doc.UserID,
-		Platform:         doc.Platform,
-		Source:           doc.Source,
-		Input:            doc.Input,
-		Output:           doc.Output,
-		Model:            doc.Model,
-		PromptTokens:     doc.PromptTokens,
-		CompletionTokens: doc.CompletionTokens,
-		TotalTokens:      doc.TotalTokens,
-		LatencyMs:        doc.LatencyMs,
-		ToolCount:        doc.ToolCount,
-		Tools:            doc.Tools,
-		Steps:            doc.Steps,
-		Skills:           doc.Skills,
-		Status:           doc.Status,
-		Error:            doc.Error,
-		CreatedAt:        doc.CreatedAt,
-		Score:            doc.Score.toTraceScore(),
+		ID:                    doc.ID,
+		UserID:                doc.UserID,
+		Platform:              doc.Platform,
+		Source:                doc.Source,
+		Input:                 doc.Input,
+		Output:                doc.Output,
+		Model:                 doc.Model,
+		PromptTokens:          doc.PromptTokens,
+		CompletionTokens:      doc.CompletionTokens,
+		TotalTokens:           doc.TotalTokens,
+		ImageModel:            doc.ImageModel,
+		ImagePromptTokens:     doc.ImagePromptTokens,
+		ImageCompletionTokens: doc.ImageCompletionTokens,
+		ImageTotalTokens:      doc.ImageTotalTokens,
+		LatencyMs:             doc.LatencyMs,
+		ToolCount:             doc.ToolCount,
+		Tools:                 doc.Tools,
+		Steps:                 doc.Steps,
+		Skills:                doc.Skills,
+		Status:                doc.Status,
+		Error:                 doc.Error,
+		CreatedAt:             doc.CreatedAt,
+		Score:                 doc.Score.toTraceScore(),
 	}
 	return &t, nil
 }
@@ -214,22 +226,26 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 	var traces []Trace
 	for _, d := range docs {
 		traces = append(traces, Trace{
-			ID:               d.ID,
-			UserID:           d.UserID,
-			Platform:         d.Platform,
-			Source:           d.Source,
-			Input:            d.Input,
-			Output:           d.Output,
-			Model:            d.Model,
-			PromptTokens:     d.PromptTokens,
-			CompletionTokens: d.CompletionTokens,
-			TotalTokens:      d.TotalTokens,
-			LatencyMs:        d.LatencyMs,
-			ToolCount:        d.ToolCount,
-			Status:           d.Status,
-			Error:            d.Error,
-			CreatedAt:        d.CreatedAt,
-			Score:            d.Score.toTraceScore(),
+			ID:                    d.ID,
+			UserID:                d.UserID,
+			Platform:              d.Platform,
+			Source:                d.Source,
+			Input:                 d.Input,
+			Output:                d.Output,
+			Model:                 d.Model,
+			PromptTokens:          d.PromptTokens,
+			CompletionTokens:      d.CompletionTokens,
+			TotalTokens:           d.TotalTokens,
+			ImageModel:            d.ImageModel,
+			ImagePromptTokens:     d.ImagePromptTokens,
+			ImageCompletionTokens: d.ImageCompletionTokens,
+			ImageTotalTokens:      d.ImageTotalTokens,
+			LatencyMs:             d.LatencyMs,
+			ToolCount:             d.ToolCount,
+			Status:                d.Status,
+			Error:                 d.Error,
+			CreatedAt:             d.CreatedAt,
+			Score:                 d.Score.toTraceScore(),
 		})
 	}
 	return traces, nil

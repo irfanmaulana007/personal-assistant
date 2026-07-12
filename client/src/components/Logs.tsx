@@ -65,12 +65,25 @@ function buildDebugText(t: Trace): string {
   add('Channel', t.platform);
   add('Source', sourceLabel(t.source) ?? t.source);
   add('Model', t.model);
+  const hasImage = (t.image_total_tokens ?? 0) > 0;
   add(
-    'Tokens',
+    'Tokens (combined)',
+    `${t.combined_total_tokens} (LLM ${t.total_tokens} + image ${t.image_total_tokens ?? 0})`,
+  );
+  add(
+    'LLM tokens',
     `${t.total_tokens} (prompt ${t.prompt_tokens} / completion ${t.completion_tokens})`,
   );
+  if (hasImage) {
+    add(
+      'Image tokens',
+      `${t.image_total_tokens} (prompt ${t.image_prompt_tokens} / completion ${t.image_completion_tokens}) · ${t.image_model}`,
+    );
+  }
   add('Latency (ms)', t.latency_ms);
-  add('Est. cost (USD)', t.estimated_cost_usd);
+  add('Est. cost (USD, combined)', t.estimated_cost_usd);
+  add('  LLM cost (USD)', t.llm_cost_usd);
+  if (hasImage) add('  Image cost (USD)', t.image_cost_usd);
   add('Skills', t.skills && t.skills.length > 0 ? t.skills.join(', ') : '');
 
   section('Quality score');
@@ -97,6 +110,11 @@ function buildDebugText(t: Trace): string {
   if (t.tools && t.tools.length > 0) {
     t.tools.forEach((tool, i) => {
       L.push(`[${i + 1}] ${tool.name}${tool.latency_ms != null ? ` (${tool.latency_ms}ms)` : ''}`);
+      if (tool.total_tokens) {
+        L.push(
+          `  usage: ${tool.model} · ${tool.total_tokens} tok (${tool.prompt_tokens ?? 0}/${tool.completion_tokens ?? 0}) · $${tool.estimated_cost_usd ?? 0}`,
+        );
+      }
       L.push(`  arguments: ${pretty(tool.arguments) || '{}'}`);
       L.push(`  result: ${pretty(tool.result)}`);
     });
@@ -438,7 +456,7 @@ export function Logs() {
                         <ScoreBadge score={t.score} status={t.status} />
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                        {formatTokens(t.total_tokens)}
+                        {formatTokens(t.combined_total_tokens ?? t.total_tokens)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
                         {fmtLatency(t.latency_ms)}
@@ -538,14 +556,18 @@ function TraceDetail({
   detailError?: string;
 }) {
   const { formatDate, formatMoney } = usePreferences();
+  const hasImage = (trace.image_total_tokens ?? 0) > 0;
+  const combinedTokens = trace.combined_total_tokens ?? trace.total_tokens;
   const meta = [
     { k: 'Model', v: trace.model || '—' },
     {
-      k: 'Tokens',
-      v: `${formatTokens(trace.total_tokens)} (${trace.prompt_tokens}/${trace.completion_tokens})`,
+      k: hasImage ? 'Tokens (combined)' : 'Tokens',
+      v: hasImage
+        ? formatTokens(combinedTokens)
+        : `${formatTokens(trace.total_tokens)} (${trace.prompt_tokens}/${trace.completion_tokens})`,
     },
     { k: 'Latency', v: fmtLatency(trace.latency_ms) },
-    { k: 'Cost', v: formatMoney(trace.estimated_cost_usd) },
+    { k: hasImage ? 'Cost (combined)' : 'Cost', v: formatMoney(trace.estimated_cost_usd) },
   ];
 
   return (
@@ -608,6 +630,61 @@ function TraceDetail({
           )}
         </div>
       </div>
+
+      {hasImage && (
+        <Section title="Tokens & cost breakdown">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100 text-left uppercase tracking-wide text-gray-400 dark:border-gray-800 dark:text-gray-500">
+                  <th className="py-1.5 pr-2 font-medium">Source</th>
+                  <th className="py-1.5 pr-2 font-medium">Model</th>
+                  <th className="py-1.5 pr-2 text-right font-medium">Tokens (in/out)</th>
+                  <th className="py-1.5 text-right font-medium">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-50 dark:border-gray-800">
+                  <td className="py-1.5 pr-2 text-gray-700 dark:text-gray-200">LLM</td>
+                  <td className="py-1.5 pr-2 text-gray-500 dark:text-gray-400">
+                    {trace.model || '—'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                    {formatTokens(trace.total_tokens)} ({trace.prompt_tokens}/
+                    {trace.completion_tokens})
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                    {formatMoney(trace.llm_cost_usd)}
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-50 dark:border-gray-800">
+                  <td className="py-1.5 pr-2 text-gray-700 dark:text-gray-200">Image generation</td>
+                  <td className="py-1.5 pr-2 text-gray-500 dark:text-gray-400">
+                    {trace.image_model || '—'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                    {formatTokens(trace.image_total_tokens ?? 0)} ({trace.image_prompt_tokens ?? 0}/
+                    {trace.image_completion_tokens ?? 0})
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                    {formatMoney(trace.image_cost_usd)}
+                  </td>
+                </tr>
+                <tr className="font-semibold text-gray-800 dark:text-gray-100">
+                  <td className="py-1.5 pr-2">Combined</td>
+                  <td className="py-1.5 pr-2" />
+                  <td className="py-1.5 pr-2 text-right tabular-nums">
+                    {formatTokens(combinedTokens)}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {formatMoney(trace.estimated_cost_usd)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
 
       <Section title="Quality score">
         {trace.score ? (
@@ -714,11 +791,15 @@ function TraceDetail({
               <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800">
                 <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm font-medium text-indigo-700 dark:border-gray-800 dark:text-indigo-400">
                   <span>{t.name}</span>
-                  {t.latency_ms != null && (
-                    <span className="text-xs font-normal text-gray-400 tabular-nums dark:text-gray-500">
-                      {fmtLatency(t.latency_ms)}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-2 text-xs font-normal text-gray-400 tabular-nums dark:text-gray-500">
+                    {t.total_tokens ? (
+                      <span title={t.model}>
+                        {formatTokens(t.total_tokens)} tok ·{' '}
+                        {formatMoney(t.estimated_cost_usd ?? 0)}
+                      </span>
+                    ) : null}
+                    {t.latency_ms != null && <span>{fmtLatency(t.latency_ms)}</span>}
+                  </span>
                 </div>
                 <div className="space-y-2 p-3">
                   <div>

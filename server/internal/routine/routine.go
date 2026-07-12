@@ -292,10 +292,18 @@ func (s *Service) recordTrace(ctx context.Context, userID int64, d Def, prompt s
 		trace.PromptTokens = res.Usage.PromptTokens
 		trace.CompletionTokens = res.Usage.CompletionTokens
 		trace.TotalTokens = res.Usage.TotalTokens
+		trace.ImageModel = res.ImageModel
+		trace.ImagePromptTokens = res.ImagePromptTokens
+		trace.ImageCompletionTokens = res.ImageCompletionTokens
+		trace.ImageTotalTokens = res.ImageTotalTokens
 		trace.ToolCount = len(res.Tools)
 		trace.Skills = res.Skills
 		for _, tool := range res.Tools {
-			trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result, LatencyMs: tool.LatencyMs})
+			trace.Tools = append(trace.Tools, store.ToolInvocation{
+				Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result, LatencyMs: tool.LatencyMs,
+				Model: tool.Model, PromptTokens: tool.PromptTokens,
+				CompletionTokens: tool.CompletionTokens, TotalTokens: tool.TotalTokens,
+			})
 		}
 		for _, st := range res.Steps {
 			trace.Steps = append(trace.Steps, store.LLMCall{

@@ -171,6 +171,71 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 		})
 	}
 
+	// Fold image-generation usage (gpt-image-1) into the aggregates as its own
+	// model. Image tokens live in dedicated fields and are priced with a much
+	// higher rate, so they are summed here rather than through the LLM token
+	// fields above: this keeps the summary and per-day token totals combined
+	// (LLM + image) while the by-model breakdown still shows the two apart.
+	imgMatch := mongoRangeMatch(fromUTC, toUTC, platforms)
+	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
+	imgModelPipe := mongo.Pipeline{
+		{{Key: "$match", Value: imgMatch}},
+		{{Key: "$group", Value: bson.M{
+			"_id":              "$image_model",
+			"requests":         bson.M{"$sum": 1},
+			"promptTokens":     bson.M{"$sum": "$image_prompt_tokens"},
+			"completionTokens": bson.M{"$sum": "$image_completion_tokens"},
+			"totalTokens":      bson.M{"$sum": "$image_total_tokens"},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "totalTokens", Value: -1}}}},
+	}
+	var imgModels []struct {
+		Model            string `bson:"_id"`
+		Requests         int    `bson:"requests"`
+		PromptTokens     int    `bson:"promptTokens"`
+		CompletionTokens int    `bson:"completionTokens"`
+		TotalTokens      int    `bson:"totalTokens"`
+	}
+	if err := m.aggregateAll(ctx, colTraces, imgModelPipe, &imgModels); err != nil {
+		return nil, fmt.Errorf("usage by image model: %w", err)
+	}
+	for _, im := range imgModels {
+		stats.ByModel = append(stats.ByModel, UsageModel{
+			Model:            im.Model,
+			Requests:         im.Requests,
+			PromptTokens:     im.PromptTokens,
+			CompletionTokens: im.CompletionTokens,
+			TotalTokens:      im.TotalTokens,
+		})
+		stats.Summary.PromptTokens += im.PromptTokens
+		stats.Summary.CompletionTokens += im.CompletionTokens
+		stats.Summary.TotalTokens += im.TotalTokens
+	}
+
+	// Image tokens per day, added onto the combined by-day token series so the
+	// tokens line tracks the (combined) cost line on the dashboard.
+	imgDayPipe := mongo.Pipeline{
+		{{Key: "$match", Value: imgMatch}},
+		{{Key: "$group", Value: bson.M{
+			"_id":         bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at", "timezone": "UTC"}},
+			"totalTokens": bson.M{"$sum": "$image_total_tokens"},
+		}}},
+	}
+	var imgDays []struct {
+		Date        string `bson:"_id"`
+		TotalTokens int    `bson:"totalTokens"`
+	}
+	if err := m.aggregateAll(ctx, colTraces, imgDayPipe, &imgDays); err != nil {
+		return nil, fmt.Errorf("usage image by day: %w", err)
+	}
+	imgByDay := make(map[string]int, len(imgDays))
+	for _, d := range imgDays {
+		imgByDay[d.Date] = d.TotalTokens
+	}
+	for i := range stats.ByDay {
+		stats.ByDay[i].TotalTokens += imgByDay[stats.ByDay[i].Date]
+	}
+
 	// By platform: deliberately ignores the platform filter (range only) so the
 	// split is always visible. Ordered by request count desc; "" -> "unknown".
 	platMatch := bson.M{"created_at": bson.M{"$gte": fromUTC, "$lt": toUTC}}
@@ -317,6 +382,42 @@ func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, pl
 			CompletionTokens: r.CompletionTokens,
 		})
 	}
+
+	// Image-generation usage (gpt-image-1) contributes its own per-day rows so
+	// the by-day cost series priced in the API layer covers LLM + image combined.
+	imgMatch := mongoRangeMatch(from, to, platforms)
+	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
+	imgPipe := mongo.Pipeline{
+		{{Key: "$match", Value: imgMatch}},
+		{{Key: "$group", Value: bson.M{
+			"_id": bson.M{
+				"day":   bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at", "timezone": "UTC"}},
+				"model": "$image_model",
+			},
+			"promptTokens":     bson.M{"$sum": "$image_prompt_tokens"},
+			"completionTokens": bson.M{"$sum": "$image_completion_tokens"},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "_id.day", Value: 1}}}},
+	}
+	var imgRows []struct {
+		ID struct {
+			Day   string `bson:"day"`
+			Model string `bson:"model"`
+		} `bson:"_id"`
+		PromptTokens     int `bson:"promptTokens"`
+		CompletionTokens int `bson:"completionTokens"`
+	}
+	if err := m.aggregateAll(ctx, colTraces, imgPipe, &imgRows); err != nil {
+		return nil, fmt.Errorf("usage image by day/model: %w", err)
+	}
+	for _, r := range imgRows {
+		out = append(out, DayModelUsage{
+			Date:             r.ID.Day,
+			Model:            r.ID.Model,
+			PromptTokens:     r.PromptTokens,
+			CompletionTokens: r.CompletionTokens,
+		})
+	}
 	return out, nil
 }
 
@@ -364,6 +465,46 @@ func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, p
 			CompletionTokens: r.CompletionTokens,
 			TotalTokens:      r.TotalTokens,
 			Errors:           r.Errors,
+		})
+	}
+
+	// Image-generation usage (gpt-image-1) as its own per-user rows so per-user
+	// cost includes image generation. Requests/Errors stay zero: the run is
+	// already counted by its LLM row above, so counting it again would double the
+	// user's request total.
+	imgMatch := mongoRangeMatch(from, to, platforms)
+	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
+	imgPipe := mongo.Pipeline{
+		{{Key: "$match", Value: imgMatch}},
+		{{Key: "$group", Value: bson.M{
+			"_id": bson.M{
+				"user_id": "$user_id",
+				"model":   "$image_model",
+			},
+			"promptTokens":     bson.M{"$sum": "$image_prompt_tokens"},
+			"completionTokens": bson.M{"$sum": "$image_completion_tokens"},
+			"totalTokens":      bson.M{"$sum": "$image_total_tokens"},
+		}}},
+	}
+	var imgRows []struct {
+		ID struct {
+			UserID int64  `bson:"user_id"`
+			Model  string `bson:"model"`
+		} `bson:"_id"`
+		PromptTokens     int `bson:"promptTokens"`
+		CompletionTokens int `bson:"completionTokens"`
+		TotalTokens      int `bson:"totalTokens"`
+	}
+	if err := m.aggregateAll(ctx, colTraces, imgPipe, &imgRows); err != nil {
+		return nil, fmt.Errorf("usage image by user/model: %w", err)
+	}
+	for _, r := range imgRows {
+		out = append(out, UserModelUsage{
+			UserID:           r.ID.UserID,
+			Model:            r.ID.Model,
+			PromptTokens:     r.PromptTokens,
+			CompletionTokens: r.CompletionTokens,
+			TotalTokens:      r.TotalTokens,
 		})
 	}
 	return out, nil

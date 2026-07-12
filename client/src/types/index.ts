@@ -284,6 +284,21 @@ export interface ToolInvocation {
   arguments: string;
   result: string;
   latency_ms?: number;
+  // Set only for tools that call a paid API of their own (today the Image
+  // Generator on gpt-image-1-mini); absent/zero for ordinary tools.
+  model?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+/** Image models the assistant can bill against — used to split LLM vs image
+ *  usage on the dashboard. Kept in sync with the server price table. */
+export const IMAGE_MODELS: readonly string[] = ['gpt-image-1-mini', 'gpt-image-1'];
+
+export function isImageModel(model: string): boolean {
+  return IMAGE_MODELS.includes(model);
 }
 
 export interface LLMCall {
@@ -315,6 +330,15 @@ export interface Trace {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  // Image-generation usage (gpt-image-1-mini), tracked apart from the LLM.
+  // combined_total_tokens = LLM + image tokens (shown in the logs list);
+  // estimated_cost_usd is the combined LLM+image cost, split into
+  // llm_cost_usd / image_cost_usd for the logs detail.
+  image_model?: string;
+  image_prompt_tokens?: number;
+  image_completion_tokens?: number;
+  image_total_tokens?: number;
+  combined_total_tokens: number;
   latency_ms: number;
   tool_count: number;
   tools?: ToolInvocation[];
@@ -323,6 +347,8 @@ export interface Trace {
   status: string;
   error?: string;
   estimated_cost_usd: number;
+  llm_cost_usd: number;
+  image_cost_usd: number;
   score?: TraceScore;
   created_at: string;
 }

@@ -38,7 +38,7 @@ export function Dashboard() {
             Dashboard
           </h1>
           <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-            Your LLM usage and estimated cost.
+            Your LLM and image-generation usage and estimated cost.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

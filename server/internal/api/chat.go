@@ -113,20 +113,24 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Record the full trace (dashboard + logs) and per-tool usage.
 	traceID, _ := s.store.CreateTrace(r.Context(), &store.Trace{
-		UserID:           userID,
-		Platform:         "web",
-		Input:            inputBody,
-		Output:           res.Reply,
-		Model:            res.Model,
-		PromptTokens:     res.Usage.PromptTokens,
-		CompletionTokens: res.Usage.CompletionTokens,
-		TotalTokens:      res.Usage.TotalTokens,
-		LatencyMs:        latencyMs,
-		ToolCount:        len(res.Tools),
-		Tools:            toStoreTools(res.Tools),
-		Steps:            toStoreSteps(res.Steps),
-		Skills:           res.Skills,
-		Status:           "ok",
+		UserID:                userID,
+		Platform:              "web",
+		Input:                 inputBody,
+		Output:                res.Reply,
+		Model:                 res.Model,
+		PromptTokens:          res.Usage.PromptTokens,
+		CompletionTokens:      res.Usage.CompletionTokens,
+		TotalTokens:           res.Usage.TotalTokens,
+		ImageModel:            res.ImageModel,
+		ImagePromptTokens:     res.ImagePromptTokens,
+		ImageCompletionTokens: res.ImageCompletionTokens,
+		ImageTotalTokens:      res.ImageTotalTokens,
+		LatencyMs:             latencyMs,
+		ToolCount:             len(res.Tools),
+		Tools:                 toStoreTools(res.Tools),
+		Steps:                 toStoreSteps(res.Steps),
+		Skills:                res.Skills,
+		Status:                "ok",
 	})
 	for _, tool := range res.Tools {
 		_ = s.store.LogToolUsage(r.Context(), userID, tool.Name, "web")
@@ -143,11 +147,17 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images})
 }
 
-// toStoreTools converts agent tool invocations to the store representation.
+// toStoreTools converts agent tool invocations to the store representation,
+// carrying the per-tool image usage (model + tokens) so it can be priced in the
+// logs detail apart from the LLM.
 func toStoreTools(inv []agent.ToolInvocation) []store.ToolInvocation {
 	out := make([]store.ToolInvocation, len(inv))
 	for i, t := range inv {
-		out[i] = store.ToolInvocation{Name: t.Name, Arguments: t.Arguments, Result: t.Result, LatencyMs: t.LatencyMs}
+		out[i] = store.ToolInvocation{
+			Name: t.Name, Arguments: t.Arguments, Result: t.Result, LatencyMs: t.LatencyMs,
+			Model: t.Model, PromptTokens: t.PromptTokens,
+			CompletionTokens: t.CompletionTokens, TotalTokens: t.TotalTokens,
+		}
 	}
 	return out
 }
