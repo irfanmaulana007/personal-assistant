@@ -30,8 +30,8 @@ type pairStore interface {
 	ClearGroupTranslatePair(ctx context.Context, chatJID string) error
 }
 
-// Display modes for the group translator. modeBoth (the default) posts the
-// original message and its translation; modeOnly posts just the translation.
+// Display modes for the group translator. modeOnly (the default) posts just the
+// translation; modeBoth posts the original message and its translation too.
 // These strings are persisted per group via pairStore.
 const (
 	modeBoth = "both"
@@ -84,7 +84,7 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 			return "Sorry, I couldn't save those languages. Please try again.", true
 		}
 		return fmt.Sprintf(
-			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now mention me with `/t <message>` and I'll post it in both languages.\nTweak it with `/t mode only` (translation only) or `/t formality casual`/`formal`.",
+			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now mention me with `/t <message>` and I'll reply with the translation.\nUse `/t mode both` to also show the original, or `/t formality casual`/`formal` to set the tone.",
 			cmd.langA, cmd.langB,
 		), true
 
@@ -362,21 +362,22 @@ func parseFormality(s string) (formality string, hasArg bool) {
 }
 
 // normalizeMode resolves a stored mode (possibly "" from an older row or an
-// unset default) to a concrete mode, defaulting to modeBoth.
+// unset default) to a concrete mode. The default is modeOnly — a group shows
+// just the translation until someone opts into modeBoth.
 func normalizeMode(m string) string {
-	if m == modeOnly {
-		return modeOnly
-	}
-	return modeBoth
-}
-
-// toggleMode flips between the two display modes, treating any unset/unknown
-// current value as modeBoth.
-func toggleMode(current string) string {
-	if normalizeMode(current) == modeOnly {
+	if m == modeBoth {
 		return modeBoth
 	}
 	return modeOnly
+}
+
+// toggleMode flips between the two display modes, treating any unset/unknown
+// current value as the default (modeOnly).
+func toggleMode(current string) string {
+	if normalizeMode(current) == modeBoth {
+		return modeOnly
+	}
+	return modeBoth
 }
 
 // --- reply formatting ---

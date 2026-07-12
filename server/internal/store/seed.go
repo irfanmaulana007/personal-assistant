@@ -94,7 +94,7 @@ var skillSeed = []Skill{
 		Category:       "Communication",
 		DefaultEnabled: false,
 		SortOrder:      10,
-		Description:    "Chat across two languages in a WhatsApp group. In a group, set the pair once with \"/t set Indonesian Japanese\", then mention the assistant with \"/t <message>\" and it replies with the message in both languages — so you and a foreign friend can each write in your own language and still understand each other. It auto-detects which of the two languages you wrote in and translates to the other. Use \"/t mode only\" to show just the translation (or \"/t mode both\" for both), and \"/t formality casual\" or \"formal\" to set the tone. Grammar is always corrected in the translation.",
+		Description:    "Chat across two languages in a WhatsApp group. In a group, set the pair once with \"/t set Indonesian Japanese\", then mention the assistant with \"/t <message>\" and it replies with the translation — so you and a foreign friend can each write in your own language and still understand each other. It auto-detects which of the two languages you wrote in and translates to the other. By default it shows just the translation; use \"/t mode both\" to also show the original. Set the tone with \"/t formality casual\" or \"formal\". Grammar is always corrected in the translation.",
 		// No system-prompt fragment: the `/t` command is handled deterministically
 		// in the WhatsApp group path (see internal/translate.GroupService), so this
 		// skill only needs its on/off toggle and description — enabling it does not

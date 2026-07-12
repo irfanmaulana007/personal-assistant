@@ -118,10 +118,15 @@ func TestFormatTranslation(t *testing.T) {
 	if want := "🇯🇵 お元気ですか？"; got != want {
 		t.Errorf("only: got %q, want %q", got, want)
 	}
-	// modeBoth (and empty default) matches formatBoth.
+	// Empty mode defaults to translation-only.
 	got = formatTranslation("Indonesian", "Japanese", "Indonesian", "Apa kabar?", "お元気ですか？", "")
+	if want := "🇯🇵 お元気ですか？"; got != want {
+		t.Errorf("default only: got %q, want %q", got, want)
+	}
+	// modeBoth shows both lines (source first) like formatBoth.
+	got = formatTranslation("Indonesian", "Japanese", "Indonesian", "Apa kabar?", "お元気ですか？", modeBoth)
 	if want := "🇮🇩 Apa kabar?\n🇯🇵 お元気ですか？"; got != want {
-		t.Errorf("both default: got %q, want %q", got, want)
+		t.Errorf("both: got %q, want %q", got, want)
 	}
 	// modeOnly with unknown source falls back to the globe.
 	got = formatTranslation("Indonesian", "Japanese", "", "whatever", "translated", modeOnly)
