@@ -44,6 +44,7 @@ type traceResp struct {
 	UserID           int64                `json:"user_id"`
 	User             string               `json:"user,omitempty"`
 	Platform         string               `json:"platform"`
+	Source           string               `json:"source,omitempty"`
 	Input            string               `json:"input"`
 	Output           string               `json:"output"`
 	Model            string               `json:"model"`
@@ -79,6 +80,7 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 		Environment:      s.environment,
 		UserID:           t.UserID,
 		Platform:         t.Platform,
+		Source:           t.Source,
 		Input:            t.Input,
 		Output:           t.Output,
 		Model:            t.Model,

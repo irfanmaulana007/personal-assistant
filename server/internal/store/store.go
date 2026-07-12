@@ -281,6 +281,10 @@ type Trace struct {
 	ID               int64
 	UserID           int64
 	Platform         string
+	// Source is what triggered the run: "chat" for an interactive message
+	// (web/WhatsApp), or a routine key ("start_of_day" / "end_of_day") for a
+	// scheduled run. Empty is normalised to "chat" on write.
+	Source           string
 	Input            string
 	Output           string
 	Model            string
