@@ -210,6 +210,8 @@ func (s *SQLiteStore) migrate() error {
 			category TEXT NOT NULL DEFAULT '',
 			default_enabled INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
+			prompt_updated_at DATETIME,
+			prompt_updated_by TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 
@@ -390,6 +392,8 @@ func (s *SQLiteStore) migrate() error {
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"skills", "prompt_updated_at", "DATETIME"},
+		{"skills", "prompt_updated_by", "TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range addColumns {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {

@@ -255,9 +255,25 @@ export async function setSkillEnabled(id: number, enabled: boolean): Promise<Ski
   });
 }
 
-// resetSkillPrompt clears a skill's auto-tuned prompt override, reverting it to
-// the shipped default. Admin-only.
+// Admin only. Saves a custom prompt for a skill; returns the refreshed list.
+export async function setSkillPrompt(id: number, prompt: string): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+// Admin only. Resets a skill's prompt back to the shipped default.
 export async function resetSkillPrompt(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ reset: true }),
+  });
+}
+
+// clearTunedPrompt clears a skill's auto-tuned prompt override (set by the
+// end-of-day self-tuner), reverting it to the shipped default. Admin-only.
+export async function clearTunedPrompt(id: number): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/reset-prompt`, { method: 'POST' });
 }
 
