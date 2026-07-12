@@ -84,7 +84,7 @@ func runPostgresMigrations(dsn string) error {
 }
 
 // SetTranslator injects the optional English-normalization translator, applied
-// to reminder/life-goal text before it is persisted.
+// to reminder/bucket-list text before it is persisted.
 func (s *PostgresStore) SetTranslator(t Translator) {
 	s.translator = t
 }

@@ -8,8 +8,8 @@ import type {
   ReminderPayload,
   RemindersConfig,
   ModelPrice,
-  LifeGoal,
-  LifeGoalPayload,
+  BucketItem,
+  BucketItemPayload,
   Skill,
   Role,
   ChatResponse,
@@ -158,27 +158,37 @@ export async function setRemindersConfig(cfg: RemindersConfig): Promise<Reminder
   });
 }
 
-export async function listLifeGoals(): Promise<LifeGoal[]> {
-  return request<LifeGoal[]>('/api/life-goals');
+export async function listBucketItems(): Promise<BucketItem[]> {
+  return request<BucketItem[]>('/api/bucket-list');
 }
 
-export async function createLifeGoal(g: LifeGoalPayload): Promise<LifeGoal> {
-  return request<LifeGoal>('/api/life-goals', { method: 'POST', body: JSON.stringify(g) });
+export async function createBucketItem(g: BucketItemPayload): Promise<BucketItem> {
+  return request<BucketItem>('/api/bucket-list', { method: 'POST', body: JSON.stringify(g) });
 }
 
-export async function updateLifeGoal(id: number, g: LifeGoalPayload): Promise<LifeGoal> {
-  return request<LifeGoal>(`/api/life-goals/${id}`, { method: 'PUT', body: JSON.stringify(g) });
+export async function updateBucketItem(id: number, g: BucketItemPayload): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}`, { method: 'PUT', body: JSON.stringify(g) });
 }
 
-export async function setLifeGoalDone(id: number, done: boolean): Promise<LifeGoal> {
-  return request<LifeGoal>(`/api/life-goals/${id}/done`, {
+export async function setBucketItemDone(id: number, done: boolean): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}/done`, {
     method: 'PUT',
     body: JSON.stringify({ done }),
   });
 }
 
-export async function deleteLifeGoal(id: number): Promise<void> {
-  await request(`/api/life-goals/${id}`, { method: 'DELETE' });
+export async function setBucketItemResolution(
+  id: number,
+  year: number | null,
+): Promise<BucketItem> {
+  return request<BucketItem>(`/api/bucket-list/${id}/resolution`, {
+    method: 'PUT',
+    body: JSON.stringify({ year }),
+  });
+}
+
+export async function deleteBucketItem(id: number): Promise<void> {
+  await request(`/api/bucket-list/${id}`, { method: 'DELETE' });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {

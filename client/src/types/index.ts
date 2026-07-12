@@ -225,20 +225,27 @@ export interface RemindersConfig {
   default_time: string; // 'HH:MM' used when a reminder has no explicit time
 }
 
-export interface LifeGoal {
+// Bucket-list category keys, mirrored from the server. The UI maps each to a
+// display label; unknown values are stored as 'other'.
+export type BucketCategory = 'self_improvement' | 'hiking' | 'country' | 'local' | 'other';
+
+export interface BucketItem {
   id: number;
   title: string;
   description: string;
   note: string;
+  category: BucketCategory;
+  resolution_year: number | null; // set when flagged as that year's resolution
   done: boolean;
   done_at: string; // RFC3339, or '' when not done
   created_at: string;
 }
 
-export interface LifeGoalPayload {
+export interface BucketItemPayload {
   title: string;
   description: string;
   note: string;
+  category: BucketCategory;
 }
 
 export type Channel = '' | 'web' | 'whatsapp';

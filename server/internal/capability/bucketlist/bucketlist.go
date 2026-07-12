@@ -1,6 +1,7 @@
-// Package lifegoal implements the Life Goals skill: a simple checklist of things
-// the user wants to do in life ("Take a swimming course", "Gym membership").
-package lifegoal
+// Package bucketlist implements the Bucket List skill: a categorized checklist
+// of things the user wants to do in life ("Take a swimming course", "Visit
+// Japan"), any of which can be flagged as a resolution for a given year.
+package bucketlist
 
 import (
 	"context"
@@ -14,50 +15,51 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
-// Handler creates, lists, checks off, and deletes the user's life goals.
+// Handler creates, lists, checks off, and deletes the user's bucket-list items.
 type Handler struct {
 	store store.Store
 	log   *slog.Logger
 }
 
-// New creates a life-goal handler.
+// New creates a bucket-list handler.
 func New(s store.Store, log *slog.Logger) *Handler {
-	return &Handler{store: s, log: log.With("component", "lifegoal")}
+	return &Handler{store: s, log: log.With("component", "bucketlist")}
 }
 
-func (h *Handler) Name() string { return "life_goal" }
+func (h *Handler) Name() string { return "bucket_list" }
 
 func (h *Handler) Match(result *intent.ParseResult) bool {
-	return result.Capability == intent.CapabilityLifeGoal
+	return result.Capability == intent.CapabilityBucketList
 }
 
 func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (string, error) {
 	switch result.Action {
-	case intent.ActionLifeGoalAdd:
+	case intent.ActionBucketListAdd:
 		return h.add(ctx, result)
-	case intent.ActionLifeGoalList:
+	case intent.ActionBucketListList:
 		return h.list(ctx, result)
-	case intent.ActionLifeGoalCheck:
+	case intent.ActionBucketListCheck:
 		return h.check(ctx, result)
-	case intent.ActionLifeGoalDelete:
+	case intent.ActionBucketListDelete:
 		return h.remove(ctx, result)
 	default:
-		return "I can add a life goal, list your goals, check one off, or delete one.", nil
+		return "I can add a bucket-list item, list your bucket list, check one off, or delete one.", nil
 	}
 }
 
 func (h *Handler) add(ctx context.Context, result *intent.ParseResult) (string, error) {
 	title := strings.TrimSpace(result.Entities["title"])
 	if title == "" {
-		return "What would you like to add to your life list?", nil
+		return "What would you like to add to your bucket list?", nil
 	}
 	description := strings.TrimSpace(result.Entities["description"])
 	note := strings.TrimSpace(result.Entities["note"])
-	g, err := h.store.CreateLifeGoal(ctx, authctx.UserID(ctx), title, description, note)
+	category := store.NormalizeCategory(result.Entities["category"])
+	g, err := h.store.CreateBucketItem(ctx, authctx.UserID(ctx), title, description, note, category, nil)
 	if err != nil {
-		return "", fmt.Errorf("create life goal: %w", err)
+		return "", fmt.Errorf("create bucket item: %w", err)
 	}
-	msg := fmt.Sprintf("Added to your life list: *%s* ☐", g.Title)
+	msg := fmt.Sprintf("Added to your bucket list: *%s* ☐", g.Title)
 	if g.Description != "" {
 		msg += "\n" + g.Description
 	}
@@ -68,22 +70,22 @@ func (h *Handler) add(ctx context.Context, result *intent.ParseResult) (string, 
 }
 
 func (h *Handler) list(ctx context.Context, _ *intent.ParseResult) (string, error) {
-	goals, err := h.store.ListLifeGoals(ctx, authctx.UserID(ctx))
+	items, err := h.store.ListBucketItems(ctx, authctx.UserID(ctx))
 	if err != nil {
-		return "", fmt.Errorf("list life goals: %w", err)
+		return "", fmt.Errorf("list bucket items: %w", err)
 	}
-	if len(goals) == 0 {
-		return "Your life list is empty. Tell me something you want to do, like \"add gym membership to my life list\".", nil
+	if len(items) == 0 {
+		return "Your bucket list is empty. Tell me something you want to do, like \"add visit Japan to my bucket list\".", nil
 	}
 	done := 0
-	for _, g := range goals {
+	for _, g := range items {
 		if g.Done {
 			done++
 		}
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("*Your life list* — %d of %d done:\n", done, len(goals)))
-	for i, g := range goals {
+	sb.WriteString(fmt.Sprintf("*Your bucket list* — %d of %d done:\n", done, len(items)))
+	for i, g := range items {
 		box := "☐"
 		if g.Done {
 			box = "☑"
@@ -105,13 +107,13 @@ func (h *Handler) check(ctx context.Context, result *intent.ParseResult) (string
 		return "", err
 	}
 	if g == nil {
-		return "I couldn't find that on your life list. Try \"list my life goals\" to see them.", nil
+		return "I couldn't find that on your bucket list. Try \"list my bucket list\" to see it.", nil
 	}
 	if g.Done {
 		return fmt.Sprintf("*%s* is already checked off. 🎉", g.Title), nil
 	}
-	if err := h.store.SetLifeGoalDone(ctx, authctx.UserID(ctx), g.ID, true); err != nil {
-		return "", fmt.Errorf("check life goal: %w", err)
+	if err := h.store.SetBucketItemDone(ctx, authctx.UserID(ctx), g.ID, true); err != nil {
+		return "", fmt.Errorf("check bucket item: %w", err)
 	}
 	return fmt.Sprintf("Checked off *%s* ☑ — nice one! 🎉", g.Title), nil
 }
@@ -122,46 +124,46 @@ func (h *Handler) remove(ctx context.Context, result *intent.ParseResult) (strin
 		return "", err
 	}
 	if g == nil {
-		return "I couldn't find that on your life list.", nil
+		return "I couldn't find that on your bucket list.", nil
 	}
-	if err := h.store.DeleteLifeGoal(ctx, authctx.UserID(ctx), g.ID); err != nil {
-		return "", fmt.Errorf("delete life goal: %w", err)
+	if err := h.store.DeleteBucketItem(ctx, authctx.UserID(ctx), g.ID); err != nil {
+		return "", fmt.Errorf("delete bucket item: %w", err)
 	}
-	return fmt.Sprintf("Removed *%s* from your life list.", g.Title), nil
+	return fmt.Sprintf("Removed *%s* from your bucket list.", g.Title), nil
 }
 
 // find resolves an item reference — either a 1-based position from the last
 // listing, a database id, or a case-insensitive title match.
-func (h *Handler) find(ctx context.Context, ref string) (*store.LifeGoal, error) {
+func (h *Handler) find(ctx context.Context, ref string) (*store.BucketItem, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return nil, nil
 	}
-	goals, err := h.store.ListLifeGoals(ctx, authctx.UserID(ctx))
+	items, err := h.store.ListBucketItems(ctx, authctx.UserID(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("list life goals: %w", err)
+		return nil, fmt.Errorf("list bucket items: %w", err)
 	}
 	// Numeric ref: try list position first, then fall back to a database id.
 	if n, err := strconv.Atoi(ref); err == nil {
-		if n >= 1 && n <= len(goals) {
-			return &goals[n-1], nil
+		if n >= 1 && n <= len(items) {
+			return &items[n-1], nil
 		}
-		for i := range goals {
-			if goals[i].ID == int64(n) {
-				return &goals[i], nil
+		for i := range items {
+			if items[i].ID == int64(n) {
+				return &items[i], nil
 			}
 		}
 	}
 	// Title match: prefer an exact (case-insensitive) hit, else a substring.
 	lower := strings.ToLower(ref)
-	for i := range goals {
-		if strings.EqualFold(goals[i].Title, ref) {
-			return &goals[i], nil
+	for i := range items {
+		if strings.EqualFold(items[i].Title, ref) {
+			return &items[i], nil
 		}
 	}
-	for i := range goals {
-		if strings.Contains(strings.ToLower(goals[i].Title), lower) {
-			return &goals[i], nil
+	for i := range items {
+		if strings.Contains(strings.ToLower(items[i].Title), lower) {
+			return &items[i], nil
 		}
 	}
 	return nil, nil

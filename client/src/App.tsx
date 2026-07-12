@@ -5,7 +5,7 @@ import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { Skills } from './components/Skills';
 import { Reminders } from './components/Reminders';
-import { LifeGoals } from './components/LifeGoals';
+import { BucketList } from './components/BucketList';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
@@ -62,7 +62,9 @@ function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="skills" element={<Skills />} />
           <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
-          <Route path="life-goals" element={<LifeGoals />} />
+          <Route path="bucket-list" element={<BucketList />} />
+          {/* Legacy path kept so old links/bookmarks still resolve. */}
+          <Route path="life-goals" element={<Navigate to="/bucket-list" replace />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
             <Route index element={<AgentSettings />} />

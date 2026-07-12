@@ -12,6 +12,11 @@ import (
 // capability, so its skill toggle is gone.
 var prunedSkillKeys = []string{"scheduled_reminder"}
 
+// renamedSkillKeys maps a retired skill key to its replacement. Applied before
+// the upsert so the skill row keeps its id — preserving each user's enable /
+// disable toggle in user_skills (which references the skill by id).
+var renamedSkillKeys = map[string]string{"life_goals": "bucket_list"}
+
 var skillSeed = []Skill{
 	{
 		Key:            "ask_about_contact",
@@ -23,13 +28,13 @@ var skillSeed = []Skill{
 		Prompt:         "You can look up saved contacts with the contact_search tool and save new ones with contact_add. When the user asks about a person (their phone, email, or a note), search for them. When the user shares contact details (\"save John's number 0812…\", \"Sarah's email is …\"), save them. Always confirm what you found or saved, and never invent contact details.",
 	},
 	{
-		Key:            "life_goals",
-		Name:           "Life Goals",
+		Key:            "bucket_list",
+		Name:           "Bucket List",
 		Category:       "Personal",
 		DefaultEnabled: true,
 		SortOrder:      1,
-		Description:    "Keep a checklist of things you want to do in life — \"take a swimming course\", \"get a gym membership\", \"visit Japan\". Add them just by mentioning them, ask to see your list, and check them off as you go. Also manageable from the Life Goals page.",
-		Prompt:         "The user keeps a life list — a checklist of things they want to do in life. Use lifegoal_add when they mention wanting to do or achieve something someday, lifegoal_list to show the checklist and its progress, lifegoal_check to mark an item done when they've achieved it, and lifegoal_delete to remove one. Identify an item to check or delete by its number from the last listing or by its title. Confirm what you added or checked off, and be encouraging when they complete something.",
+		Description:    "Keep a bucket list of things you want to do in life — \"take a swimming course\", \"visit Japan\", \"climb Rinjani\" — sorted into categories. Add them just by mentioning them, ask to see your list, and check them off as you go. Also manageable from the Bucket List page, where you can flag items as this year's resolutions.",
+		Prompt:         "The user keeps a bucket list — a categorized checklist of things they want to do in life. Use bucketlist_add when they mention wanting to do or achieve something someday, inferring the category (self_improvement, hiking, country, local, other). Use bucketlist_list to show the list and its progress, bucketlist_check to mark an item done when they've achieved it, and bucketlist_delete to remove one. Identify an item to check or delete by its number from the last listing or by its title. Confirm what you added or checked off, and be encouraging when they complete something.",
 	},
 	{
 		Key:            "travel_control",
@@ -105,6 +110,21 @@ func (s *SQLiteStore) seedSkills() error {
 			return fmt.Errorf("prune skill %s: %w", key, err)
 		}
 	}
+	// Rename retired skill keys in place so the row (and its per-user toggles)
+	// carry over. Skip if the new key already exists (rename already applied).
+	for oldKey, newKey := range renamedSkillKeys {
+		var exists int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM skills WHERE key = ?`, newKey).Scan(&exists); err != nil {
+			return fmt.Errorf("rename lookup %s: %w", newKey, err)
+		}
+		if exists > 0 {
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE skills SET key = ? WHERE key = ?`, newKey, oldKey); err != nil {
+			return fmt.Errorf("rename skill %s -> %s: %w", oldKey, newKey, err)
+		}
+	}
+
 	for _, sk := range skillSeed {
 		if _, err := s.db.Exec(
 			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order)
