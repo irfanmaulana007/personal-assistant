@@ -11,6 +11,7 @@ import {
 import type { Reminder, ReminderPayload, RepeatMode, RemindersConfig } from '../types';
 import { Toggle } from './ui/Toggle';
 import { SkeletonListRow } from './ui/Skeleton';
+import { Modal } from './ui/Modal';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30';
@@ -136,13 +137,23 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-          Reminders
-        </h1>
-        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Schedule reminders delivered over WhatsApp. Set them to repeat and add one or more times.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Reminders
+          </h1>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Schedule reminders delivered over WhatsApp. Set them to repeat and add one or more
+            times.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing({ id: null, form: emptyForm() })}
+          className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+        >
+          + New reminder
+        </button>
       </div>
 
       {/* Reminder settings — a section distinct from the reminder list. */}
@@ -190,11 +201,14 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      <div className="mt-5">
-        {editing ? (
+      <Modal
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing?.id != null ? 'Edit reminder' : 'New reminder'}
+      >
+        {editing && (
           <ReminderForm
             initial={editing.form}
-            editing={editing.id !== null}
             onCancel={() => setEditing(null)}
             onSave={async (payload) => {
               if (editing.id === null) await createReminder(payload);
@@ -203,16 +217,8 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
               setEditing(null);
             }}
           />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditing({ id: null, form: emptyForm() })}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-          >
-            + New reminder
-          </button>
         )}
-      </div>
+      </Modal>
 
       {loading ? (
         <div className="mt-5 space-y-2">
@@ -220,7 +226,7 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
             <SkeletonListRow key={i} trailingWidth="w-28" />
           ))}
         </div>
-      ) : reminders.length === 0 && !editing ? (
+      ) : reminders.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No reminders yet.</p>
       ) : (
         <div className="mt-5 space-y-2">
@@ -277,12 +283,10 @@ function toPayload(r: Reminder): ReminderPayload {
 
 function ReminderForm({
   initial,
-  editing,
   onSave,
   onCancel,
 }: {
   initial: ReminderPayload;
-  editing: boolean;
   onSave: (payload: ReminderPayload) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -329,14 +333,7 @@ function ReminderForm({
   };
 
   return (
-    <form
-      onSubmit={submit}
-      className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
-    >
-      <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-gray-50">
-        {editing ? 'Edit reminder' : 'New reminder'}
-      </h2>
-
+    <form onSubmit={submit}>
       <div className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">

@@ -9,6 +9,7 @@ import {
 } from '../api/client';
 import type { BucketItem, BucketCategory } from '../types';
 import { Skeleton } from './ui/Skeleton';
+import { Modal } from './ui/Modal';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
@@ -209,18 +210,11 @@ export function BucketList() {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   // Filters.
   const [filterCat, setFilterCat] = useState<BucketCategory | 'all'>('all');
   const [resolutionsOnly, setResolutionsOnly] = useState(false);
-
-  // New-item form state.
-  const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState<BucketCategory>('self_improvement');
-  const [newDescription, setNewDescription] = useState('');
-  const [newNote, setNewNote] = useState('');
-  const [newResolution, setNewResolution] = useState(false);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -237,32 +231,18 @@ export function BucketList() {
 
   const reload = async () => setItems(await listBucketItems());
 
-  const add = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const title = newTitle.trim();
-    if (!title) return;
-    setAdding(true);
-    setError('');
-    try {
-      const created = await createBucketItem({
-        title,
-        description: newDescription.trim(),
-        note: newNote.trim(),
-        category: newCategory,
-      });
-      if (newResolution) {
-        await setBucketItemResolution(created.id, CURRENT_YEAR);
-      }
-      setNewTitle('');
-      setNewDescription('');
-      setNewNote('');
-      setNewResolution(false);
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add');
-    } finally {
-      setAdding(false);
+  const add = async (payload: BucketFormValues) => {
+    const created = await createBucketItem({
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      note: payload.note.trim(),
+      category: payload.category,
+    });
+    if (payload.resolution) {
+      await setBucketItemResolution(created.id, CURRENT_YEAR);
     }
+    await reload();
+    setShowAdd(false);
   };
 
   const toggleDone = async (g: BucketItem) => {
@@ -305,10 +285,7 @@ export function BucketList() {
     }
   };
 
-  const saveEdit = async (
-    id: number,
-    payload: { title: string; description: string; note: string; category: BucketCategory },
-  ) => {
+  const saveEdit = async (id: number, payload: BucketFormValues) => {
     await updateBucketItem(id, {
       title: payload.title.trim(),
       description: payload.description.trim(),
@@ -318,6 +295,8 @@ export function BucketList() {
     await reload();
     setEditingId(null);
   };
+
+  const editingItem = editingId != null ? items.find((g) => g.id === editingId) : undefined;
 
   // --- Derived stats ---------------------------------------------------------
 
@@ -378,14 +357,23 @@ export function BucketList() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-          Bucket List
-        </h1>
-        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Everything you want to do in life, sorted into buckets. Flag the ones you want to tackle
-          this year as resolutions, and check them off as you go.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Bucket List
+          </h1>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Everything you want to do in life, sorted into buckets. Flag the ones you want to tackle
+            this year as resolutions, and check them off as you go.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdd(true)}
+          className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+        >
+          + Add item
+        </button>
       </div>
 
       {/* Overview: this-year resolutions + overall progress */}
@@ -504,63 +492,42 @@ export function BucketList() {
         </div>
       )}
 
-      {/* Add form */}
-      <form
-        onSubmit={add}
-        className="mt-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
-      >
-        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Add something
-        </label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="e.g. Take a swimming course"
-            className={inputClass}
+      {/* Add / edit modals — the pages themselves stay free of inline forms. */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add to bucket list">
+        {showAdd && (
+          <BucketItemForm
+            initial={{
+              title: '',
+              category: 'self_improvement',
+              description: '',
+              note: '',
+              resolution: false,
+            }}
+            showResolution
+            submitLabel="Add"
+            onSubmit={add}
+            onCancel={() => setShowAdd(false)}
           />
-          <select
-            value={newCategory}
-            onChange={(e) => setNewCategory(e.target.value as BucketCategory)}
-            className={`${inputClass} sm:w-56`}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={adding || !newTitle.trim()}
-            className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
-          >
-            {adding ? 'Adding…' : '+ Add'}
-          </button>
-        </div>
-        <textarea
-          value={newDescription}
-          onChange={(e) => setNewDescription(e.target.value)}
-          placeholder="Add a description (optional)"
-          rows={2}
-          className={`${inputClass} mt-2 resize-none`}
-        />
-        <input
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Add a note (optional)"
-          className={`${inputClass} mt-2`}
-        />
-        <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-          <input
-            type="checkbox"
-            checked={newResolution}
-            onChange={(e) => setNewResolution(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
+        )}
+      </Modal>
+
+      <Modal open={editingItem != null} onClose={() => setEditingId(null)} title="Edit item">
+        {editingItem && (
+          <BucketItemForm
+            initial={{
+              title: editingItem.title,
+              category: editingItem.category,
+              description: editingItem.description,
+              note: editingItem.note,
+              resolution: false,
+            }}
+            showResolution={false}
+            submitLabel="Save"
+            onSubmit={(payload) => saveEdit(editingItem.id, payload)}
+            onCancel={() => setEditingId(null)}
           />
-          Make it a {CURRENT_YEAR} resolution
-        </label>
-      </form>
+        )}
+      </Modal>
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -624,54 +591,36 @@ export function BucketList() {
                 </span>
               </div>
               <div className="space-y-2">
-                {grp.items.map((g) =>
-                  editingId === g.id ? (
-                    <EditRow
-                      key={g.id}
-                      item={g}
-                      onCancel={() => setEditingId(null)}
-                      onSave={(payload) => saveEdit(g.id, payload)}
-                    />
-                  ) : (
-                    <ItemRow
-                      key={g.id}
-                      item={g}
-                      busy={busyId === g.id}
-                      showCategory={false}
-                      onToggleDone={() => toggleDone(g)}
-                      onToggleResolution={() => toggleResolution(g)}
-                      onEdit={() => setEditingId(g.id)}
-                      onDelete={() => remove(g)}
-                    />
-                  ),
-                )}
+                {grp.items.map((g) => (
+                  <ItemRow
+                    key={g.id}
+                    item={g}
+                    busy={busyId === g.id}
+                    showCategory={false}
+                    onToggleDone={() => toggleDone(g)}
+                    onToggleResolution={() => toggleResolution(g)}
+                    onEdit={() => setEditingId(g.id)}
+                    onDelete={() => remove(g)}
+                  />
+                ))}
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="mt-5 space-y-2">
-          {filtered.map((g) =>
-            editingId === g.id ? (
-              <EditRow
-                key={g.id}
-                item={g}
-                onCancel={() => setEditingId(null)}
-                onSave={(payload) => saveEdit(g.id, payload)}
-              />
-            ) : (
-              <ItemRow
-                key={g.id}
-                item={g}
-                busy={busyId === g.id}
-                showCategory
-                onToggleDone={() => toggleDone(g)}
-                onToggleResolution={() => toggleResolution(g)}
-                onEdit={() => setEditingId(g.id)}
-                onDelete={() => remove(g)}
-              />
-            ),
-          )}
+          {filtered.map((g) => (
+            <ItemRow
+              key={g.id}
+              item={g}
+              busy={busyId === g.id}
+              showCategory
+              onToggleDone={() => toggleDone(g)}
+              onToggleResolution={() => toggleResolution(g)}
+              onEdit={() => setEditingId(g.id)}
+              onDelete={() => remove(g)}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -786,24 +735,34 @@ function ItemRow({
   );
 }
 
-function EditRow({
-  item: g,
-  onSave,
+interface BucketFormValues {
+  title: string;
+  category: BucketCategory;
+  description: string;
+  note: string;
+  resolution: boolean;
+}
+
+// Shared form body for both adding and editing a bucket-list item. Rendered
+// inside a Modal, so it carries no card chrome of its own.
+function BucketItemForm({
+  initial,
+  showResolution,
+  submitLabel,
+  onSubmit,
   onCancel,
 }: {
-  item: BucketItem;
-  onSave: (payload: {
-    title: string;
-    description: string;
-    note: string;
-    category: BucketCategory;
-  }) => Promise<void>;
+  initial: BucketFormValues;
+  showResolution: boolean;
+  submitLabel: string;
+  onSubmit: (payload: BucketFormValues) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [title, setTitle] = useState(g.title);
-  const [category, setCategory] = useState<BucketCategory>(g.category);
-  const [description, setDescription] = useState(g.description);
-  const [note, setNote] = useState(g.note);
+  const [title, setTitle] = useState(initial.title);
+  const [category, setCategory] = useState<BucketCategory>(initial.category);
+  const [description, setDescription] = useState(initial.description);
+  const [note, setNote] = useState(initial.note);
+  const [resolution, setResolution] = useState(initial.resolution);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -813,7 +772,7 @@ function EditRow({
     setSaving(true);
     setError('');
     try {
-      await onSave({ title, description, note, category });
+      await onSubmit({ title, category, description, note, resolution });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
       setSaving(false);
@@ -821,15 +780,12 @@ function EditRow({
   };
 
   return (
-    <form
-      onSubmit={submit}
-      className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
-    >
+    <form onSubmit={submit}>
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title"
+          placeholder="e.g. Take a swimming course"
           className={inputClass}
           autoFocus
         />
@@ -848,29 +804,40 @@ function EditRow({
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="Description (optional)"
+        placeholder="Add a description (optional)"
         rows={2}
         className={`${inputClass} mt-2 resize-none`}
       />
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        placeholder="Note (optional)"
+        placeholder="Add a note (optional)"
         className={`${inputClass} mt-2`}
       />
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-      <div className="mt-3 flex items-center gap-3">
+      {showResolution && (
+        <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={resolution}
+            onChange={(e) => setResolution(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
+          />
+          Make it a {CURRENT_YEAR} resolution
+        </label>
+      )}
+      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <div className="mt-5 flex items-center gap-3">
         <button
           type="submit"
           disabled={saving || !title.trim()}
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : submitLabel}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 transition hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           Cancel
         </button>
