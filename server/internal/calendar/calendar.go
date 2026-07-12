@@ -183,7 +183,16 @@ func matchEventID(existing []Event, ev Event) string {
 
 // DeleteEvent removes a mirrored event from a connection's primary calendar.
 func (s *Service) DeleteEvent(ctx context.Context, userID int64, connID, eventID string) error {
-	args, _ := json.Marshal(map[string]any{"calendar_id": "primary", "event_id": eventID})
+	return s.deleteInCalendar(ctx, userID, connID, "primary", eventID)
+}
+
+// deleteInCalendar removes an event from a specific calendar within a connection.
+// An empty calID falls back to "primary".
+func (s *Service) deleteInCalendar(ctx context.Context, userID int64, connID, calID, eventID string) error {
+	if calID == "" {
+		calID = "primary"
+	}
+	args, _ := json.Marshal(map[string]any{"calendar_id": calID, "event_id": eventID})
 	_, err := s.client.ExecuteTool(ctx, s.apiKey(ctx), toolDeleteEvent, string(args), strconv.FormatInt(userID, 10), connID)
 	return err
 }

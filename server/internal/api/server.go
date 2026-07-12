@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
+	calendarsvc "github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
@@ -39,6 +40,7 @@ type Server struct {
 	eval       *eval.Judge
 	routines   *routine.Service
 	composio   *composio.Client
+	calendar   *calendarsvc.Service
 	whatsapp   WhatsAppController
 	store      store.Store
 	signingKey []byte
@@ -58,6 +60,7 @@ func NewServer(
 	judge *eval.Judge,
 	routines *routine.Service,
 	composioClient *composio.Client,
+	calendarSvc *calendarsvc.Service,
 	whatsapp WhatsAppController,
 	store store.Store,
 	signingKey []byte,
@@ -74,6 +77,7 @@ func NewServer(
 		eval:        judge,
 		routines:    routines,
 		composio:    composioClient,
+		calendar:    calendarSvc,
 		whatsapp:    whatsapp,
 		store:       store,
 		signingKey:  signingKey,
@@ -148,6 +152,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/integrations/openai-key", admin(s.handleSetOpenAIKey))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", admin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", admin(s.handleDisconnectIntegration))
+	mux.Handle("DELETE /api/calendar/events", admin(s.handleClearCalendarEvents))
 	mux.Handle("GET /api/whatsapp", admin(s.handleWhatsAppStatus))
 	mux.Handle("POST /api/whatsapp/connect", admin(s.handleWhatsAppConnect))
 	mux.Handle("POST /api/whatsapp/disconnect", admin(s.handleWhatsAppDisconnect))

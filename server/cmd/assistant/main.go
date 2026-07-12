@@ -360,6 +360,7 @@ func main() {
 			evalJudge,
 			routineSvc,
 			composioClient,
+			calSvc,
 			waCtl,
 			db,
 			signingKey[:],

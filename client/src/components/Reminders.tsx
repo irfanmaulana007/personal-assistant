@@ -7,6 +7,7 @@ import {
   deleteReminder,
   getRemindersConfig,
   setRemindersConfig,
+  clearAllCalendarEvents,
 } from '../api/client';
 import type { Reminder, ReminderPayload, RepeatMode, RemindersConfig } from '../types';
 import { Toggle } from './ui/Toggle';
@@ -77,6 +78,10 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ id: number | null; form: ReminderPayload } | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState('');
+  const [clearResult, setClearResult] = useState<{ deleted: number; failed: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -123,6 +128,26 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
     }
   };
 
+  const openClearConfirm = () => {
+    setClearError('');
+    setClearResult(null);
+    setConfirmClear(true);
+  };
+
+  const clearCalendar = async () => {
+    setClearing(true);
+    setClearError('');
+    try {
+      const res = await clearAllCalendarEvents();
+      setClearResult(res);
+      setConfirmClear(false);
+    } catch (e) {
+      setClearError(e instanceof Error ? e.message : 'Failed to clear calendar events');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const remove = async (r: Reminder) => {
     setBusyId(r.id);
     setError('');
@@ -148,13 +173,24 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
             times.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setEditing({ id: null, form: emptyForm() })}
-          className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-        >
-          + New reminder
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={openClearConfirm}
+              className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-500/10"
+            >
+              Clear all calendar events
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setEditing({ id: null, form: emptyForm() })}
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+          >
+            + New reminder
+          </button>
+        </div>
       </div>
 
       {/* Reminder settings — a section distinct from the reminder list. */}
@@ -201,6 +237,51 @@ export function Reminders({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {clearResult && (
+        <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-500/30 dark:bg-green-500/15 dark:text-green-300">
+          Cleared {clearResult.deleted} calendar event{clearResult.deleted === 1 ? '' : 's'}
+          {clearResult.failed > 0 && `, ${clearResult.failed} failed to delete`}.
+        </div>
+      )}
+
+      <Modal
+        open={confirmClear}
+        onClose={() => !clearing && setConfirmClear(false)}
+        title="Clear all calendar events?"
+        description="This permanently deletes every event on your connected Google Calendar(s)."
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            This removes <strong>all</strong> events — recurring series and one-off events alike —
+            from every Google Calendar connected via Composio. It is meant to recover from a flood
+            of duplicate events and <strong>cannot be undone</strong>.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            With hundreds of events this can take a few minutes; keep this tab open until it
+            finishes.
+          </p>
+          {clearError && <p className="text-sm text-red-600 dark:text-red-400">{clearError}</p>}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={clearing}
+              onClick={clearCalendar}
+              className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600"
+            >
+              {clearing ? 'Clearing…' : 'Yes, clear everything'}
+            </button>
+            <button
+              type="button"
+              disabled={clearing}
+              onClick={() => setConfirmClear(false)}
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={editing !== null}

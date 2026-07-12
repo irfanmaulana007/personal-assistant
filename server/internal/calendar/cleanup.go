@@ -46,6 +46,35 @@ func (s *Service) ListMasters(ctx context.Context, userID int64, from, to time.T
 	return out, nil
 }
 
+// ClearAll deletes EVERY event across all connected Google accounts and
+// calendars within a wide window centered on now (recurring series are removed
+// once, via their master, which deletes all their instances). It returns how
+// many events were deleted and how many delete calls failed.
+//
+// This is a destructive recovery action, surfaced to the user so they can wipe a
+// runaway flood of duplicate events that the agent can no longer clean up on its
+// own and that Google Calendar's own UI refuses to bulk-delete.
+func (s *Service) ClearAll(ctx context.Context, userID int64) (deleted, failed int, err error) {
+	now := time.Now().In(s.tz)
+	// A very wide window so long-past and far-future events are both swept up.
+	from := now.AddDate(-5, 0, 0)
+	to := now.AddDate(5, 0, 0)
+	masters, err := s.ListMasters(ctx, userID, from, to)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, m := range masters {
+		if e := s.deleteInCalendar(ctx, userID, m.Account, m.Calendar, m.ID); e != nil {
+			failed++
+			s.log.Warn("clear-all delete failed", "id", m.ID, "title", m.Title, "error", e)
+			continue
+		}
+		deleted++
+	}
+	s.log.Info("cleared calendar events", "user", userID, "deleted", deleted, "failed", failed)
+	return deleted, failed, nil
+}
+
 func (s *Service) mastersFor(ctx context.Context, key, uid, connID, calID string, from, to time.Time) ([]MasterEvent, error) {
 	var out []MasterEvent
 	pageToken := ""
