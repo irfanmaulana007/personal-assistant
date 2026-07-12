@@ -149,6 +149,23 @@ func NewClient() *Client {
 // Complete sends a chat completion request and returns the assistant message
 // plus token usage. If tools are provided, tool_choice is set to "auto".
 func (c *Client) Complete(ctx context.Context, cfg Config, messages []Message, tools []Tool) (*CompletionResult, error) {
+	choice := ""
+	if len(tools) > 0 {
+		choice = "auto"
+	}
+	return c.complete(ctx, cfg, messages, tools, choice)
+}
+
+// CompleteRequiringTool behaves like Complete but sets tool_choice to
+// "required", forcing the model to call at least one of the provided tools
+// instead of returning a text-only reply. It is used for save-intent turns
+// where a text-only reply would be a fabricated "done ✅" confirmation with no
+// underlying write. tools must be non-empty.
+func (c *Client) CompleteRequiringTool(ctx context.Context, cfg Config, messages []Message, tools []Tool) (*CompletionResult, error) {
+	return c.complete(ctx, cfg, messages, tools, "required")
+}
+
+func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, tools []Tool, toolChoice string) (*CompletionResult, error) {
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("no API key configured")
 	}
@@ -164,7 +181,7 @@ func (c *Client) Complete(ctx context.Context, cfg Config, messages []Message, t
 
 	reqBody := chatRequest{Model: model, Messages: messages, Tools: tools}
 	if len(tools) > 0 {
-		reqBody.ToolChoice = "auto"
+		reqBody.ToolChoice = toolChoice
 	}
 
 	payload, err := json.Marshal(reqBody)
