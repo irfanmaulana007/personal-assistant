@@ -440,7 +440,19 @@ export function Logs() {
                   Run detail
                 </h2>
                 <div className="flex items-center gap-1">
-                  <CopyButton getText={() => buildDebugText(selected)} />
+                  {/* Gate the copy until the full trace has loaded: the drawer
+                      first shows the lightweight list-row trace, which carries
+                      no tool calls, LLM calls, or skills. Copying then would
+                      silently produce an incomplete debug dump. */}
+                  <CopyButton
+                    getText={() => buildDebugText(selected)}
+                    disabled={detailLoading || !!detailError}
+                    disabledTitle={
+                      detailError
+                        ? 'Run detail failed to load — reopen the run to copy full context'
+                        : 'Loading full run detail…'
+                    }
+                  />
                   <button
                     onClick={() => setSelected(null)}
                     aria-label="Close"
@@ -755,11 +767,25 @@ function EmptyState({ children }: { children: React.ReactNode }) {
  * CopyButton copies the text produced by getText() to the clipboard, showing a
  * brief check-mark confirmation. Used in the run-detail header to grab the whole
  * trace as a paste-ready debug dump.
+ *
+ * `disabled` gates copying until the source data is complete — the run-detail
+ * drawer opens on a lightweight list-row trace (no tool calls / LLM calls /
+ * skills) and only swaps in the full trace once the detail request resolves.
+ * Copying before then would yield a debug dump missing exactly those sections.
  */
-function CopyButton({ getText }: { getText: () => string }) {
+function CopyButton({
+  getText,
+  disabled = false,
+  disabledTitle,
+}: {
+  getText: () => string;
+  disabled?: boolean;
+  disabledTitle?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
+    if (disabled) return;
     const text = getText();
     try {
       await navigator.clipboard.writeText(text);
@@ -785,12 +811,21 @@ function CopyButton({ getText }: { getText: () => string }) {
   return (
     <button
       onClick={copy}
+      disabled={disabled}
       aria-label={copied ? 'Copied' : 'Copy debug details'}
-      title={copied ? 'Copied!' : 'Copy debug details'}
+      title={
+        disabled
+          ? (disabledTitle ?? 'Copy debug details')
+          : copied
+            ? 'Copied!'
+            : 'Copy debug details'
+      }
       className={`rounded-lg p-1.5 transition ${
-        copied
-          ? 'text-green-600 dark:text-green-400'
-          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50'
+        disabled
+          ? 'cursor-not-allowed text-gray-300 dark:text-gray-600'
+          : copied
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50'
       }`}
     >
       {copied ? (
