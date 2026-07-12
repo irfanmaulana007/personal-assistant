@@ -318,6 +318,37 @@ func toolSchemas() []llm.Tool {
 	return tools
 }
 
+// toolSkillOwner maps every skill-provided tool name back to the skill key that
+// exposes it. Base tools (toolSpecs) are always-on and have no owning skill, so
+// they are intentionally absent.
+var toolSkillOwner = func() map[string]string {
+	m := make(map[string]string)
+	for key, ts := range skillTools {
+		for _, t := range ts {
+			m[t.name] = key
+		}
+	}
+	return m
+}()
+
+// SkillsForTools returns the distinct skill keys whose tools appear in the given
+// invoked tool names, preserving first-seen order. Tools with no owning skill
+// (always-on base tools) are ignored. Used to show only the skills actually
+// exercised by a conversation, rather than every enabled skill.
+func SkillsForTools(toolNames []string) []string {
+	var out []string
+	seen := make(map[string]bool)
+	for _, name := range toolNames {
+		key, ok := toolSkillOwner[name]
+		if !ok || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
+}
+
 // skillToolSchemas returns the tools provided by the given enabled skill keys.
 func skillToolSchemas(keys []string) []llm.Tool {
 	var out []llm.Tool
