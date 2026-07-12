@@ -161,8 +161,26 @@ func (c *Client) Complete(ctx context.Context, cfg Config, messages []Message, t
 // instead of returning a text-only reply. It is used for save-intent turns
 // where a text-only reply would be a fabricated "done ✅" confirmation with no
 // underlying write. tools must be non-empty.
+//
+// Some providers/models (notably ones running in a reasoning/"thinking" mode)
+// reject any non-"auto" tool_choice with a 400. Rather than fail the whole
+// turn, we detect that and retry once with "auto": the save-intent guard
+// degrades to best-effort on those models instead of erroring out.
 func (c *Client) CompleteRequiringTool(ctx context.Context, cfg Config, messages []Message, tools []Tool) (*CompletionResult, error) {
-	return c.complete(ctx, cfg, messages, tools, "required")
+	res, err := c.complete(ctx, cfg, messages, tools, "required")
+	if err != nil && isToolChoiceUnsupported(err) {
+		return c.complete(ctx, cfg, messages, tools, "auto")
+	}
+	return res, err
+}
+
+// isToolChoiceUnsupported reports whether err is a provider rejection of the
+// tool_choice value (e.g. "Thinking mode does not support this tool_choice"),
+// as opposed to any other failure. Matched leniently on the substring since the
+// exact wording varies by provider.
+func isToolChoiceUnsupported(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "tool_choice") || strings.Contains(msg, "tool choice")
 }
 
 func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, tools []Tool, toolChoice string) (*CompletionResult, error) {
