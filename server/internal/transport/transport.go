@@ -4,9 +4,12 @@ import "context"
 
 // Message represents a platform-agnostic incoming message.
 type Message struct {
-	ID        string
-	From      string
-	Text      string
+	ID   string
+	From string
+	Text string
+	// Image, when non-empty, is a data: URL (base64) for an image attached to
+	// the message. Requires a vision-capable model to be interpreted.
+	Image     string
 	Platform  string
 	Timestamp int64
 	Raw       any

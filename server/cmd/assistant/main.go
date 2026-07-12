@@ -196,18 +196,27 @@ func main() {
 			// Recent conversation history for context (before logging this message).
 			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
 
-			// Log incoming message
+			// Log incoming message. Note when a photo is attached so image-only
+			// messages don't show up as empty in the logs.
+			logBody := msg.Text
+			if msg.Image != "" {
+				if logBody == "" {
+					logBody = "[image]"
+				} else {
+					logBody += " [image]"
+				}
+			}
 			_ = db.LogMessage(ctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
 				Sender:    msg.From,
-				Body:      msg.Text,
+				Body:      logBody,
 			})
 
 			// Run the LLM agent.
 			start := time.Now()
-			res, err := assistant.Run(uctx, msg.Text, history, "")
+			res, err := assistant.Run(uctx, msg.Text, history, msg.Image)
 			latencyMs := int(time.Since(start).Milliseconds())
 			response := ""
 			if err != nil {
