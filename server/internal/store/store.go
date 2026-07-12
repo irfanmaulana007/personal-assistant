@@ -22,7 +22,8 @@ type Skill struct {
 	Key            string
 	Name           string
 	Description    string
-	Prompt         string
+	Prompt         string // shipped default; re-seeded from code on every boot
+	TunedPrompt    string // end-of-day self-tuner's override; empty ⇒ use Prompt
 	Category       string
 	DefaultEnabled bool
 	SortOrder      int
@@ -32,6 +33,16 @@ type Skill struct {
 	// the seed stops clobbering the prompt.
 	PromptUpdatedAt *time.Time
 	PromptUpdatedBy string
+}
+
+// EffectivePrompt is the prompt actually injected into the system prompt: the
+// auto-tuned override when the self-tuner has set one, otherwise the shipped
+// default. Clearing TunedPrompt reverts the skill to its default.
+func (s Skill) EffectivePrompt() string {
+	if s.TunedPrompt != "" {
+		return s.TunedPrompt
+	}
+	return s.Prompt
 }
 
 // UserSkill is a skill together with its effective enabled state for a user.
@@ -527,6 +538,10 @@ type DataStore interface {
 	// manages it again.
 	SetSkillPrompt(ctx context.Context, skillID int64, prompt, updatedBy string) error
 	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
+	// UpdateSkillTunedPrompt sets (or, with an empty string, clears) a skill's
+	// auto-tuned prompt override, keyed by the skill's stable `key`. Used by the
+	// end-of-day self-tuner and the "revert to default" affordance.
+	UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error
 
 	// Reminders (scoped to a user; scheduler passes the owner's id)
 	CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error)
@@ -643,6 +658,13 @@ type LogStore interface {
 	SaveTraceScore(ctx context.Context, sc *TraceScore) error
 	GetTraceScore(ctx context.Context, traceID int64) (*TraceScore, error)
 	ListUnscoredTraces(ctx context.Context, since time.Time, limit int) ([]Trace, error)
+	// ListLowScoreTracesWithSkills returns full-detail traces for one user in
+	// [from, to) whose judge score.overall is <= maxOverall and that have at
+	// least one skill attached, worst score first. Traces whose Source is in
+	// excludeSources are omitted (so the self-tuner ignores its own routine
+	// runs). Unlike ListTraces, Tools/Steps/Skills are populated. Powers the
+	// end-of-day self-tuner's review step.
+	ListLowScoreTracesWithSkills(ctx context.Context, userID int64, from, to time.Time, maxOverall float64, excludeSources []string, limit int) ([]Trace, error)
 
 	// Usage analytics (aggregates over traces & tool_usage)
 	// platforms nil/empty = all; otherwise restricted to any listed platform.

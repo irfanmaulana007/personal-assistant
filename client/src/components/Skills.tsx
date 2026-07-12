@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
-import { listSkills, setSkillEnabled, setSkillPrompt, resetSkillPrompt } from '../api/client';
+import {
+  listSkills,
+  setSkillEnabled,
+  setSkillPrompt,
+  resetSkillPrompt,
+  clearTunedPrompt,
+} from '../api/client';
 import type { Skill } from '../types';
 import { Toggle } from './ui/Toggle';
 import { Modal } from './ui/Modal';
@@ -152,6 +158,7 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [revertingId, setRevertingId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -179,6 +186,20 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
       setError(e instanceof Error ? e.message : 'Failed to update skill');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // Clears the end-of-day self-tuner's prompt override for a skill, reverting it
+  // to the shipped default.
+  const revert = async (sk: Skill) => {
+    setRevertingId(sk.id);
+    setError('');
+    try {
+      setSkills(await clearTunedPrompt(sk.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to revert skill prompt');
+    } finally {
+      setRevertingId(null);
     }
   };
 
@@ -232,14 +253,24 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                 {g.skills.map((sk) => (
                   <div key={sk.id} className="flex items-start gap-4 p-4">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-                        {sk.name}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                          {sk.name}
+                        </span>
+                        {sk.auto_tuned && (
+                          <span
+                            title="The end-of-day self-tuner has refined this skill's instructions."
+                            className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/30"
+                          >
+                            Auto-tuned
+                          </span>
+                        )}
                       </div>
                       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                         {sk.description}
                       </p>
                       {isAdmin && (
-                        <div className="mt-2 flex items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setEditingId(sk.id)}
@@ -260,6 +291,16 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                             </svg>
                             Edit prompt
                           </button>
+                          {sk.auto_tuned && (
+                            <button
+                              type="button"
+                              onClick={() => revert(sk)}
+                              disabled={revertingId === sk.id}
+                              className="text-xs font-medium text-indigo-700 hover:text-indigo-800 disabled:opacity-50 dark:text-indigo-400 dark:hover:text-indigo-300"
+                            >
+                              {revertingId === sk.id ? 'Reverting…' : 'Revert to default prompt'}
+                            </button>
+                          )}
                           {sk.prompt_updated_at && (
                             <span className="text-xs text-gray-400 dark:text-gray-500">
                               Edited {formatEdited(sk.prompt_updated_at)}

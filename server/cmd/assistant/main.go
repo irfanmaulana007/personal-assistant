@@ -27,6 +27,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/selftune"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
 	websearchcap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/websearch"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
@@ -163,6 +164,7 @@ func main() {
 	handlers = append(handlers, hiking.New(db, timezone, log))
 	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
 	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
+	handlers = append(handlers, selftune.New(db, log))
 
 	router := capability.NewRouter(log, handlers...)
 

@@ -251,6 +251,68 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 	return traces, nil
 }
 
+// ListLowScoreTracesWithSkills returns full-detail traces (Tools/Steps/Skills
+// populated) for one user in [from, to) whose judge score.overall is <=
+// maxOverall and that have at least one skill attached, worst score first. It
+// powers the end-of-day self-tuner's review step. excludeSources drops traces
+// whose Source matches (e.g. the routine's own runs). A $lte on score.overall
+// naturally excludes unscored traces (a missing/null field never matches).
+func (m *MongoStore) ListLowScoreTracesWithSkills(ctx context.Context, userID int64, from, to time.Time, maxOverall float64, excludeSources []string, limit int) ([]Trace, error) {
+	filter := bson.M{
+		"created_at":    bson.M{"$gte": from.UTC(), "$lt": to.UTC()},
+		"user_id":       userID,
+		"score.overall": bson.M{"$lte": maxOverall},
+		"skills.0":      bson.M{"$exists": true}, // non-empty skills array
+	}
+	if len(excludeSources) > 0 {
+		filter["source"] = bson.M{"$nin": excludeSources}
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	// Worst score first so the tuner spends its limited tool budget on the
+	// biggest problems; id desc as a stable tiebreak.
+	opts := options.Find().
+		SetSort(bson.D{{Key: "score.overall", Value: 1}, {Key: "id", Value: -1}}).
+		SetLimit(int64(limit))
+
+	cur, err := m.col(colTraces).Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list low-score traces: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var docs []mongoTrace
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("scan trace: %w", err)
+	}
+	out := make([]Trace, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, Trace{
+			ID:               d.ID,
+			UserID:           d.UserID,
+			Platform:         d.Platform,
+			Source:           d.Source,
+			Input:            d.Input,
+			Output:           d.Output,
+			Model:            d.Model,
+			PromptTokens:     d.PromptTokens,
+			CompletionTokens: d.CompletionTokens,
+			TotalTokens:      d.TotalTokens,
+			LatencyMs:        d.LatencyMs,
+			ToolCount:        d.ToolCount,
+			Tools:            d.Tools,
+			Steps:            d.Steps,
+			Skills:           d.Skills,
+			Status:           d.Status,
+			Error:            d.Error,
+			CreatedAt:        d.CreatedAt,
+			Score:            d.Score.toTraceScore(),
+		})
+	}
+	return out, nil
+}
+
 // ListUnscoredTraces returns successful traces created at/after since that have
 // no score yet, oldest first, capped at limit. Error traces are skipped — there
 // is no useful reply to judge.

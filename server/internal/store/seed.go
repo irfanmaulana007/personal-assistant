@@ -123,6 +123,15 @@ var skillSeed = []Skill{
 		Description:    "Estimate the calories in a meal from a photo. Send a picture of your food and the assistant identifies the items and gives an approximate calorie count and macros. Needs a vision-capable model.",
 		Prompt:         "The user may send a photo of a meal. Identify the food items, estimate the portion sizes, and give an approximate per-item and total calorie count plus a rough protein/carbs/fat breakdown — always clearly labelled as estimates that vary with portion and preparation. If the user only describes a meal in text, estimate from the description. This needs a vision-capable model; if you cannot see the image, say so.",
 	},
+	{
+		Key:            "self_tuning",
+		Name:           "Self-Tuning",
+		Category:       "System",
+		DefaultEnabled: false,
+		SortOrder:      11,
+		Description:    "Let the assistant improve its own skills. When on, it can review recent low-quality conversations (where a skill was involved) and rewrite that skill's instructions so it does better next time. Meant to run from the End of day routine; the improved prompt persists and can be reverted from this page.",
+		Prompt:         "You can review your own recent low-quality conversations and refine the instruction prompts of your other skills so they work better next time. Use review_skill_performance to pull recent low-scoring conversations that involved a skill, together with each involved skill's current prompt. Study each conversation's input, your output, the tools you called, and the judge's rationale to diagnose WHY the skill underperformed (missing instruction, ambiguous guidance, a tool it should have called but didn't, wrong format). Then use update_skill_prompt to save an improved prompt for that skill: keep everything that already works, make a focused, surgical change that fixes the observed failure, preserve the tool names and any required output markers exactly, and pass a one-line reason. Do not rewrite a prompt wholesale, invent skills that don't exist, or tune a skill you have no evidence is failing. Never touch the self_tuning skill itself.",
+	},
 }
 
 func (s *SQLiteStore) seedSkills() error {
@@ -265,6 +274,17 @@ func (s *SQLiteStore) SetSkillEnabled(ctx context.Context, userID, skillID int64
 		userID, skillID, boolToInt(enabled),
 	)
 	return err
+}
+
+func (s *SQLiteStore) UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE skills SET tuned_prompt = ? WHERE key = ?`, tuned, key)
+	if err != nil {
+		return fmt.Errorf("update skill tuned prompt: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("skill %q not found", key)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error) {
