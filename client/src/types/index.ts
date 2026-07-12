@@ -54,6 +54,7 @@ export interface LlmSettings {
   api_key_mask: string;
   model: string;
   base_url: string;
+  vision: boolean;
   providers: LlmProvider[];
 }
 
@@ -62,6 +63,7 @@ export interface LlmSettingsUpdate {
   api_key?: string;
   model?: string;
   base_url?: string;
+  vision?: boolean;
 }
 
 export interface LlmTestResult {

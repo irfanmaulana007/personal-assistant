@@ -20,6 +20,7 @@ const (
 	KeyLLMAPIKey      = "llm.api_key"      // encrypted
 	KeyLLMModel       = "llm.model"        // plaintext
 	KeyLLMBaseURL     = "llm.base_url"     // plaintext
+	KeyLLMVision      = "llm.vision"       // plaintext "true"/"false"; absent ⇒ false
 	KeyComposioAPIKey = "composio.api_key" // encrypted
 
 	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Tavily Search API key)
@@ -91,6 +92,12 @@ func (s *Service) LLMConfig(ctx context.Context) (llm.Config, error) {
 		cfg.Model = v
 	}
 
+	if v, err := s.getString(ctx, KeyLLMVision); err != nil {
+		return cfg, err
+	} else if v == "true" {
+		cfg.Vision = true
+	}
+
 	enc, err := s.store.GetSetting(ctx, KeyLLMAPIKey)
 	if err != nil {
 		return cfg, err
@@ -113,6 +120,7 @@ type LLMView struct {
 	APIKeyMask string             `json:"api_key_mask"`
 	Model      string             `json:"model"`
 	BaseURL    string             `json:"base_url"`
+	Vision     bool               `json:"vision"`
 	Providers  []llm.ProviderInfo `json:"providers"`
 }
 
@@ -136,6 +144,7 @@ func (s *Service) LLMView(ctx context.Context) (LLMView, error) {
 		APIKeyMask: mask(cfg.APIKey),
 		Model:      cfg.Model,
 		BaseURL:    cfg.BaseURL,
+		Vision:     cfg.Vision,
 		Providers:  llm.Providers,
 	}, nil
 }
@@ -147,6 +156,7 @@ type LLMUpdate struct {
 	APIKey   *string
 	Model    *string
 	BaseURL  *string
+	Vision   *bool
 }
 
 // UpdateLLM persists the provided LLM settings.
@@ -178,6 +188,15 @@ func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 	}
 	if u.BaseURL != nil {
 		if err := s.store.SetSetting(ctx, KeyLLMBaseURL, []byte(*u.BaseURL)); err != nil {
+			return err
+		}
+	}
+	if u.Vision != nil {
+		val := "false"
+		if *u.Vision {
+			val = "true"
+		}
+		if err := s.store.SetSetting(ctx, KeyLLMVision, []byte(val)); err != nil {
 			return err
 		}
 	}
