@@ -89,6 +89,19 @@ var skillSeed = []Skill{
 		Prompt:         "You can create and edit images. Use the generate_image tool when the user asks you to draw, create, generate, design, or imagine any picture, illustration, logo, or artwork — write a rich, detailed English prompt describing the subject, style, composition, and colours. Use the edit_image tool when the user has attached an image and asks you to change it (recolour, add or remove something, restyle). The finished image is delivered to the user automatically, so never paste base64 or image URLs into your reply — just briefly describe what you made in the user's language. If image generation isn't configured, say so plainly.",
 	},
 	{
+		Key:            "translator",
+		Name:           "Translator",
+		Category:       "Communication",
+		DefaultEnabled: false,
+		SortOrder:      10,
+		Description:    "Chat across two languages in a WhatsApp group. In a group, set the pair once with \"/t set Indonesian Japanese\", then mention the assistant with \"/t <message>\" and it replies with the message in both languages — so you and a foreign friend can each write in your own language and still understand each other. It auto-detects which of the two languages you wrote in and translates to the other.",
+		// No system-prompt fragment: the `/t` command is handled deterministically
+		// in the WhatsApp group path (see internal/translate.GroupService), so this
+		// skill only needs its on/off toggle and description — enabling it does not
+		// change the general assistant's behaviour.
+		Prompt: "",
+	},
+	{
 		Key:            "food_calories",
 		Name:           "Food Calories",
 		Category:       "Health",

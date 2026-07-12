@@ -5,6 +5,7 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -364,6 +365,49 @@ func (s *Service) ReminderDefaultTime(ctx context.Context) string {
 // SetReminderDefaultTime persists the default reminder time ("HH:MM").
 func (s *Service) SetReminderDefaultTime(ctx context.Context, hhmm string) error {
 	return s.store.SetSetting(ctx, KeyReminderDefaultTime, []byte(hhmm))
+}
+
+// --- Group translator (per WhatsApp group language pair) ---
+
+// groupTranslatePair is the persisted language pair for one group chat.
+type groupTranslatePair struct {
+	A string `json:"a"`
+	B string `json:"b"`
+}
+
+// groupTranslateKey composes the per-chat setting key for a group's translator
+// language pair, e.g. translate_group_<chatJID>.
+func groupTranslateKey(chatJID string) string {
+	return "translate_group_" + chatJID
+}
+
+// GroupTranslatePair returns the two languages configured for a group chat's
+// translator, or two empty strings when none has been set.
+func (s *Service) GroupTranslatePair(ctx context.Context, chatJID string) (langA, langB string) {
+	raw, err := s.getString(ctx, groupTranslateKey(chatJID))
+	if err != nil || raw == "" {
+		return "", ""
+	}
+	var p groupTranslatePair
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return "", ""
+	}
+	return p.A, p.B
+}
+
+// SetGroupTranslatePair persists the language pair a group chat translates
+// between.
+func (s *Service) SetGroupTranslatePair(ctx context.Context, chatJID, langA, langB string) error {
+	data, err := json.Marshal(groupTranslatePair{A: langA, B: langB})
+	if err != nil {
+		return err
+	}
+	return s.store.SetSetting(ctx, groupTranslateKey(chatJID), data)
+}
+
+// ClearGroupTranslatePair removes a group chat's configured language pair.
+func (s *Service) ClearGroupTranslatePair(ctx context.Context, chatJID string) error {
+	return s.store.SetSetting(ctx, groupTranslateKey(chatJID), nil)
 }
 
 // --- Daily routines (scheduled skills) ---

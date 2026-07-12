@@ -95,7 +95,13 @@ func main() {
 
 	// Normalize reminder/bucket-list text to English before persisting, whatever
 	// language the user typed (REST or chat). Fail-soft: stores as-is on error.
-	db.SetTranslator(translate.New(settingsSvc, llmClient, log))
+	translator := translate.New(settingsSvc, llmClient, log)
+	db.SetTranslator(translator)
+
+	// Group Translator skill: handles the `/t` command in WhatsApp groups
+	// (translate between a group's two configured languages), short-circuiting
+	// the agent for those messages.
+	groupTranslator := translate.NewGroup(translator, settingsSvc, db, log)
 
 	timezone := cfg.Owner.Location()
 
@@ -203,6 +209,23 @@ func main() {
 			}
 			userID := owner.ID
 			uctx := authctx.WithUserID(ctx, userID)
+
+			// Group Translator skill: a "/t" command in a group is a
+			// self-contained translate/config request. Handle it directly and
+			// return — it bypasses the agent and is intentionally kept out of the
+			// conversation history so it never disturbs the assistant's context.
+			if msg.IsGroup {
+				if reply, handled := groupTranslator.Handle(uctx, userID, msg.Chat, msg.Text); handled {
+					replyTo := msg.Chat
+					if replyTo == "" {
+						replyTo = msg.From
+					}
+					if err := wa.SendMessage(ctx, replyTo, reply); err != nil {
+						log.Error("failed to send translator response", "to", replyTo, "error", err)
+					}
+					return
+				}
+			}
 
 			// Recent conversation history for context (before logging this message).
 			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
