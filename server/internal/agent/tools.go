@@ -19,34 +19,13 @@ type toolSpec struct {
 }
 
 var toolSpecs = []toolSpec{
-	{
-		name:        "calendar_list",
-		description: "List the user's calendar events for a given day.",
-		capability:  intent.CapabilityCalendar,
-		action:      intent.ActionCalendarList,
-		parameters:  `{"type":"object","properties":{"date":{"type":"string","description":"Day to list, e.g. 'today', 'tomorrow', 'Friday'. Defaults to today if omitted."}}}`,
-	},
-	{
-		name:        "calendar_create",
-		description: "Create a new calendar event.",
-		capability:  intent.CapabilityCalendar,
-		action:      intent.ActionCalendarCreate,
-		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Event title."},"datetime":{"type":"string","description":"Natural-language start time, e.g. 'at 3pm', 'tomorrow at 2pm'."}},"required":["title"]}`,
-	},
-	{
-		name:        "calendar_update",
-		description: "Reschedule an existing calendar event to a new time.",
-		capability:  intent.CapabilityCalendar,
-		action:      intent.ActionCalendarUpdate,
-		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Title (or part of it) of the event to reschedule."},"datetime":{"type":"string","description":"New natural-language start time."}},"required":["title","datetime"]}`,
-	},
-	{
-		name:        "calendar_delete",
-		description: "Delete/cancel a calendar event.",
-		capability:  intent.CapabilityCalendar,
-		action:      intent.ActionCalendarDelete,
-		parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Title (or part of it) of the event to delete."}},"required":["title"]}`,
-	},
+	// Calendar is served exclusively through the user's Composio-connected
+	// Google Calendar: reads go through "list_calendar" and writes through
+	// "schedule_event" (stored as a reminder and mirrored to Google Calendar).
+	// The old native-Google "calendar_*" tools were removed: their handler is
+	// gated off by default (calendar.enabled: false), so advertising them let
+	// the model pick a dead tool that always replied "I don't have that
+	// capability yet" even when the Composio calendar was connected.
 	{
 		name:        "email_inbox",
 		description: "List the user's unread inbox emails.",

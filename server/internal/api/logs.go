@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/irfanmaulana007/personal-assistant/server/internal/agent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -63,14 +62,16 @@ type traceResp struct {
 	CreatedAt        string               `json:"created_at"`
 }
 
-// toolNames extracts the invoked tool names from a trace's tool invocations,
-// in call order, so they can be mapped back to the skills that own them.
-func toolNames(tools []store.ToolInvocation) []string {
-	names := make([]string, len(tools))
-	for i, tv := range tools {
-		names[i] = tv.Name
+// activeSkills returns the skill keys that were active for a trace, dropping any
+// empty entries (an empty persisted "" splits into a single blank key).
+func activeSkills(skills []string) []string {
+	out := make([]string, 0, len(skills))
+	for _, s := range skills {
+		if s != "" {
+			out = append(out, s)
+		}
 	}
-	return names
+	return out
 }
 
 func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools bool) traceResp {
@@ -89,7 +90,7 @@ func (s *Server) traceToResp(ctx context.Context, t *store.Trace, includeTools b
 		TotalTokens:      t.TotalTokens,
 		LatencyMs:        t.LatencyMs,
 		ToolCount:        t.ToolCount,
-		Skills:           agent.SkillsForTools(toolNames(t.Tools)),
+		Skills:           activeSkills(t.Skills),
 		Status:           t.Status,
 		Error:            t.Error,
 		EstimatedCostUSD: cost,
