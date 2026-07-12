@@ -32,6 +32,7 @@ const (
 	KeyReminderDefaultTime = "reminder_default_time" // local "HH:MM" used when a reminder has no time
 
 	KeyWhatsAppAllowlist = "whatsapp_allowlist" // comma-joined JIDs allowed to chat with the assistant
+	KeyWhatsAppAllowAll  = "whatsapp_allow_all" // "true"/"false"; when true the assistant answers every number (allowlist ignored). Absent ⇒ false.
 
 	KeyEvalEnabled          = "eval_enabled"            // "true"/"false"; absent ⇒ enabled
 	KeyEvalJudgeModel       = "eval_judge_model"        // model id for the judge; empty ⇒ reuse the agent model
@@ -323,6 +324,22 @@ func (s *Service) WhatsAppAllowedJIDs(ctx context.Context) []string {
 // SetWhatsAppAllowedJIDs persists the WhatsApp allowlist.
 func (s *Service) SetWhatsAppAllowedJIDs(ctx context.Context, jids []string) error {
 	return s.store.SetSetting(ctx, KeyWhatsAppAllowlist, []byte(strings.Join(jids, ",")))
+}
+
+// WhatsAppAllowAll reports whether the assistant answers every number, ignoring
+// the allowlist. Off by default; only an explicit "true" enables it.
+func (s *Service) WhatsAppAllowAll(ctx context.Context) bool {
+	v, _ := s.getString(ctx, KeyWhatsAppAllowAll)
+	return v == "true"
+}
+
+// SetWhatsAppAllowAll persists the "answer every number" toggle.
+func (s *Service) SetWhatsAppAllowAll(ctx context.Context, allowAll bool) error {
+	val := "false"
+	if allowAll {
+		val = "true"
+	}
+	return s.store.SetSetting(ctx, KeyWhatsAppAllowAll, []byte(val))
 }
 
 // ReminderDefaultTime returns the local "HH:MM" to use for reminders created

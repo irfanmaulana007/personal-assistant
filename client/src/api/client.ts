@@ -376,13 +376,21 @@ export async function disconnectWhatsApp(): Promise<WhatsAppStatus> {
   return request<WhatsAppStatus>('/api/whatsapp/disconnect', { method: 'POST' });
 }
 
-export async function getWhatsAppAllowlist(): Promise<{ allowlist: string[] }> {
-  return request<{ allowlist: string[] }>('/api/whatsapp/allowlist');
+export interface WhatsAppAllowlist {
+  allowlist: string[];
+  allow_all: boolean;
 }
 
-export async function setWhatsAppAllowlist(allowlist: string[]): Promise<{ allowlist: string[] }> {
-  return request<{ allowlist: string[] }>('/api/whatsapp/allowlist', {
+export async function getWhatsAppAllowlist(): Promise<WhatsAppAllowlist> {
+  return request<WhatsAppAllowlist>('/api/whatsapp/allowlist');
+}
+
+export async function setWhatsAppAllowlist(
+  allowlist: string[],
+  allowAll: boolean,
+): Promise<WhatsAppAllowlist> {
+  return request<WhatsAppAllowlist>('/api/whatsapp/allowlist', {
     method: 'PUT',
-    body: JSON.stringify({ allowlist }),
+    body: JSON.stringify({ allowlist, allow_all: allowAll }),
   });
 }
