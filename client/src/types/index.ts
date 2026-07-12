@@ -184,9 +184,12 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
-  // The skill's system-prompt fragment. Only present for admins (who manage it
-  // from the Skills page); omitted for non-admin members.
+  // Prompt management fields. Present only for admins (the API omits them for
+  // members). `prompt_updated_at` is null when the prompt is still the default.
   prompt?: string;
+  default_prompt?: string;
+  prompt_updated_at?: string | null;
+  prompt_updated_by?: string;
 }
 
 export interface Preferences {

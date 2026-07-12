@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // skillSeed is the master list of skills, owned by code and upserted on boot.
@@ -14,6 +15,18 @@ import (
 // model to call the non-existent lifegoal_add tool) is dropped so only
 // bucket_list remains.
 var prunedSkillKeys = []string{"scheduled_reminder", "life_goals"}
+
+// DefaultSkillPrompt returns the code-owned default prompt for a skill key, or
+// "" if the key is unknown. Used to reset an admin-customized prompt back to
+// the shipped default.
+func DefaultSkillPrompt(key string) string {
+	for _, sk := range skillSeed {
+		if sk.Key == key {
+			return sk.Prompt
+		}
+	}
+	return ""
+}
 
 var skillSeed = []Skill{
 	{
@@ -132,16 +145,15 @@ func (s *SQLiteStore) seedSkills() error {
 	}
 
 	for _, sk := range skillSeed {
-		// The skill prompt is DB-owned and editable from the UI, so it is only
-		// written on first insert — the ON CONFLICT branch deliberately leaves
-		// `prompt` untouched so a boot never clobbers an edited prompt. The rest
-		// of the fields stay code-owned and re-sync on every boot.
 		if _, err := s.db.Exec(
 			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(key) DO UPDATE SET
 			   name = excluded.name,
 			   description = excluded.description,
+			   -- Preserve an admin-customized prompt; only re-seed the default
+			   -- while the prompt has never been edited (prompt_updated_at IS NULL).
+			   prompt = CASE WHEN skills.prompt_updated_at IS NULL THEN excluded.prompt ELSE skills.prompt END,
 			   category = excluded.category,
 			   default_enabled = excluded.default_enabled,
 			   sort_order = excluded.sort_order`,
@@ -164,7 +176,7 @@ func boolToInt(b bool) int {
 
 func (s *SQLiteStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order
+		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by
 		 FROM skills ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list skills: %w", err)
@@ -176,9 +188,10 @@ func (s *SQLiteStore) ListSkills(ctx context.Context) ([]Skill, error) {
 func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 	var sk Skill
 	var de int
+	var updatedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order FROM skills WHERE id = ?`, id,
-	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder)
+		`SELECT id, key, name, description, prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by FROM skills WHERE id = ?`, id,
+	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder, &updatedAt, &sk.PromptUpdatedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -186,6 +199,10 @@ func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 		return nil, fmt.Errorf("get skill: %w", err)
 	}
 	sk.DefaultEnabled = de != 0
+	if updatedAt.Valid {
+		t := updatedAt.Time
+		sk.PromptUpdatedAt = &t
+	}
 	return &sk, nil
 }
 
@@ -194,6 +211,7 @@ func (s *SQLiteStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 func (s *SQLiteStore) ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.category, s.default_enabled, s.sort_order,
+		        s.prompt_updated_at, s.prompt_updated_by,
 		        COALESCE(us.enabled, s.default_enabled) AS effective
 		 FROM skills s
 		 LEFT JOIN user_skills us ON us.skill_id = s.id AND us.user_id = ?
@@ -207,14 +225,37 @@ func (s *SQLiteStore) ListUserSkills(ctx context.Context, userID int64) ([]UserS
 	for rows.Next() {
 		var us UserSkill
 		var de, eff int
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.Category, &de, &us.SortOrder, &eff); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.Category, &de, &us.SortOrder, &updatedAt, &us.PromptUpdatedBy, &eff); err != nil {
 			return nil, fmt.Errorf("scan user skill: %w", err)
 		}
 		us.DefaultEnabled = de != 0
 		us.Enabled = eff != 0
+		if updatedAt.Valid {
+			t := updatedAt.Time
+			us.PromptUpdatedAt = &t
+		}
 		out = append(out, us)
 	}
 	return out, rows.Err()
+}
+
+// SetSkillPrompt updates a skill's prompt. A non-empty updatedBy marks the
+// change as an admin customization (protected from the boot seed); an empty
+// updatedBy resets to the code default and lets the seed manage it again.
+func (s *SQLiteStore) SetSkillPrompt(ctx context.Context, skillID int64, prompt, updatedBy string) error {
+	if updatedBy == "" {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE skills SET prompt = ?, prompt_updated_at = NULL, prompt_updated_by = '' WHERE id = ?`,
+			prompt, skillID,
+		)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE skills SET prompt = ?, prompt_updated_at = ?, prompt_updated_by = ? WHERE id = ?`,
+		prompt, time.Now().UTC(), updatedBy, skillID,
+	)
+	return err
 }
 
 func (s *SQLiteStore) SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error {
@@ -224,16 +265,6 @@ func (s *SQLiteStore) SetSkillEnabled(ctx context.Context, userID, skillID int64
 		userID, skillID, boolToInt(enabled),
 	)
 	return err
-}
-
-// UpdateSkillPrompt overwrites a skill's system-prompt fragment. The prompt is
-// DB-owned master data, so this change is global and persists across boots.
-func (s *SQLiteStore) UpdateSkillPrompt(ctx context.Context, skillID int64, prompt string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE skills SET prompt = ? WHERE id = ?`, prompt, skillID)
-	if err != nil {
-		return fmt.Errorf("update skill prompt: %w", err)
-	}
-	return nil
 }
 
 func (s *SQLiteStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error) {
@@ -262,10 +293,15 @@ func scanSkills(rows *sql.Rows) ([]Skill, error) {
 	for rows.Next() {
 		var sk Skill
 		var de int
-		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder); err != nil {
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.Category, &de, &sk.SortOrder, &updatedAt, &sk.PromptUpdatedBy); err != nil {
 			return nil, fmt.Errorf("scan skill: %w", err)
 		}
 		sk.DefaultEnabled = de != 0
+		if updatedAt.Valid {
+			t := updatedAt.Time
+			sk.PromptUpdatedAt = &t
+		}
 		out = append(out, sk)
 	}
 	return out, rows.Err()

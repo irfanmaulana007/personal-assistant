@@ -255,11 +255,19 @@ export async function setSkillEnabled(id: number, enabled: boolean): Promise<Ski
   });
 }
 
-// Admin-only: overwrite a skill's system-prompt fragment (global master data).
+// Admin only. Saves a custom prompt for a skill; returns the refreshed list.
 export async function setSkillPrompt(id: number, prompt: string): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/prompt`, {
     method: 'PUT',
     body: JSON.stringify({ prompt }),
+  });
+}
+
+// Admin only. Resets a skill's prompt back to the shipped default.
+export async function resetSkillPrompt(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ reset: true }),
   });
 }
 

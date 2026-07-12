@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
 type skillResp struct {
@@ -13,13 +17,17 @@ type skillResp struct {
 	Description string `json:"description"`
 	Category    string `json:"category"`
 	Enabled     bool   `json:"enabled"`
-	// Prompt is the DB-owned system-prompt fragment injected when the skill is
-	// enabled. It is master data and only exposed to admins (who manage it from
-	// the Skills page); it stays empty in responses to non-admin members.
-	Prompt string `json:"prompt,omitempty"`
+	// Prompt management fields. Populated only for admins, since the prompt is
+	// internal behaviour a member never needs and only admins may edit.
+	Prompt          string  `json:"prompt,omitempty"`
+	DefaultPrompt   string  `json:"default_prompt,omitempty"`
+	PromptUpdatedAt *string `json:"prompt_updated_at,omitempty"`
+	PromptUpdatedBy string  `json:"prompt_updated_by,omitempty"`
 }
 
-// handleListSkills returns the current user's skills with effective enabled state.
+// handleListSkills returns the current user's skills with effective enabled
+// state. For admins each skill additionally carries its editable prompt, the
+// code-owned default, and who last edited it.
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFrom(r.Context())
 	if claims == nil {
@@ -40,10 +48,73 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 		}
 		if isAdmin {
 			resp.Prompt = u.Prompt
+			resp.DefaultPrompt = store.DefaultSkillPrompt(u.Key)
+			resp.PromptUpdatedBy = u.PromptUpdatedBy
+			if u.PromptUpdatedAt != nil {
+				ts := u.PromptUpdatedAt.Format(time.RFC3339)
+				resp.PromptUpdatedAt = &ts
+			}
 		}
 		out = append(out, resp)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetSkillPrompt updates a skill's prompt (admin only). A "reset" request
+// restores the code-owned default; otherwise the supplied prompt is saved and
+// stamped with the editing admin's email and the current time.
+func (s *Server) handleSetSkillPrompt(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFrom(r.Context())
+	if claims == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill id"})
+		return
+	}
+
+	var req struct {
+		Prompt string `json:"prompt"`
+		Reset  bool   `json:"reset"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	sk, err := s.store.GetSkill(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if sk == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+		return
+	}
+
+	if req.Reset {
+		// Reset to the shipped default and hand the prompt back to the boot seed
+		// (empty updatedBy clears the customization stamp).
+		if err := s.store.SetSkillPrompt(r.Context(), id, store.DefaultSkillPrompt(sk.Key), ""); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill prompt"})
+			return
+		}
+		s.handleListSkills(w, r)
+		return
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt cannot be empty"})
+		return
+	}
+	if err := s.store.SetSkillPrompt(r.Context(), id, prompt, claims.Email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill prompt"})
+		return
+	}
+	s.handleListSkills(w, r)
 }
 
 // handleSetSkill enables/disables a skill for the current user.
@@ -79,47 +150,6 @@ func (s *Server) handleSetSkill(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.SetSkillEnabled(r.Context(), claims.UserID(), id, req.Enabled); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
-		return
-	}
-	s.handleListSkills(w, r)
-}
-
-// handleSetSkillPrompt updates a skill's system-prompt fragment. The prompt is
-// global master data, so this route is admin-only (wired with the admin
-// middleware). It returns the refreshed skill list on success.
-func (s *Server) handleSetSkillPrompt(w http.ResponseWriter, r *http.Request) {
-	claims := claimsFrom(r.Context())
-	if claims == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill id"})
-		return
-	}
-
-	var req struct {
-		Prompt string `json:"prompt"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-
-	sk, err := s.store.GetSkill(r.Context(), id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-		return
-	}
-	if sk == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
-		return
-	}
-
-	if err := s.store.UpdateSkillPrompt(r.Context(), id, req.Prompt); err != nil {
-		s.log.Error("update skill prompt", "error", err, "skill", sk.Key)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill prompt"})
 		return
 	}
 	s.handleListSkills(w, r)

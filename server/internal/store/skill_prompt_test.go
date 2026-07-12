@@ -5,58 +5,104 @@ import (
 	"testing"
 )
 
-// findSkillByKey returns the seeded skill with the given key, failing the test
-// if it is missing.
-func findSkillByKey(t *testing.T, s *SQLiteStore, key string) Skill {
+// firstSeededSkill returns a skill known to exist in the code seed so the test
+// is not coupled to a specific key ordering.
+func firstSeededSkill(t *testing.T, s *SQLiteStore) Skill {
 	t.Helper()
 	skills, err := s.ListSkills(context.Background())
 	if err != nil {
 		t.Fatalf("list skills: %v", err)
 	}
-	for _, sk := range skills {
-		if sk.Key == key {
-			return sk
-		}
+	if len(skills) == 0 {
+		t.Fatal("expected seeded skills")
 	}
-	t.Fatalf("skill %q not found", key)
-	return Skill{}
+	return skills[0]
 }
 
-// TestUpdateSkillPromptPersists verifies an edited prompt is stored and, most
-// importantly, is NOT clobbered by a subsequent boot-time re-seed — the prompt
-// is DB-owned once written so it can be managed from the UI.
-func TestUpdateSkillPromptPersists(t *testing.T) {
+func promptOf(t *testing.T, s *SQLiteStore, id int64) string {
+	t.Helper()
+	sk, err := s.GetSkill(context.Background(), id)
+	if err != nil || sk == nil {
+		t.Fatalf("get skill %d: %v", id, err)
+	}
+	return sk.Prompt
+}
+
+// A custom prompt set by an admin must survive a re-seed on the next boot,
+// while a never-edited skill still tracks the code default.
+func TestSetSkillPromptSurvivesReseed(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	sk := findSkillByKey(t, s, "bucket_list")
-	const edited = "EDITED PROMPT — managed from the UI."
+	sk := firstSeededSkill(t, s)
+	if sk.PromptUpdatedAt != nil {
+		t.Fatal("freshly seeded skill should have no prompt_updated_at")
+	}
 
-	if err := s.UpdateSkillPrompt(ctx, sk.ID, edited); err != nil {
-		t.Fatalf("update skill prompt: %v", err)
+	const custom = "CUSTOM PROMPT — do not clobber me."
+	if err := s.SetSkillPrompt(ctx, sk.ID, custom, "admin@example.com"); err != nil {
+		t.Fatalf("set skill prompt: %v", err)
+	}
+
+	// Re-run the boot seed: the customized prompt must be preserved.
+	if err := s.seedSkills(); err != nil {
+		t.Fatalf("reseed: %v", err)
+	}
+	if got := promptOf(t, s, sk.ID); got != custom {
+		t.Fatalf("custom prompt clobbered by reseed: got %q", got)
+	}
+
+	// The metadata should surface via ListUserSkills.
+	us, err := s.ListUserSkills(ctx, 1)
+	if err != nil {
+		t.Fatalf("list user skills: %v", err)
+	}
+	var found *UserSkill
+	for i := range us {
+		if us[i].ID == sk.ID {
+			found = &us[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("edited skill missing from ListUserSkills")
+	}
+	if found.PromptUpdatedAt == nil {
+		t.Error("expected prompt_updated_at to be set after edit")
+	}
+	if found.PromptUpdatedBy != "admin@example.com" {
+		t.Errorf("prompt_updated_by = %q, want admin@example.com", found.PromptUpdatedBy)
+	}
+}
+
+// Resetting hands the prompt back to the seed: the default is restored and the
+// customization stamp is cleared.
+func TestResetSkillPromptRestoresDefault(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	sk := firstSeededSkill(t, s)
+	def := sk.Prompt
+
+	if err := s.SetSkillPrompt(ctx, sk.ID, "temporary override", "admin@example.com"); err != nil {
+		t.Fatalf("set skill prompt: %v", err)
+	}
+	// Empty updatedBy = reset; caller passes the code default explicitly.
+	if err := s.SetSkillPrompt(ctx, sk.ID, DefaultSkillPrompt(sk.Key), ""); err != nil {
+		t.Fatalf("reset skill prompt: %v", err)
 	}
 
 	got, err := s.GetSkill(ctx, sk.ID)
-	if err != nil {
+	if err != nil || got == nil {
 		t.Fatalf("get skill: %v", err)
 	}
-	if got.Prompt != edited {
-		t.Fatalf("prompt not saved: got %q, want %q", got.Prompt, edited)
+	if got.Prompt != def {
+		t.Errorf("prompt not restored: got %q want %q", got.Prompt, def)
 	}
-
-	// Simulate a server restart: re-seeding must leave the edited prompt intact
-	// while still re-syncing code-owned metadata.
-	if err := s.seedSkills(); err != nil {
-		t.Fatalf("re-seed: %v", err)
+	if got.PromptUpdatedAt != nil {
+		t.Error("prompt_updated_at should be cleared after reset")
 	}
-	got, err = s.GetSkill(ctx, sk.ID)
-	if err != nil {
-		t.Fatalf("get skill after re-seed: %v", err)
-	}
-	if got.Prompt != edited {
-		t.Errorf("re-seed clobbered edited prompt: got %q, want %q", got.Prompt, edited)
-	}
-	if got.Name != sk.Name {
-		t.Errorf("re-seed lost code-owned name: got %q, want %q", got.Name, sk.Name)
+	if got.PromptUpdatedBy != "" {
+		t.Errorf("prompt_updated_by should be cleared, got %q", got.PromptUpdatedBy)
 	}
 }
