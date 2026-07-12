@@ -263,8 +263,8 @@ func (s *Service) calendarIDs(ctx context.Context, key, uid, connID string) []st
 func (s *Service) eventsFor(ctx context.Context, key, uid, connID, calID string, from, to time.Time) []Event {
 	args, _ := json.Marshal(map[string]any{
 		"calendar_id":   calID,
-		"timeMin":       from.In(s.tz).Format(time.RFC3339),
-		"timeMax":       to.In(s.tz).Format(time.RFC3339),
+		"time_min":      from.In(s.tz).Format(time.RFC3339),
+		"time_max":      to.In(s.tz).Format(time.RFC3339),
 		"single_events": true,
 		"order_by":      "startTime",
 		"max_results":   50,
