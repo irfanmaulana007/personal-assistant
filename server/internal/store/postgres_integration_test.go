@@ -233,7 +233,7 @@ func TestPostgresContactsBucketListTravelHiking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create bucket item: %v", err)
 	}
-	if err := s.SetBucketItemDone(ctx, u.ID, g.ID, true); err != nil {
+	if err := s.SetBucketItemDone(ctx, u.ID, g.ID, true, nil); err != nil {
 		t.Fatalf("set done: %v", err)
 	}
 	year := 2026

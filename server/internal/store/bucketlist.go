@@ -66,14 +66,20 @@ func (s *SQLiteStore) UpdateBucketItem(ctx context.Context, userID, id int64, ti
 }
 
 // SetBucketItemDone checks/unchecks an item, stamping done_at when checked.
-func (s *SQLiteStore) SetBucketItemDone(ctx context.Context, userID, id int64, done bool) error {
-	var doneAt any
+// When done and doneAt is non-nil, that timestamp is recorded; otherwise it
+// falls back to the current time. done_at is cleared when unchecked.
+func (s *SQLiteStore) SetBucketItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error {
+	var at any
 	if done {
-		doneAt = time.Now().UTC()
+		if doneAt != nil {
+			at = doneAt.UTC()
+		} else {
+			at = time.Now().UTC()
+		}
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE bucket_list_items SET done = ?, done_at = ? WHERE id = ? AND user_id = ?`,
-		boolToInt(done), doneAt, id, userID)
+		boolToInt(done), at, id, userID)
 	if err != nil {
 		return fmt.Errorf("set bucket item done: %w", err)
 	}

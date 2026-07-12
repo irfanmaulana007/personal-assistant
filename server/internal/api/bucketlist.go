@@ -5,9 +5,24 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
+
+// parseDoneAt accepts either an RFC3339 timestamp or a plain "YYYY-MM-DD" date.
+// A date-only value is anchored to noon UTC so that formatting it back to a
+// local date never slips to the neighbouring day.
+func parseDoneAt(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, time.UTC), nil
+}
 
 type bucketItemResp struct {
 	ID             int64  `json:"id"`
@@ -137,12 +152,24 @@ func (s *Server) handleSetBucketItemDone(w http.ResponseWriter, r *http.Request)
 	}
 	var req struct {
 		Done bool `json:"done"`
+		// Optional completion date. Accepts an RFC3339 timestamp or a plain
+		// "YYYY-MM-DD" date; ignored when unchecking. Defaults to now.
+		DoneAt string `json:"done_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if err := s.store.SetBucketItemDone(r.Context(), claims.UserID(), id, req.Done); err != nil {
+	var doneAt *time.Time
+	if req.Done && strings.TrimSpace(req.DoneAt) != "" {
+		t, perr := parseDoneAt(strings.TrimSpace(req.DoneAt))
+		if perr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid done_at date"})
+			return
+		}
+		doneAt = &t
+	}
+	if err := s.store.SetBucketItemDone(r.Context(), claims.UserID(), id, req.Done, doneAt); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update bucket item"})
 		return
 	}

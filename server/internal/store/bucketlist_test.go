@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestBucketItemCRUDRoundTrip(t *testing.T) {
@@ -59,7 +60,7 @@ func TestBucketItemCRUDRoundTrip(t *testing.T) {
 	}
 
 	// Check it off — done_at should be stamped.
-	if err := s.SetBucketItemDone(ctx, uid, created.ID, true); err != nil {
+	if err := s.SetBucketItemDone(ctx, uid, created.ID, true, nil); err != nil {
 		t.Fatalf("set done: %v", err)
 	}
 	got, _ = s.GetBucketItem(ctx, uid, created.ID)
@@ -67,8 +68,19 @@ func TestBucketItemCRUDRoundTrip(t *testing.T) {
 		t.Errorf("expected done with a timestamp: %+v", got)
 	}
 
+	// Re-check with an explicit completion date — done_at should record it
+	// rather than the current time.
+	when := time.Date(2025, 3, 14, 12, 0, 0, 0, time.UTC)
+	if err := s.SetBucketItemDone(ctx, uid, created.ID, true, &when); err != nil {
+		t.Fatalf("set done with date: %v", err)
+	}
+	got, _ = s.GetBucketItem(ctx, uid, created.ID)
+	if got.DoneAt == nil || !got.DoneAt.Equal(when) {
+		t.Errorf("expected done_at %v, got %+v", when, got.DoneAt)
+	}
+
 	// Uncheck — done_at should clear.
-	if err := s.SetBucketItemDone(ctx, uid, created.ID, false); err != nil {
+	if err := s.SetBucketItemDone(ctx, uid, created.ID, false, nil); err != nil {
 		t.Fatalf("unset done: %v", err)
 	}
 	got, _ = s.GetBucketItem(ctx, uid, created.ID)
@@ -133,7 +145,7 @@ func TestListBucketItemsOrdersUnfinishedFirst(t *testing.T) {
 	a, _ := s.CreateBucketItem(ctx, uid, "First", "", "", CategoryOther, nil)
 	_, _ = s.CreateBucketItem(ctx, uid, "Second", "", "", CategoryOther, nil)
 	// Check off the first-created one; it should sort after the pending one.
-	if err := s.SetBucketItemDone(ctx, uid, a.ID, true); err != nil {
+	if err := s.SetBucketItemDone(ctx, uid, a.ID, true, nil); err != nil {
 		t.Fatalf("set done: %v", err)
 	}
 	list, err := s.ListBucketItems(ctx, uid)
