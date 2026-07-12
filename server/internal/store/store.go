@@ -26,6 +26,12 @@ type Skill struct {
 	Category       string
 	DefaultEnabled bool
 	SortOrder      int
+	// PromptUpdatedAt / PromptUpdatedBy track the last admin edit of Prompt.
+	// PromptUpdatedAt is nil while the prompt is still the code-owned default
+	// (managed by the boot seed); once an admin customizes it, both are set and
+	// the seed stops clobbering the prompt.
+	PromptUpdatedAt *time.Time
+	PromptUpdatedBy string
 }
 
 // UserSkill is a skill together with its effective enabled state for a user.
@@ -513,6 +519,13 @@ type DataStore interface {
 	GetSkill(ctx context.Context, id int64) (*Skill, error)
 	ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error)
 	SetSkillEnabled(ctx context.Context, userID, skillID int64, enabled bool) error
+	// SetSkillPrompt overwrites a skill's prompt (master data, shared by all
+	// users). A non-empty updatedBy records the change as an admin customization
+	// (prompt_updated_at = now, prompt_updated_by = updatedBy) which protects the
+	// prompt from being clobbered by the boot seed. An empty updatedBy resets the
+	// prompt to a code-owned default: prompt_updated_at is cleared so the seed
+	// manages it again.
+	SetSkillPrompt(ctx context.Context, skillID int64, prompt, updatedBy string) error
 	EnabledSkillKeys(ctx context.Context, userID int64) ([]string, error)
 
 	// Reminders (scoped to a user; scheduler passes the owner's id)
