@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -105,16 +106,50 @@ type Contact struct {
 	CreatedAt time.Time
 }
 
-// LifeGoal is a single checklist item on the user's life to-do list (things
-// they want to do, like "Take a swimming course"), scoped to a user.
-type LifeGoal struct {
-	ID          int64
-	Title       string
-	Description string // an enriched explanation of the goal
-	Note        string // a short, optional user annotation
-	Done        bool
-	CreatedAt   time.Time
-	DoneAt      *time.Time // set when Done, nil otherwise
+// BucketItem is a single entry on the user's bucket list (things they want to
+// do, like "Take a swimming course"), scoped to a user. Each item belongs to a
+// category and can optionally be flagged as a resolution for a given year.
+type BucketItem struct {
+	ID             int64
+	Title          string
+	Description    string // an enriched explanation of the item
+	Note           string // a short, optional user annotation
+	Category       string // one of the known category keys; defaults to CategoryOther
+	ResolutionYear *int   // set when flagged as that year's resolution, nil otherwise
+	Done           bool
+	CreatedAt      time.Time
+	DoneAt         *time.Time // set when Done, nil otherwise
+}
+
+// Bucket-list category keys. Stored verbatim in the category column; the client
+// maps each key to a display label. Unknown values normalize to CategoryOther.
+const (
+	CategorySelfImprovement = "self_improvement"
+	CategoryLearning        = "learning"
+	CategoryHiking          = "hiking"
+	CategoryCountry         = "country"
+	CategoryLocal           = "local"
+	CategoryOther           = "other"
+)
+
+// bucketCategories is the set of recognized category keys.
+var bucketCategories = map[string]bool{
+	CategorySelfImprovement: true,
+	CategoryLearning:        true,
+	CategoryHiking:          true,
+	CategoryCountry:         true,
+	CategoryLocal:           true,
+	CategoryOther:           true,
+}
+
+// NormalizeCategory lower-cases a category and falls back to CategoryOther for
+// anything unrecognized, so the stored value is always a known key.
+func NormalizeCategory(c string) string {
+	c = strings.ToLower(strings.TrimSpace(c))
+	if bucketCategories[c] {
+		return c
+	}
+	return CategoryOther
 }
 
 // Activity is a logged sport/workout session, scoped to a user.
@@ -432,12 +467,12 @@ type Store interface {
 }
 
 // DataStore is the operational/main-data half of the persistence interface:
-// users, skills, reminders, persona, memories, contacts, life goals, hiking,
+// users, skills, reminders, persona, memories, contacts, bucket list, hiking,
 // travel, notes, OAuth tokens, settings, and model prices. In the hybrid
 // backend this is served by PostgreSQL.
 type DataStore interface {
 	// SetTranslator injects the optional English-normalization translator,
-	// applied to reminder/life-goal text before it is persisted. Wired after
+	// applied to reminder/bucket-list text before it is persisted. Wired after
 	// construction because the translator depends on runtime settings.
 	SetTranslator(t Translator)
 
@@ -496,13 +531,14 @@ type DataStore interface {
 	CreateContact(ctx context.Context, userID int64, name, phone, email, note string) (*Contact, error)
 	SearchContacts(ctx context.Context, userID int64, query string) ([]Contact, error)
 
-	// Life goals (a simple life checklist, scoped to a user)
-	CreateLifeGoal(ctx context.Context, userID int64, title, description, note string) (*LifeGoal, error)
-	ListLifeGoals(ctx context.Context, userID int64) ([]LifeGoal, error)
-	GetLifeGoal(ctx context.Context, userID, id int64) (*LifeGoal, error)
-	UpdateLifeGoal(ctx context.Context, userID, id int64, title, description, note string) error
-	SetLifeGoalDone(ctx context.Context, userID, id int64, done bool) error
-	DeleteLifeGoal(ctx context.Context, userID, id int64) error
+	// Bucket list (a categorized life checklist, scoped to a user)
+	CreateBucketItem(ctx context.Context, userID int64, title, description, note, category string, resolutionYear *int) (*BucketItem, error)
+	ListBucketItems(ctx context.Context, userID int64) ([]BucketItem, error)
+	GetBucketItem(ctx context.Context, userID, id int64) (*BucketItem, error)
+	UpdateBucketItem(ctx context.Context, userID, id int64, title, description, note, category string) error
+	SetBucketItemDone(ctx context.Context, userID, id int64, done bool) error
+	SetBucketItemResolution(ctx context.Context, userID, id int64, year *int) error
+	DeleteBucketItem(ctx context.Context, userID, id int64) error
 
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)

@@ -1,5 +1,5 @@
-// Package translate normalizes user-supplied labels (reminder titles, life-goal
-// titles/notes) into English, regardless of the input language, using the
+// Package translate normalizes user-supplied labels (reminder titles,
+// bucket-list titles/notes) into English, regardless of the input language, using the
 // configured LLM. It is intentionally fail-soft: any error, a missing API key,
 // or empty input returns the original text unchanged so a create/update never
 // fails just because translation was unavailable.

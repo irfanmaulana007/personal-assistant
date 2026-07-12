@@ -224,6 +224,11 @@ export interface RemindersConfig {
   default_time: string; // 'HH:MM' used when a reminder has no explicit time
 }
 
+// Bucket-list category keys, mirrored from the server. The UI maps each to a
+// display label; unknown values are stored as 'other'.
+export type BucketCategory =
+  'self_improvement' | 'learning' | 'hiking' | 'country' | 'local' | 'other';
+
 // A daily routine ("scheduled skill") — a prompt that runs once a day at a set
 // time, through the assistant, and delivers its reply over WhatsApp.
 export interface Routine {
@@ -243,20 +248,23 @@ export interface RoutineUpdate {
   prompt?: string;
 }
 
-export interface LifeGoal {
+export interface BucketItem {
   id: number;
   title: string;
   description: string;
   note: string;
+  category: BucketCategory;
+  resolution_year: number | null; // set when flagged as that year's resolution
   done: boolean;
   done_at: string; // RFC3339, or '' when not done
   created_at: string;
 }
 
-export interface LifeGoalPayload {
+export interface BucketItemPayload {
   title: string;
   description: string;
   note: string;
+  category: BucketCategory;
 }
 
 /** A single message channel. Filters select any subset — [] means "all". */

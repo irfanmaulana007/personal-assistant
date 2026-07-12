@@ -69,25 +69,25 @@ func TestTranslatorNormalizesReminderTitle(t *testing.T) {
 	}
 }
 
-func TestTranslatorNormalizesLifeGoal(t *testing.T) {
+func TestTranslatorNormalizesBucketItem(t *testing.T) {
 	s := newTestStore(t)
 	s.SetTranslator(fakeTranslator{})
 	ctx := context.Background()
 
-	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula")
+	g, err := s.CreateBucketItem(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula", CategorySelfImprovement, nil)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if g.Title != "BELAJAR MENYELAM" || g.Description != "impian lama [en]" || g.Note != "kelas pemula [en]" {
-		t.Errorf("life goal not normalized on create: %+v", g)
+		t.Errorf("bucket item not normalized on create: %+v", g)
 	}
 
-	if err := s.UpdateLifeGoal(ctx, 1, g.ID, "keanggotaan gym", "rutin olahraga", "dekat kantor"); err != nil {
+	if err := s.UpdateBucketItem(ctx, 1, g.ID, "keanggotaan gym", "rutin olahraga", "dekat kantor", CategorySelfImprovement); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	got, _ := s.GetLifeGoal(ctx, 1, g.ID)
+	got, _ := s.GetBucketItem(ctx, 1, g.ID)
 	if got.Title != "KEANGGOTAAN GYM" || got.Description != "rutin olahraga [en]" || got.Note != "dekat kantor [en]" {
-		t.Errorf("life goal not normalized on update: %+v", got)
+		t.Errorf("bucket item not normalized on update: %+v", got)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestNoTranslatorStoresAsIs(t *testing.T) {
 	s := newTestStore(t) // no translator injected
 	ctx := context.Background()
 
-	g, err := s.CreateLifeGoal(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula")
+	g, err := s.CreateBucketItem(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula", CategorySelfImprovement, nil)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

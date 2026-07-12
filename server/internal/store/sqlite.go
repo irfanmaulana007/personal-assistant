@@ -26,7 +26,7 @@ var (
 type SQLiteStore struct {
 	db *sql.DB
 	// translator, when set, normalizes user text to English before persisting
-	// reminders and life goals. Optional — nil means store text as-is.
+	// reminders and bucket-list items. Optional — nil means store text as-is.
 	translator Translator
 }
 
@@ -74,6 +74,13 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) migrate() error {
+	// Rename life_goals -> bucket_list_items in place so existing data is kept.
+	// Must run before the CREATE TABLE IF NOT EXISTS below, which would otherwise
+	// create an empty bucket_list_items and block the rename.
+	if err := s.renameTableIfNeeded("life_goals", "bucket_list_items"); err != nil {
+		return fmt.Errorf("rename life_goals: %w", err)
+	}
+
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,17 +115,19 @@ func (s *SQLiteStore) migrate() error {
 
 		`CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, occurred_at)`,
 
-		`CREATE TABLE IF NOT EXISTS life_goals (
+		`CREATE TABLE IF NOT EXISTS bucket_list_items (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
 			title TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			note TEXT NOT NULL DEFAULT '',
+			category TEXT NOT NULL DEFAULT 'other',
+			resolution_year INTEGER,
 			done INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 			done_at DATETIME
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_life_goals_user ON life_goals(user_id, done)`,
+		`CREATE INDEX IF NOT EXISTS idx_bucket_list_items_user ON bucket_list_items(user_id, done)`,
 
 		`CREATE TABLE IF NOT EXISTS trips (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -369,7 +378,9 @@ func (s *SQLiteStore) migrate() error {
 		{"reminders", "calendar_conn", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "calendar_event_ids", "TEXT NOT NULL DEFAULT ''"},
 		{"reminders", "calendar_hash", "TEXT NOT NULL DEFAULT ''"},
-		{"life_goals", "description", "TEXT NOT NULL DEFAULT ''"},
+		{"bucket_list_items", "description", "TEXT NOT NULL DEFAULT ''"},
+		{"bucket_list_items", "category", "TEXT NOT NULL DEFAULT 'other'"},
+		{"bucket_list_items", "resolution_year", "INTEGER"},
 		{"notes", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"message_log", "user_id", "INTEGER NOT NULL DEFAULT 0"},
 		{"tool_usage", "user_id", "INTEGER NOT NULL DEFAULT 0"},
@@ -378,6 +389,15 @@ func (s *SQLiteStore) migrate() error {
 		if err := s.addColumnIfMissing(c.table, c.column, c.ddl); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", c.table, c.column, err)
 		}
+	}
+
+	// Resolution lookup index. Created after the columns above exist, because a
+	// legacy life_goals table renamed to bucket_list_items gains resolution_year
+	// only in the additive step just above.
+	if _, err := s.db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_bucket_list_items_resolution ON bucket_list_items(user_id, resolution_year)`,
+	); err != nil {
+		return fmt.Errorf("create idx_bucket_list_items_resolution: %w", err)
 	}
 
 	// Partial index for the scheduler's owner lookup. Created after the columns
@@ -421,6 +441,30 @@ func (s *SQLiteStore) addColumnIfMissing(table, column, ddl string) error {
 	}
 
 	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, ddl))
+	return err
+}
+
+// renameTableIfNeeded renames oldName to newName only when oldName still exists
+// and newName does not — so it runs exactly once and is a no-op afterwards.
+func (s *SQLiteStore) renameTableIfNeeded(oldName, newName string) error {
+	exists := func(name string) (bool, error) {
+		var n int
+		err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
+		return n > 0, err
+	}
+	oldExists, err := exists(oldName)
+	if err != nil {
+		return err
+	}
+	newExists, err := exists(newName)
+	if err != nil {
+		return err
+	}
+	if !oldExists || newExists {
+		return nil
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", oldName, newName))
 	return err
 }
 

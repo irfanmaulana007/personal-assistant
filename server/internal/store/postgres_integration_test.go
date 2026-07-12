@@ -214,7 +214,7 @@ func TestPostgresRemindersRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPostgresContactsLifeGoalsTravelHiking(t *testing.T) {
+func TestPostgresContactsBucketListTravelHiking(t *testing.T) {
 	s := newTestPostgres(t)
 	ctx := context.Background()
 	u, _ := s.CreateUser(ctx, "c@example.com", "h", "member")
@@ -228,17 +228,24 @@ func TestPostgresContactsLifeGoalsTravelHiking(t *testing.T) {
 		t.Fatalf("search contacts = %d (%v)", len(found), err)
 	}
 
-	// Life goals (BOOLEAN done + nullable done_at).
-	g, err := s.CreateLifeGoal(ctx, u.ID, "Learn Go", "", "")
+	// Bucket list (BOOLEAN done + nullable done_at + nullable resolution_year).
+	g, err := s.CreateBucketItem(ctx, u.ID, "Learn Go", "", "", CategorySelfImprovement, nil)
 	if err != nil {
-		t.Fatalf("create life goal: %v", err)
+		t.Fatalf("create bucket item: %v", err)
 	}
-	if err := s.SetLifeGoalDone(ctx, u.ID, g.ID, true); err != nil {
+	if err := s.SetBucketItemDone(ctx, u.ID, g.ID, true); err != nil {
 		t.Fatalf("set done: %v", err)
 	}
-	goals, _ := s.ListLifeGoals(ctx, u.ID)
-	if len(goals) != 1 || !goals[0].Done || goals[0].DoneAt == nil {
-		t.Fatalf("life goal done state wrong: %+v", goals)
+	year := 2026
+	if err := s.SetBucketItemResolution(ctx, u.ID, g.ID, &year); err != nil {
+		t.Fatalf("set resolution: %v", err)
+	}
+	items, _ := s.ListBucketItems(ctx, u.ID)
+	if len(items) != 1 || !items[0].Done || items[0].DoneAt == nil {
+		t.Fatalf("bucket item done state wrong: %+v", items)
+	}
+	if items[0].Category != CategorySelfImprovement || items[0].ResolutionYear == nil || *items[0].ResolutionYear != 2026 {
+		t.Fatalf("bucket item category/resolution wrong: %+v", items)
 	}
 
 	// Travel (DOUBLE PRECISION + BOOLEAN active).
