@@ -77,6 +77,15 @@ var skillSeed = []Skill{
 		Prompt:         "You can search the open web with the web_search tool. Use it whenever the user asks about current or real-world information you don't already have — news, sports scores and brackets, prices, weather, recent events, or any fact that may be newer than your training cutoff — instead of saying you lack real-time access. Search first, then answer from the results: summarize concisely in the user's language and cite the source links. Never invent facts beyond what the results contain; if the search returns nothing useful or web search isn't configured, say so plainly. Do not use it for the user's own private data (calendar, email, notes, contacts) — those have their own tools.",
 	},
 	{
+		Key:            "image_generator",
+		Name:           "Image Generator",
+		Category:       "Creative",
+		DefaultEnabled: false,
+		SortOrder:      9,
+		Description:    "Create images from a description, or edit a photo you send. Ask the assistant to \"draw a cat astronaut\" and it generates a picture; attach a photo and say \"make the sky purple\" and it edits it. Requires an OpenAI API key (set it on the Integrations page).",
+		Prompt:         "You can create and edit images. Use the generate_image tool when the user asks you to draw, create, generate, design, or imagine any picture, illustration, logo, or artwork — write a rich, detailed English prompt describing the subject, style, composition, and colours. Use the edit_image tool when the user has attached an image and asks you to change it (recolour, add or remove something, restyle). The finished image is delivered to the user automatically, so never paste base64 or image URLs into your reply — just briefly describe what you made in the user's language. If image generation isn't configured, say so plainly.",
+	},
+	{
 		Key:            "food_calories",
 		Name:           "Food Calories",
 		Category:       "Health",

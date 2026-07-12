@@ -20,6 +20,9 @@ type chatRequest struct {
 
 type chatResponse struct {
 	Response string `json:"response"`
+	// Images are data: URLs for any images the assistant generated this turn
+	// (e.g. via the Image Generator skill). Omitted when there are none.
+	Images []string `json:"images,omitempty"`
 }
 
 type historyEntry struct {
@@ -133,7 +136,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		s.eval.JudgeInline(r.Context(), traceID)
 	}
 
-	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply})
+	images := make([]string, 0, len(res.Images))
+	for _, img := range res.Images {
+		images = append(images, img.DataURL())
+	}
+	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images})
 }
 
 // toStoreTools converts agent tool invocations to the store representation.

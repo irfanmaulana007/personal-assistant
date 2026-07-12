@@ -19,6 +19,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/media"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
@@ -101,6 +102,7 @@ type Result struct {
 	Tools  []ToolInvocation // tools invoked during the run, in order
 	Steps  []LLMCall        // each LLM round-trip, in order
 	Skills []string         // skill keys active for this run
+	Images []media.Image    // images produced by tools (e.g. Image Generator)
 }
 
 // Message is a prior conversation turn used as context.
@@ -122,6 +124,16 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	}
 
 	userID := authctx.UserID(ctx)
+
+	// Collect images produced by tools out of band (they can't ride the text
+	// tool-result channel), and expose the user's inbound image so the
+	// edit_image tool can read its bytes.
+	ctx, imageCollector := media.WithCollector(ctx)
+	if image != "" {
+		if in, ok := media.ParseDataURL(image); ok {
+			ctx = media.WithInbound(ctx, in)
+		}
+	}
 
 	// Resolve the user's enabled skills: their prompts enrich the system
 	// prompt and their tools are added to the tool list.
@@ -193,7 +205,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys}, nil
+			return &Result{Reply: strings.TrimSpace(msg.Content), Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys, Images: imageCollector.Images()}, nil
 		}
 
 		for _, tc := range msg.ToolCalls {
@@ -229,7 +241,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 	if reply == "" {
 		reply = "I wasn't able to finish that request. Could you rephrase or break it into smaller steps?"
 	}
-	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys}, nil
+	return &Result{Reply: reply, Usage: total, Model: cfg.Model, Tools: used, Steps: steps, Skills: enabledKeys, Images: imageCollector.Images()}, nil
 }
 
 // execTool maps a tool call onto a capability action and runs it via the router.

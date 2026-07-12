@@ -136,6 +136,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/integrations", admin(s.handleListIntegrations))
 	mux.Handle("PUT /api/integrations/key", admin(s.handleSetComposioKey))
 	mux.Handle("PUT /api/integrations/websearch-key", admin(s.handleSetWebSearchKey))
+	mux.Handle("PUT /api/integrations/openai-key", admin(s.handleSetOpenAIKey))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", admin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", admin(s.handleDisconnectIntegration))
 	mux.Handle("GET /api/whatsapp", admin(s.handleWhatsAppStatus))

@@ -253,6 +253,22 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"query":{"type":"string","description":"The search query, phrased as you'd type it into a search engine."},"count":{"type":"integer","description":"How many results to return (default 5, max 20)."}},"required":["query"]}`,
 		},
 	},
+	"image_generator": {
+		{
+			name:        "generate_image",
+			description: "Generate a brand-new image from a text description. Use this whenever the user asks you to draw, create, generate, or imagine a picture, illustration, logo, or artwork. Write a rich, detailed prompt describing subject, style, composition, colours, and mood. The image is delivered to the user automatically.",
+			capability:  intent.CapabilityImageGen,
+			action:      intent.ActionImageGenerate,
+			parameters:  `{"type":"object","properties":{"prompt":{"type":"string","description":"A detailed description of the image to create, in English. Expand on the user's request with concrete visual detail (subject, style, composition, lighting, colours)."},"size":{"type":"string","enum":["1024x1024","1536x1024","1024x1536"],"description":"Aspect: square, landscape, or portrait. Default 1024x1024 (square)."},"quality":{"type":"string","enum":["low","medium","high"],"description":"Rendering quality. Higher costs more and is slower. Default medium."}},"required":["prompt"]}`,
+		},
+		{
+			name:        "edit_image",
+			description: "Edit or modify the image the user attached to their message, following an instruction (e.g. 'make the sky purple', 'add a party hat', 'remove the background', 'turn it into a watercolour'). Only works when the user has attached an image. The edited image is delivered to the user automatically.",
+			capability:  intent.CapabilityImageGen,
+			action:      intent.ActionImageEdit,
+			parameters:  `{"type":"object","properties":{"prompt":{"type":"string","description":"The edit instruction describing how to change the attached image, in English."},"size":{"type":"string","enum":["1024x1024","1536x1024","1024x1536"],"description":"Output aspect. Default 1024x1024 (square)."},"quality":{"type":"string","enum":["low","medium","high"],"description":"Rendering quality. Default medium."}},"required":["prompt"]}`,
+		},
+	},
 	"hiking_tracker": {
 		{
 			name:        "hike_log",

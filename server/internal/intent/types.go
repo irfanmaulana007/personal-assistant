@@ -16,6 +16,7 @@ const (
 	CapabilityTravel    Capability = "travel"
 	CapabilityHiking    Capability = "hiking"
 	CapabilityWebSearch Capability = "web_search"
+	CapabilityImageGen  Capability = "image_gen"
 	CapabilityHelp      Capability = "help"
 	CapabilityUnknown   Capability = "unknown"
 )
@@ -103,6 +104,12 @@ const (
 // Web search actions
 const (
 	ActionWebSearch Action = "web_search.search"
+)
+
+// Image generation actions
+const (
+	ActionImageGenerate Action = "image_gen.generate"
+	ActionImageEdit     Action = "image_gen.edit"
 )
 
 const (

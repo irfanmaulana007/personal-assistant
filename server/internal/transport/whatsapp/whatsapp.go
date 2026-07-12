@@ -227,6 +227,46 @@ func (t *Transport) SendMessage(ctx context.Context, to, text string) error {
 	return nil
 }
 
+// SendImage uploads image bytes and sends them as an image message, with an
+// optional caption (rendered in WhatsApp markup like text replies).
+func (t *Transport) SendImage(ctx context.Context, to string, data []byte, mimeType, caption string) error {
+	t.mu.RLock()
+	client := t.client
+	t.mu.RUnlock()
+	if client == nil {
+		return fmt.Errorf("whatsapp not connected")
+	}
+
+	jid, err := types.ParseJID(to)
+	if err != nil {
+		return fmt.Errorf("parse JID %q: %w", to, err)
+	}
+
+	uploaded, err := client.Upload(ctx, data, whatsmeow.MediaImage)
+	if err != nil {
+		return fmt.Errorf("upload image: %w", err)
+	}
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+	img := &waE2E.ImageMessage{
+		Mimetype:      proto.String(mimeType),
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uploaded.FileLength),
+	}
+	if caption != "" {
+		img.Caption = proto.String(toWhatsAppMarkup(caption))
+	}
+	if _, err := client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: img}); err != nil {
+		return fmt.Errorf("send image: %w", err)
+	}
+	return nil
+}
+
 func (t *Transport) onConnected() {
 	t.mu.Lock()
 	if t.client != nil && t.client.Store.ID != nil {

@@ -4,6 +4,7 @@ export interface ChatMessage {
   body: string;
   timestamp: string;
   image?: string; // data: URL, for user messages with an attached image
+  images?: string[]; // data: URLs, for images the assistant generated
 }
 
 export type Role = 'admin' | 'member';
@@ -31,6 +32,7 @@ export interface MyStats {
 
 export interface ChatResponse {
   response: string;
+  images?: string[]; // data: URLs for images the assistant generated this turn
 }
 
 export interface HistoryEntry {
@@ -146,6 +148,8 @@ export interface Integrations {
   toolkits: IntegrationToolkit[];
   web_search_configured: boolean;
   web_search_key_mask: string;
+  openai_configured: boolean;
+  openai_key_mask: string;
 }
 
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';

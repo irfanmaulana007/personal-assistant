@@ -46,6 +46,7 @@ export function useChat() {
         direction: 'in',
         body: res.response,
         timestamp: new Date().toISOString(),
+        images: res.images,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch {

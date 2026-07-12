@@ -22,6 +22,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/email"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/event"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/hiking"
+	imagegencap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/imagegen"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/knowledge"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/lifegoal"
 	memorycap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/memory"
@@ -33,6 +34,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/imagegen"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
@@ -153,6 +155,7 @@ func main() {
 	handlers = append(handlers, travel.New(db, timezone, log))
 	handlers = append(handlers, hiking.New(db, timezone, log))
 	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
+	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
 
 	router := capability.NewRouter(log, handlers...)
 
@@ -228,6 +231,15 @@ func main() {
 					"error", err,
 				)
 				return
+			}
+
+			// Deliver any images the agent produced (e.g. Image Generator skill).
+			if res != nil {
+				for _, img := range res.Images {
+					if err := wa.SendImage(ctx, msg.From, img.Data, img.MimeType, ""); err != nil {
+						log.Error("failed to send image", "to", msg.From, "error", err)
+					}
+				}
 			}
 
 			// Log outgoing message (chat history)
