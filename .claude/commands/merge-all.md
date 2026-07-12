@@ -1,10 +1,16 @@
 ---
-description: Merge all open PRs one by one, resolving conflicts on the branch as they come up
+description: Force-merge all open PRs one by one, resolving conflicts on the branch as they come up
 ---
 
 Merge every open pull request in this repository, one at a time, making sure each
 merge is clean before moving to the next. Resolve any conflicts on the PR's own
 branch, then merge. Repeat until there are no open PRs left.
+
+**No human review is required. Force-merge every open PR** — this repo's PRs are
+self-authored, so do not wait for approvals or treat a missing review as a
+blocker. Merge drafts too: mark a draft ready with `gh pr ready <number>` right
+before merging it. The only legitimate reasons to skip a PR are an unresolvable
+conflict or a genuinely failing required check (not a missing review).
 
 ## Procedure
 
@@ -12,7 +18,7 @@ branch, then merge. Repeat until there are no open PRs left.
    may build on it):
 
    ```
-   gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus --limit 100
+   gh pr list --state open --json number,title,headRefName,mergeable,mergeStateStatus,isDraft --limit 100
    ```
 
    If there are none, report that everything is already merged and stop.
@@ -23,17 +29,24 @@ branch, then merge. Repeat until there are no open PRs left.
       clean PR into a conflicting one:
 
       ```
-      gh pr view <number> --json number,title,headRefName,mergeable,mergeStateStatus
+      gh pr view <number> --json number,title,headRefName,mergeable,mergeStateStatus,isDraft
       ```
 
-   b. **If `mergeable` is `MERGEABLE`** (no conflicts) — merge it:
+   b. **If `mergeable` is `MERGEABLE`** (no conflicts) — merge it. If it is a
+      draft (`isDraft` is `true`), mark it ready first, then merge:
 
       ```
+      gh pr ready <number>   # only if the PR is a draft
       gh pr merge <number> --merge --delete-branch
       ```
 
       Prefer `--merge`. Only use `--squash` if the repo convention clearly calls
       for it. Do not use `--admin` to bypass required checks.
+
+      Note: `--delete-branch` may fail to delete the *local* branch with
+      "cannot delete branch ... used by worktree" — that is harmless. The PR is
+      merged and the remote branch is deleted; only the local checkout in a
+      worktree is left in place. Ignore that specific error and continue.
 
    c. **If `mergeable` is `CONFLICTING`** — resolve on the PR's branch, do NOT
       touch `main`:
@@ -55,8 +68,10 @@ branch, then merge. Repeat until there are no open PRs left.
         make build && make test   # verify the merge result compiles and passes
         git push origin <headRefName>
         ```
-      - Wait for GitHub to recompute mergeability, then merge:
+      - Wait for GitHub to recompute mergeability, then merge (marking ready
+        first if it is a draft):
         ```
+        gh pr ready <number>   # only if the PR is a draft
         gh pr merge <number> --merge --delete-branch
         ```
 
@@ -64,7 +79,8 @@ branch, then merge. Repeat until there are no open PRs left.
       seconds and re-run step (a) for this PR before deciding.
 
    e. If a PR has required checks that are failing (not just conflicts), stop and
-      report it rather than force-merging. Ask how to proceed.
+      report it rather than force-merging. A missing or absent review is NOT a
+      reason to stop — force-merge regardless of review state.
 
 3. **After each successful merge**, return to `main` locally and pull so the next
    conflict resolution is based on the latest code:
@@ -78,6 +94,8 @@ branch, then merge. Repeat until there are no open PRs left.
 
 ## Rules
 
+- Force-merge every open PR — no human review, no approval wait. Mark drafts
+  ready and merge them.
 - Never force-push, never push to `main` directly, never merge with `--admin` to
   skip failing required checks.
 - Merge PRs in ascending PR-number order unless told otherwise, so dependent work
