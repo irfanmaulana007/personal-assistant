@@ -1,16 +1,25 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { getPreferences } from '../api/client';
+import { getPreferences, getPersona } from '../api/client';
 import type { Preferences } from '../types';
-import { PreferencesCtx, PREF_DEFAULTS, type PreferencesValue } from './preferences';
+import {
+  PreferencesCtx,
+  PREF_DEFAULTS,
+  ASSISTANT_NAME_FALLBACK,
+  type PreferencesValue,
+} from './preferences';
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<Preferences>(PREF_DEFAULTS);
+  const [assistantName, setAssistantName] = useState(ASSISTANT_NAME_FALLBACK);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let active = true;
     getPreferences()
       .then((p) => active && setPrefs(p))
+      .catch(() => {});
+    getPersona()
+      .then((p) => active && setAssistantName(p.name.trim() || ASSISTANT_NAME_FALLBACK))
       .catch(() => {});
     return () => {
       active = false;
@@ -97,6 +106,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     <PreferencesCtx.Provider
       value={{
         prefs,
+        assistantName,
         reload: () => setTick((t) => t + 1),
         formatDate,
         formatMoney,

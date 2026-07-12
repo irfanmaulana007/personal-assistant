@@ -3,8 +3,13 @@ import type { Preferences } from '../types';
 
 export const PREF_DEFAULTS: Preferences = { timezone: 'UTC', currency: 'USD', usd_to_idr: 16000 };
 
+/** Shown wherever the assistant refers to itself when no name is configured. */
+export const ASSISTANT_NAME_FALLBACK = 'Assistant';
+
 export interface PreferencesValue {
   prefs: Preferences;
+  /** Configured assistant name, or {@link ASSISTANT_NAME_FALLBACK} when blank. */
+  assistantName: string;
   reload: () => void;
   /** Format an ISO timestamp in the selected timezone. */
   formatDate: (iso: string, opts?: { time?: boolean; seconds?: boolean }) => string;

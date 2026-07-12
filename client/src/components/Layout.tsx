@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
+import { usePreferences } from '../contexts/preferences';
 import type { User } from '../types';
 
 interface LayoutProps {
@@ -213,6 +214,7 @@ function NavGroup({ item }: { item: NavGroupItem }) {
 }
 
 export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
+  const { assistantName } = usePreferences();
   const items = navItems.filter((item) => isAdmin || !item.adminOnly);
 
   return (
@@ -229,7 +231,7 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
               {chatIcon}
             </svg>
           </div>
-          <h1 className="text-base font-semibold text-white">Assistant</h1>
+          <h1 className="truncate text-base font-semibold text-white">{assistantName}</h1>
         </div>
 
         <nav className="flex-1 space-y-0.5 px-3 py-2">

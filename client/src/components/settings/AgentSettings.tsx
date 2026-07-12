@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getPersona, updatePersona } from '../../api/client';
+import { usePreferences } from '../../contexts/preferences';
 import { SkeletonFormCard } from '../ui/Skeleton';
 import type { Persona } from '../../types';
 
@@ -42,6 +43,7 @@ const DEFAULT: Persona = {
 };
 
 export function AgentSettings() {
+  const { reload } = usePreferences();
   const [persona, setPersona] = useState<Persona>(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,6 +68,7 @@ export function AgentSettings() {
     setMsg(null);
     try {
       setPersona(await updatePersona(persona));
+      reload();
       setMsg({ ok: true, text: 'Agent preferences saved.' });
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : 'Failed to save' });
