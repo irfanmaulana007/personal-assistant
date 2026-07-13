@@ -42,9 +42,10 @@ type Transport struct {
 	status   string
 	qr       string
 	ownerJID string
-	allowed  map[string]bool // senders permitted to talk to the assistant
-	allowAll bool            // when true, answer every sender (allowed is ignored)
-	handler  transport.MessageHandler
+	allowed     map[string]bool // senders permitted to talk to the assistant
+	allowAll    bool            // when true, answer every sender (allowed is ignored)
+	handler     transport.MessageHandler
+	groupBypass func(text string) bool // when set, an un-addressed group message whose text satisfies this is still delivered (e.g. "/t" translator commands)
 }
 
 // New creates a new WhatsApp transport. dsn is the PostgreSQL DSN whatsmeow
@@ -92,6 +93,16 @@ func (t *Transport) SetAllowAll(allowAll bool) {
 func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
 	t.mu.Lock()
 	t.handler = handler
+	t.mu.Unlock()
+}
+
+// SetGroupBypass installs a predicate that lets certain un-addressed group
+// messages through the "must @mention the assistant" gate. It exists so a
+// self-contained "/t" translator command works in a group without mentioning
+// the assistant, while ordinary prompts still require a mention.
+func (t *Transport) SetGroupBypass(fn func(text string) bool) {
+	t.mu.Lock()
+	t.groupBypass = fn
 	t.mu.Unlock()
 }
 
@@ -334,6 +345,7 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	allowAll := t.allowAll
 	handler := t.handler
 	client := t.client
+	groupBypass := t.groupBypass
 	t.mu.RUnlock()
 
 	// WhatsApp may address the sender by LID (e.g. "…@lid") rather than their
@@ -374,21 +386,24 @@ func (t *Transport) handleMessage(evt *events.Message) {
 		return
 	}
 
+	text := evt.Message.GetConversation()
+	if text == "" && evt.Message.GetExtendedTextMessage() != nil {
+		text = evt.Message.GetExtendedTextMessage().GetText()
+	}
+
 	// Group chats are noisy, so the assistant only speaks up when it is directly
 	// addressed: either @mentioned, or someone replies to one of its own
-	// messages. Any other group chatter is ignored. 1:1 chats always pass.
+	// messages. The one exception is a self-contained "/t" translator command,
+	// which groupBypass recognises and lets through without a mention. Any other
+	// group chatter is ignored. 1:1 chats always pass.
 	if evt.Info.IsGroup {
 		ctxInfo := messageContextInfo(evt.Message)
-		if !t.botAddressed(ctxInfo, client) {
+		bypass := groupBypass != nil && groupBypass(text)
+		if !bypass && !t.botAddressed(ctxInfo, client) {
 			t.log.Info("ignoring WhatsApp group message: assistant not mentioned or replied to",
 				"chat", evt.Info.Chat.String(), "sender", senderJID)
 			return
 		}
-	}
-
-	text := evt.Message.GetConversation()
-	if text == "" && evt.Message.GetExtendedTextMessage() != nil {
-		text = evt.Message.GetExtendedTextMessage().GetText()
 	}
 
 	// For an image message, download the media and encode it as a data: URL so

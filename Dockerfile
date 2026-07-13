@@ -6,6 +6,9 @@ COPY client/package.json client/package-lock.json ./
 # even though the committed lockfile is generated on a different platform.
 RUN npm install --no-audit --no-fund
 COPY client/ .
+# vite.config.ts reads the app version from the root package.json (../package.json
+# relative to /app/client), so it must be present in this stage before the build.
+COPY package.json /app/package.json
 RUN npm run build
 
 # Stage 2: Build server. SQLite was dropped (whatsmeow's session lives in
