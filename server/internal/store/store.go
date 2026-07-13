@@ -489,9 +489,8 @@ type Translator interface {
 // (operational/main data) and LogStore (append-only logs & usage analytics),
 // plus GetUserActivity, which is deliberately in neither sub-interface because
 // it spans both — it reads traces (a log) together with reminders and notes
-// (main data). A single backend (e.g. *SQLiteStore) implements Store directly;
-// a split backend composes a DataStore and a LogStore and supplies
-// GetUserActivity by hand (see HybridStore).
+// (main data). The split HybridStore composes a DataStore (PostgreSQL) and a
+// LogStore (MongoDB) and supplies GetUserActivity by hand.
 type Store interface {
 	DataStore
 	LogStore
@@ -568,8 +567,8 @@ type DataStore interface {
 	SetUserPersona(ctx context.Context, userID int64, p UserPersona) error
 
 	// Memories (agent long-term memory, scoped to a user; full-text backed).
-	// SearchMemories takes raw query text; the backend sanitizes it for its own
-	// search dialect (SQLite FTS5 / Postgres tsquery).
+	// SearchMemories takes raw query text; the backend sanitizes it for its
+	// PostgreSQL tsquery search.
 	CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error)
 	SearchMemories(ctx context.Context, userID int64, query string, limit int) ([]Memory, error)
 	ListMemories(ctx context.Context, userID int64, limit int) ([]Memory, error)

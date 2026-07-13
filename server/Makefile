@@ -1,12 +1,11 @@
 .PHONY: build run dev test lint clean tidy
 
 BINARY=personal-assistant
-# sqlite_fts5 enables FTS5 in mattn/go-sqlite3 (required by notes_fts)
-TAGS=sqlite_fts5
 
-# Build the server binary (output at repo root)
+# Build the server binary (output at repo root). SQLite was dropped, so the
+# build no longer needs CGO — a static, CGO-free binary is produced.
 build:
-	go build -tags $(TAGS) -o ../$(BINARY) ./cmd/assistant
+	CGO_ENABLED=0 go build -o ../$(BINARY) ./cmd/assistant
 
 # Run the server
 run: build
@@ -16,8 +15,11 @@ run: build
 dev:
 	air
 
+# Tests exercise the real PostgreSQL + MongoDB backends via testcontainers, so
+# Docker must be running. The `integration` tag additionally enables the
+# store-package integration tests.
 test:
-	go test -tags $(TAGS) ./... -v
+	go test -tags integration ./... -v
 
 lint:
 	golangci-lint run ./...
@@ -25,7 +27,6 @@ lint:
 clean:
 	rm -f ../$(BINARY)
 	rm -rf tmp
-	rm -f data/*.db data/*.db-wal data/*.db-shm
 
 tidy:
 	go mod tidy

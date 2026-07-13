@@ -20,16 +20,17 @@ import (
 
 ### Initialization Flow
 
-1. Create SQLite store for session persistence
+1. Create the whatsmeow store (backed by PostgreSQL) for session persistence
 2. Create whatsmeow client
 3. If no session exists, display QR code for pairing
 4. Connect and start listening for events
 
 ```go
-// 1. Session store
+// 1. Session store — PostgreSQL via the pgx driver (shares the app database;
+//    whatsmeow keeps its own whatsmeow_* tables).
 dbLog := waLog.Stdout("Database", "WARN", true)
-container, err := sqlstore.New("sqlite3", "file:data/whatsmeow.db?_journal_mode=WAL", dbLog)
-device, err := container.GetFirstDevice()
+container, err := sqlstore.New(ctx, "pgx", postgresDSN, dbLog)
+device, err := container.GetFirstDevice(ctx)
 
 // 2. Client
 clientLog := waLog.Stdout("Client", "INFO", true)
@@ -55,7 +56,7 @@ if client.Store.ID == nil {
 
 - On first run, a QR code is displayed in the terminal
 - User scans the QR code with WhatsApp on their phone
-- Session is persisted in SQLite — subsequent runs reconnect automatically
+- Session is persisted in PostgreSQL — subsequent runs reconnect automatically
 - If session expires, a new QR code is generated
 
 ## Event Handling
@@ -140,8 +141,8 @@ Use these in response formatting for readability.
 
 ## Session Persistence
 
-- whatsmeow uses SQLite for session storage (`data/whatsmeow.db`)
-- This is separate from the application database (`data/assistant.db`)
+- whatsmeow stores its session in PostgreSQL (its own `whatsmeow_*` tables in the
+  app's Postgres database, via the `pgx` driver)
 - Session survives restarts — no need to re-pair unless explicitly logged out
 - Enable WAL mode for better concurrent access
 

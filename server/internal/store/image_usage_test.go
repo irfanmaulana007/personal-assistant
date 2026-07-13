@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -10,7 +12,7 @@ import (
 // the trace (and its tools) and folded into the usage aggregations as its own
 // model, kept apart from the LLM's token columns.
 func TestImageUsageAggregation(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestHybrid(t)
 	ctx := context.Background()
 
 	// One run that used the LLM and generated an image, plus one plain LLM run.

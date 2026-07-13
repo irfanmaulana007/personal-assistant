@@ -6,9 +6,9 @@ The server stores its data in **PostgreSQL** (main data) and **MongoDB**
 (logs/analytics). Both are required. `docker-compose.yml` bundles `postgres:17`
 and `mongo:7` alongside the assistant.
 
-> SQLite is no longer an application backend. It survives only for the WhatsApp
-> (whatsmeow) session file and as the read source for the one-time `migrate-db`
-> ETL below.
+> SQLite has been fully removed. The WhatsApp (whatsmeow) session is now stored
+> in PostgreSQL too (its own `whatsmeow_*` tables in the app database), so the
+> server builds CGO-free and the container is stateless.
 
 ### Docker Compose
 
@@ -27,25 +27,22 @@ docker compose up -d
 The Postgres schema is created automatically on first boot (embedded
 golang-migrate migrations); Mongo indexes are ensured on startup.
 
-### Migrating an existing SQLite database
+### Migrating from an older SQLite deployment
 
-If you are coming from an older SQLite-based deployment, move that data across
-once with the bundled `migrate-db` tool (built into the image). Keep your old
-`assistant.db` reachable and pass it via `--sqlite`:
+The one-time SQLite → Postgres+Mongo ETL (`migrate-db`) has been **removed** now
+that all deployments have completed the migration. If you still need to import a
+legacy `assistant.db`, run the `migrate-db` tool from an image built before this
+change (any release up to and including `v1.0.3`), then upgrade.
 
-```bash
-docker compose run --rm --entrypoint /app/migrate-db assistant \
-  --config config/config.yaml --sqlite data/assistant.db --truncate --verify
-```
-
-`--verify` compares per-table source/destination row counts and exits non-zero on
-any mismatch. Original ids are preserved so references stay valid.
+The WhatsApp session does not carry over automatically: after upgrading, re-pair
+your phone from the Integrations page (scan the QR once). whatsmeow then persists
+the new session in Postgres.
 
 ## Local Development
 
 ### Prerequisites
-- Go 1.22+
-- SQLite (included via Go library)
+- Go 1.25+
+- PostgreSQL and MongoDB (e.g. via `docker compose up postgres mongo`)
 - Google Cloud project with Calendar & Gmail APIs enabled
 
 ### Setup
@@ -210,11 +207,13 @@ For critical failures (WhatsApp disconnected, database errors), consider:
 ### Database Backup
 
 ```bash
-# Simple file copy (SQLite is single-file)
-cp data/assistant.db backups/assistant_$(date +%Y%m%d).db
+# PostgreSQL (main data + WhatsApp session)
+docker compose exec -T postgres pg_dump -U assistant assistant \
+  > backups/assistant_$(date +%Y%m%d).sql
 
-# Or use SQLite backup API
-sqlite3 data/assistant.db ".backup backups/assistant_$(date +%Y%m%d).db"
+# MongoDB (logs/analytics)
+docker compose exec -T mongo mongodump --archive \
+  > backups/logs_$(date +%Y%m%d).archive
 ```
 
 ### Automated Backup (cron)

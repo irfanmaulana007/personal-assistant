@@ -8,7 +8,7 @@ This guide walks through deploying the whole personal-assistant to your own
 The app is a **single Docker container** (see `Dockerfile`):
 
 - A multi-stage build compiles the **React client** (Vite → static files) and the
-  **Go server** (with CGO + the `sqlite_fts5` build tag for SQLite full-text search).
+  **Go server** (CGO-free static binary — SQLite has been removed).
 - At runtime the Go server serves **both the JSON API and the static client** on
   **one port (`8090`)** — there is no separate frontend service.
 
@@ -189,20 +189,14 @@ On the app's first boot the server **creates the PostgreSQL schema automatically
 (embedded migrations) and **ensures the MongoDB indexes** — there is no manual schema
 step.
 
-### Migrating data from an older SQLite deployment
+### Migrating from an older SQLite deployment
 
-If you are coming from a previous SQLite-based deployment and want to keep your data,
-the image ships a `migrate-db` ETL binary. With the databases reachable and your old
-`assistant.db` present, run it once (e.g. from the Application's terminal, or a
-one-off container):
-
-```bash
-/app/migrate-db --config config/config.yaml \
-  --sqlite data/assistant.db --truncate --verify
-```
-
-`--verify` compares per-table source/destination row counts and exits non-zero on any
-mismatch; original ids are preserved so references stay valid.
+The one-time SQLite → Postgres+Mongo ETL (`migrate-db`) has been **removed** from
+the image now that the migration is complete. If you still need to import a legacy
+`assistant.db`, run `migrate-db` from an image built before this change (any release
+up to `v1.0.3`), then upgrade. After upgrading, re-pair WhatsApp from the
+Integrations page — the whatsmeow session now lives in Postgres and does not carry
+over from the old SQLite file.
 
 ## Alternative: docker-compose
 

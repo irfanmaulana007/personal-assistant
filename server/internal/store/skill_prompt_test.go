@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -7,7 +9,7 @@ import (
 
 // firstSeededSkill returns a skill known to exist in the code seed so the test
 // is not coupled to a specific key ordering.
-func firstSeededSkill(t *testing.T, s *SQLiteStore) Skill {
+func firstSeededSkill(t *testing.T, s *PostgresStore) Skill {
 	t.Helper()
 	skills, err := s.ListSkills(context.Background())
 	if err != nil {
@@ -19,7 +21,7 @@ func firstSeededSkill(t *testing.T, s *SQLiteStore) Skill {
 	return skills[0]
 }
 
-func promptOf(t *testing.T, s *SQLiteStore, id int64) string {
+func promptOf(t *testing.T, s *PostgresStore, id int64) string {
 	t.Helper()
 	sk, err := s.GetSkill(context.Background(), id)
 	if err != nil || sk == nil {
@@ -31,7 +33,7 @@ func promptOf(t *testing.T, s *SQLiteStore, id int64) string {
 // A custom prompt set by an admin must survive a re-seed on the next boot,
 // while a never-edited skill still tracks the code default.
 func TestSetSkillPromptSurvivesReseed(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 
 	sk := firstSeededSkill(t, s)
@@ -45,7 +47,7 @@ func TestSetSkillPromptSurvivesReseed(t *testing.T) {
 	}
 
 	// Re-run the boot seed: the customized prompt must be preserved.
-	if err := s.seedSkills(); err != nil {
+	if err := s.seedSkills(ctx); err != nil {
 		t.Fatalf("reseed: %v", err)
 	}
 	if got := promptOf(t, s, sk.ID); got != custom {
@@ -78,7 +80,7 @@ func TestSetSkillPromptSurvivesReseed(t *testing.T) {
 // Resetting hands the prompt back to the seed: the default is restored and the
 // customization stamp is cleared.
 func TestResetSkillPromptRestoresDefault(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 
 	sk := firstSeededSkill(t, s)

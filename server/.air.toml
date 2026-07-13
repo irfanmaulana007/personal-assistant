@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -tags sqlite_fts5 -o ./tmp/personal-assistant ./cmd/assistant"
+  cmd = "go build -o ./tmp/personal-assistant ./cmd/assistant"
   bin = "./tmp/personal-assistant"
   args_bin = ["-config", "config/config.yaml"]
   include_ext = ["go", "yaml"]

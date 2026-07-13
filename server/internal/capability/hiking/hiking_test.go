@@ -4,14 +4,13 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
-	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store/storetest"
 )
 
 func TestSimilar(t *testing.T) {
@@ -40,11 +39,7 @@ func TestSimilar(t *testing.T) {
 }
 
 func TestHikeLogDedup(t *testing.T) {
-	db, err := store.NewSQLite(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer db.Close()
+	db := storetest.New(t)
 
 	h := New(db, time.UTC, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx := authctx.WithUserID(context.Background(), 4)

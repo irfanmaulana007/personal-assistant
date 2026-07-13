@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -7,7 +9,7 @@ import (
 )
 
 func TestTraceScoreRoundTrip(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestHybrid(t)
 	ctx := context.Background()
 
 	// Two successful traces + one error trace (never judged).
@@ -78,13 +80,13 @@ func TestTraceScoreRoundTrip(t *testing.T) {
 // TestListTracesMultiFilters exercises the multi-select filters: platforms are
 // OR-ed via IN, and score states are OR-ed into a single union.
 func TestListTracesMultiFilters(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestHybrid(t)
 	ctx := context.Background()
 
-	idA, _ := s.CreateTrace(ctx, &Trace{Platform: "web", Input: "a", Output: "a", Model: "m", Status: "ok"})       // web, low
-	idB, _ := s.CreateTrace(ctx, &Trace{Platform: "whatsapp", Input: "b", Output: "b", Model: "m", Status: "ok"})  // whatsapp, unscored
-	idC, _ := s.CreateTrace(ctx, &Trace{Platform: "web", Input: "c", Output: "c", Model: "m", Status: "ok"})       // web, high
-	_, _ = s.CreateTrace(ctx, &Trace{Platform: "whatsapp", Input: "boom", Status: "error", Error: "x"})            // never judged
+	idA, _ := s.CreateTrace(ctx, &Trace{Platform: "web", Input: "a", Output: "a", Model: "m", Status: "ok"})      // web, low
+	idB, _ := s.CreateTrace(ctx, &Trace{Platform: "whatsapp", Input: "b", Output: "b", Model: "m", Status: "ok"}) // whatsapp, unscored
+	idC, _ := s.CreateTrace(ctx, &Trace{Platform: "web", Input: "c", Output: "c", Model: "m", Status: "ok"})      // web, high
+	_, _ = s.CreateTrace(ctx, &Trace{Platform: "whatsapp", Input: "boom", Status: "error", Error: "x"})           // never judged
 
 	_ = s.SaveTraceScore(ctx, &TraceScore{TraceID: idA, Accuracy: 2, Helpfulness: 2, Safety: 3, Overall: 2.0, JudgeModel: "j"})
 	_ = s.SaveTraceScore(ctx, &TraceScore{TraceID: idC, Accuracy: 5, Helpfulness: 5, Safety: 5, Overall: 5.0, JudgeModel: "j"})
