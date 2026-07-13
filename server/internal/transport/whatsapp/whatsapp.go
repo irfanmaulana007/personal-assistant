@@ -46,14 +46,31 @@ type Transport struct {
 	allowAll    bool            // when true, answer every sender (allowed is ignored)
 	handler     transport.MessageHandler
 	groupBypass func(text string) bool // when set, an un-addressed group message whose text satisfies this is still delivered (e.g. "/t" translator commands)
+
+	// handlerSem bounds how many messages are handled concurrently. The app
+	// handler does blocking LLM work (agent runs, "/t" translations), so each
+	// message is processed in its own goroutine to keep whatsmeow's shared event
+	// loop responsive (see handleMessage); this semaphore caps how many of those
+	// run at once so a burst can't spawn an unbounded number of LLM calls.
+	handlerSem chan struct{}
 }
+
+// maxConcurrentHandlers is the cap on messages processed at the same time. It is
+// generous enough that normal traffic is never queued, but bounds resource and
+// LLM-cost blow-ups if a group is flooded with "/t" commands.
+const maxConcurrentHandlers = 16
 
 // New creates a new WhatsApp transport. dsn is the PostgreSQL DSN whatsmeow
 // uses to persist its session/device state (in its own whatsmeow_* tables,
 // sharing the app's Postgres database). The owner JID is derived from the
 // paired device, so it no longer needs to be configured.
 func New(dsn string, log *slog.Logger) *Transport {
-	return &Transport{dsn: dsn, log: log.With("transport", "whatsapp"), status: StatusDisconnected}
+	return &Transport{
+		dsn:        dsn,
+		log:        log.With("transport", "whatsapp"),
+		status:     StatusDisconnected,
+		handlerSem: make(chan struct{}, maxConcurrentHandlers),
+	}
 }
 
 func (t *Transport) Name() string { return "whatsapp" }
@@ -448,8 +465,37 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	}
 
 	if handler != nil {
-		handler(msg)
+		// whatsmeow delivers events on a shared handler queue that processes one
+		// node at a time: whatever an event handler does inline blocks delivery of
+		// every subsequent message — across ALL chats — until it returns. Because
+		// the app handler makes blocking LLM calls (agent runs, "/t" translations),
+		// handling a message inline lets a burst stall unrelated chats: a few "/t"
+		// commands (which any group participant can now send without mentioning the
+		// assistant) can wedge the queue long enough that 1:1 messages look dead.
+		// Hand each message to its own goroutine so the event loop returns
+		// immediately; the semaphore bounds how many run concurrently.
+		t.dispatchMessage(msg, handler)
 	}
+}
+
+// dispatchMessage runs the app message handler off whatsmeow's event goroutine
+// so blocking work (LLM calls) never stalls delivery of other messages. It
+// recovers from panics itself — the handler no longer runs under whatsmeow's own
+// recover — and respects handlerSem to cap concurrency.
+func (t *Transport) dispatchMessage(msg *transport.Message, handler transport.MessageHandler) {
+	go func() {
+		if t.handlerSem != nil {
+			t.handlerSem <- struct{}{}
+			defer func() { <-t.handlerSem }()
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				t.log.Error("recovered from panic while handling WhatsApp message",
+					"chat", msg.Chat, "from", msg.From, "recover", r)
+			}
+		}()
+		handler(msg)
+	}()
 }
 
 // messageContextInfo returns the ContextInfo carried by a text or image
