@@ -16,8 +16,9 @@ load.
 ## Fixed Trello targets
 
 This command always operates on these exact ids (resolve by name via
-`list_boards` / `get_lists` if an id ever changes):
+`list_workspaces` / `list_boards` / `get_lists` if an id ever changes):
 
+- **Workspace:** `Personal Assistant` — `6a54dd566d0f1d87fc3d9c54`
 - **Board:** `Task Management` — `6a54dd8eecaab3bd510528ba`
 - **Source list (read cards here):** `Todo` — `6a54dda5bd020d9d6740ade7`
 - **In-flight list (move card here once its PR is open):** `In Progress` —
@@ -40,8 +41,10 @@ feature — skip it and report it as skipped-for-missing-detail.
 
 ## Procedure
 
-1. **Select the board.** `set_active_board` with `6a54dd8eecaab3bd510528ba`
-   (the "Task Management" board).
+1. **Select the workspace, then the board.** `set_active_workspace` with
+   `6a54dd566d0f1d87fc3d9c54` (the "Personal Assistant" workspace), then
+   `set_active_board` with `6a54dd8eecaab3bd510528ba` (its "Task Management"
+   board).
 
 2. **Read every card in Todo.** `get_cards_by_list_id` for
    `6a54dda5bd020d9d6740ade7`, then `get_card` on each to pull the full

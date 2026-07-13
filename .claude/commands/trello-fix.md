@@ -15,8 +15,9 @@ load.
 ## Fixed Trello targets
 
 This command always operates on these exact ids (resolve by name via
-`list_boards` / `get_lists` if an id ever changes):
+`list_workspaces` / `list_boards` / `get_lists` if an id ever changes):
 
+- **Workspace:** `Personal Assistant` — `6a54dd566d0f1d87fc3d9c54`
 - **Board:** `Issue` — `6a54edaae21957ab935c81f6`
 - **Source list (read cards here):** `Bug` — `6a54edaae21957ab935c820f`
 - **In-flight list (move card here once its PR is open):** `Progress` —
@@ -39,8 +40,9 @@ skip it and report it as skipped-for-missing-detail.
 
 ## Procedure
 
-1. **Select the board.** `set_active_board` with `6a54edaae21957ab935c81f6`
-   (the "Issue" board).
+1. **Select the workspace, then the board.** `set_active_workspace` with
+   `6a54dd566d0f1d87fc3d9c54` (the "Personal Assistant" workspace), then
+   `set_active_board` with `6a54edaae21957ab935c81f6` (its "Issue" board).
 
 2. **Read every card in Bug.** `get_cards_by_list_id` for
    `6a54edaae21957ab935c820f`, then `get_card` on each to pull the full
