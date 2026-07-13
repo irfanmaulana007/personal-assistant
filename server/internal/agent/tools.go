@@ -273,6 +273,31 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
 		},
 	},
+	"trello_review": {
+		{
+			name:        "trello_review",
+			description: "List every task and bug across the user's project boards on Trello — the Task Management board (Backlog / Todo / In Progress / Done) and the Issue board (Bug / Progress / Done) — grouped by board and list. Use when the user wants to see, check, review, or summarize their tasks, backlog, or open bugs (e.g. 'what's on my board', 'list my tasks', 'any open bugs', 'review the backlog').",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloReview,
+			parameters:  `{"type":"object","properties":{}}`,
+		},
+	},
+	"trello_card": {
+		{
+			name:        "trello_create_task",
+			description: "File a NEW work task on the Trello Task Management board's Backlog list. Use this for project/development work items for the app — a new feature, an improvement, a chore, or a refactor — NOT for personal life goals (those belong on the bucket list, via bucketlist_add). Enrich the fields from what the user said and write them in English. Decide the label from the nature of the work: feature (new capability), improvement (enhance something that exists), chore (maintenance/config/docs, no behaviour change), refactor (restructure without behaviour change).",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloCreateTask,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short imperative summary of the work, in English (e.g. 'Add dark-mode toggle to settings')."},"description":{"type":"string","description":"1-3 sentences of context in English: what needs doing and why."},"acceptance_criteria":{"type":"string","description":"The concrete, verifiable conditions for the task to be done, in English — 2-5 items, ONE PER LINE (newline-separated), each a testable statement. Do not number them."},"label":{"type":"string","enum":["feature","improvement","chore","refactor"],"description":"The task type, choosing exactly one."}},"required":["title","description","acceptance_criteria","label"]}`,
+		},
+		{
+			name:        "trello_report_bug",
+			description: "File a NEW bug report on the Trello Issue board's Bug list. Use this when the user reports that something already built behaves wrong — broken, erroring, crashing, wrong result, or not doing what it should. Enrich the fields from what the user said and write them in English.",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloReportBug,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short summary of the defect, in English (e.g. 'Login button unresponsive on mobile Safari')."},"description":{"type":"string","description":"Context and, when known, the steps to reproduce, in English."},"actual_result":{"type":"string","description":"What currently happens — the wrong behaviour — in English."},"expected_result":{"type":"string","description":"What should happen instead, in English."}},"required":["title","actual_result","expected_result"]}`,
+		},
+	},
 	"self_tuning": {
 		{
 			name:        "review_skill_performance",

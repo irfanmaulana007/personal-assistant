@@ -17,6 +17,7 @@ const (
 	CapabilityHiking     Capability = "hiking"
 	CapabilityWebSearch  Capability = "web_search"
 	CapabilityImageGen   Capability = "image_gen"
+	CapabilityTrello     Capability = "trello"
 	CapabilitySelfTune   Capability = "self_tune"
 	CapabilityHelp       Capability = "help"
 	CapabilityUnknown    Capability = "unknown"
@@ -112,6 +113,13 @@ const (
 const (
 	ActionImageGenerate Action = "image_gen.generate"
 	ActionImageEdit     Action = "image_gen.edit"
+)
+
+// Trello actions (review the boards; file a task or a bug card)
+const (
+	ActionTrelloReview     Action = "trello.review"
+	ActionTrelloCreateTask Action = "trello.create_task"
+	ActionTrelloReportBug  Action = "trello.report_bug"
 )
 
 // Self-tuning actions (review low-quality runs and refine skill prompts)

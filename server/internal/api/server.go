@@ -152,6 +152,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/integrations/key", admin(s.handleSetComposioKey))
 	mux.Handle("PUT /api/integrations/websearch-key", admin(s.handleSetWebSearchKey))
 	mux.Handle("PUT /api/integrations/openai-key", admin(s.handleSetOpenAIKey))
+	mux.Handle("PUT /api/integrations/trello-creds", admin(s.handleSetTrelloCreds))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", admin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", admin(s.handleDisconnectIntegration))
 	mux.Handle("DELETE /api/calendar/events", admin(s.handleClearCalendarEvents))
