@@ -1,7 +1,7 @@
 {
   "name": "personal-assistant",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "scripts": {
     "prepare": "husky"
   },
