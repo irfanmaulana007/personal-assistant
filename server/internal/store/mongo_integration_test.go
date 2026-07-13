@@ -4,7 +4,7 @@
 // the hybrid test, postgres:17 via testcontainers). Excluded from the default
 // build; run with:
 //
-//	go test -tags 'sqlite_fts5 integration' ./internal/store/ -run 'Mongo|Hybrid'
+//	go test -tags integration ./internal/store/ -run 'Mongo|Hybrid'
 package store
 
 import (

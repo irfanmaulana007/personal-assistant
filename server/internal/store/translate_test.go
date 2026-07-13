@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -24,7 +26,7 @@ func (fakeTranslator) Text(_ context.Context, text string) string {
 }
 
 func TestTranslatorNormalizesReminderTitle(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	s.SetTranslator(fakeTranslator{})
 	ctx := context.Background()
 
@@ -70,7 +72,7 @@ func TestTranslatorNormalizesReminderTitle(t *testing.T) {
 }
 
 func TestTranslatorNormalizesBucketItem(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	s.SetTranslator(fakeTranslator{})
 	ctx := context.Background()
 
@@ -92,7 +94,7 @@ func TestTranslatorNormalizesBucketItem(t *testing.T) {
 }
 
 func TestNoTranslatorStoresAsIs(t *testing.T) {
-	s := newTestStore(t) // no translator injected
+	s := newTestPostgres(t) // no translator injected
 	ctx := context.Background()
 
 	g, err := s.CreateBucketItem(ctx, 1, "belajar menyelam", "impian lama", "kelas pemula", CategorySelfImprovement, nil)

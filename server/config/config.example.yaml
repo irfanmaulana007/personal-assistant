@@ -10,7 +10,8 @@ owner:
 
 whatsapp:
   enabled: true # then link your phone from the Integrations page (QR)
-  database: "data/whatsmeow.db"
+  # whatsmeow's session is stored in Postgres (its own whatsmeow_* tables),
+  # using database.postgres_dsn below — no separate database file is needed.
 
 web:
   enabled: true

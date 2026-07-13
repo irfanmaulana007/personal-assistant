@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store/storetest"
 )
 
 type fakeCalendar struct {
@@ -37,10 +37,7 @@ func (f *fakeCalendar) DeleteEventIn(_ context.Context, _ int64, _, _, eventID s
 
 func newHandler(t *testing.T, cal Calendar) (*Handler, store.Store, context.Context) {
 	t.Helper()
-	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("store: %v", err)
-	}
+	st := storetest.New(t)
 	tz := time.FixedZone("WIB", 7*3600)
 	h := New(cal, st, tz, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return h, st, authctx.WithUserID(context.Background(), 1)

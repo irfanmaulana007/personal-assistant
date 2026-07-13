@@ -4,7 +4,7 @@
 // Docker (a real postgres:17 is started via testcontainers) and are excluded
 // from the default build; run with:
 //
-//	go test -tags 'sqlite_fts5 integration' ./internal/store/ -run Postgres
+//	go test -tags integration ./internal/store/ -run Postgres
 package store
 
 import (
@@ -109,6 +109,33 @@ func TestPostgresSkillsSeeded(t *testing.T) {
 	again, err := s.ListSkills(ctx)
 	if err != nil || len(again) != len(skills) {
 		t.Fatalf("skills count changed after re-seed: %d -> %d (%v)", len(skills), len(again), err)
+	}
+
+	// Retired skills (and their per-user toggles) are pruned on seed. Simulate a
+	// legacy DB carrying a since-removed skill plus a user's toggle for it, then
+	// re-seed and assert both rows are gone.
+	var legacyID int64
+	if err := s.pool.QueryRow(ctx,
+		`INSERT INTO skills (key, name) VALUES ('scheduled_reminder', 'Scheduled Reminder') RETURNING id`,
+	).Scan(&legacyID); err != nil {
+		t.Fatalf("insert legacy skill: %v", err)
+	}
+	if _, err := s.pool.Exec(ctx,
+		`INSERT INTO user_skills (user_id, skill_id, enabled) VALUES (1, $1, true)`, legacyID,
+	); err != nil {
+		t.Fatalf("insert user_skill: %v", err)
+	}
+	if err := s.seedSkills(ctx); err != nil {
+		t.Fatalf("re-seed after legacy insert: %v", err)
+	}
+	var skillRows, toggleRows int
+	s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM skills WHERE key = 'scheduled_reminder'`).Scan(&skillRows)
+	s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_skills WHERE skill_id = $1`, legacyID).Scan(&toggleRows)
+	if skillRows != 0 {
+		t.Error("retired skill row should be pruned")
+	}
+	if toggleRows != 0 {
+		t.Error("retired skill's user toggles should be pruned")
 	}
 }
 

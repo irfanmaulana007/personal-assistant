@@ -11,8 +11,8 @@
 
 ## Development
 
-- **Server:** Go 1.25+, PostgreSQL (main data) + MongoDB (logs); CGO still
-  required (WhatsApp session + `migrate-db` ETL use SQLite) — code in `server/`
+- **Server:** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow session) +
+  MongoDB (logs); CGO-free (SQLite removed) — code in `server/`
 - **Client:** TypeScript, React, Vite, Tailwind — code in `client/`
 - **Build all:** `make build`
 - **Build server:** `make build-server`

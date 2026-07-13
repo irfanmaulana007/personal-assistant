@@ -13,8 +13,8 @@
 //
 // Usage:
 //
-//	go run -tags sqlite_fts5 ./cmd/calcleanup -config server/config/config.yaml            # dry run
-//	go run -tags sqlite_fts5 ./cmd/calcleanup -config server/config/config.yaml -apply      # delete
+//	go run ./cmd/calcleanup -config server/config/config.yaml            # dry run
+//	go run ./cmd/calcleanup -config server/config/config.yaml -apply      # delete
 package main
 
 import (

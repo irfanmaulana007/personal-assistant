@@ -187,7 +187,7 @@ func main() {
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
 	if cfg.WhatsApp.Enabled {
-		wa = whatsapp.New(cfg.WhatsApp.Database, log)
+		wa = whatsapp.New(cfg.Database.PostgresDSN, log)
 		// The allowlist lives in settings (editable at Settings → WhatsApp). Seed
 		// it from OWNER_JID on first boot so existing deployments keep working.
 		allow := settingsSvc.WhatsAppAllowedJIDs(ctx)
