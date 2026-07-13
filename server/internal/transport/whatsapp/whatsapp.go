@@ -17,7 +17,7 @@ import (
 
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver for whatsmeow's sqlstore
 )
 
 // Connection statuses reported to the UI.
@@ -32,7 +32,7 @@ const (
 // Pairing is driven from the web UI: BeginPairing exposes a live QR code and
 // the connection is established without blocking server startup.
 type Transport struct {
-	dbPath    string
+	dsn       string
 	log       *slog.Logger
 	container *sqlstore.Container
 	appCtx    context.Context
@@ -47,10 +47,12 @@ type Transport struct {
 	handler  transport.MessageHandler
 }
 
-// New creates a new WhatsApp transport. The owner JID is derived from the
+// New creates a new WhatsApp transport. dsn is the PostgreSQL DSN whatsmeow
+// uses to persist its session/device state (in its own whatsmeow_* tables,
+// sharing the app's Postgres database). The owner JID is derived from the
 // paired device, so it no longer needs to be configured.
-func New(dbPath string, log *slog.Logger) *Transport {
-	return &Transport{dbPath: dbPath, log: log.With("transport", "whatsapp"), status: StatusDisconnected}
+func New(dsn string, log *slog.Logger) *Transport {
+	return &Transport{dsn: dsn, log: log.With("transport", "whatsapp"), status: StatusDisconnected}
 }
 
 func (t *Transport) Name() string { return "whatsapp" }
@@ -93,11 +95,12 @@ func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
 	t.mu.Unlock()
 }
 
-// Init opens the whatsmeow store and remembers the long-lived app context used
-// for connections (which outlive the request that triggers them).
+// Init opens the whatsmeow store (backed by PostgreSQL via the pgx driver) and
+// remembers the long-lived app context used for connections (which outlive the
+// request that triggers them).
 func (t *Transport) Init(ctx context.Context) error {
 	t.appCtx = ctx
-	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", t.dbPath), waLog.Noop)
+	container, err := sqlstore.New(ctx, "pgx", t.dsn, waLog.Noop)
 	if err != nil {
 		return fmt.Errorf("create whatsmeow store: %w", err)
 	}

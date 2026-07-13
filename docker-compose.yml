@@ -4,10 +4,8 @@ services:
     restart: unless-stopped
     ports:
       - '8090:8090'
-    volumes:
-      # The app data lives in Postgres/Mongo now; this volume only holds the
-      # WhatsApp (whatsmeow) session DB, which still uses its own SQLite file.
-      - assistant-data:/app/data
+    # Stateless: all data — including the WhatsApp (whatsmeow) session — lives in
+    # Postgres/Mongo, so the assistant container needs no persistent volume.
     environment:
       - APP_ENV=${APP_ENV:-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
@@ -54,6 +52,5 @@ services:
       retries: 10
 
 volumes:
-  assistant-data:
   pgdata:
   mongodata:

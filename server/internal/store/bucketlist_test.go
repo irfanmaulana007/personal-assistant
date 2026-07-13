@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -7,7 +9,7 @@ import (
 )
 
 func TestBucketItemCRUDRoundTrip(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 	const uid = 1
 
@@ -99,7 +101,7 @@ func TestBucketItemCRUDRoundTrip(t *testing.T) {
 }
 
 func TestBucketItemUnknownCategoryFallsBackToOther(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 
 	g, err := s.CreateBucketItem(ctx, 1, "Visit Japan", "", "", "made_up_category", nil)
@@ -112,7 +114,7 @@ func TestBucketItemUnknownCategoryFallsBackToOther(t *testing.T) {
 }
 
 func TestBucketItemScopedToUser(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 
 	mine, err := s.CreateBucketItem(ctx, 1, "Visit Japan", "", "", CategoryCountry, nil)
@@ -138,7 +140,7 @@ func TestBucketItemScopedToUser(t *testing.T) {
 }
 
 func TestListBucketItemsOrdersUnfinishedFirst(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestPostgres(t)
 	ctx := context.Background()
 	const uid = 1
 

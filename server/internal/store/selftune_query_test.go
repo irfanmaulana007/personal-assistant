@@ -1,3 +1,5 @@
+//go:build integration
+
 package store
 
 import (
@@ -6,12 +8,29 @@ import (
 	"time"
 )
 
+// tunedPromptFor reads a skill's tuned_prompt override via the public store API
+// (the Postgres ListSkills projects tuned_prompt into Skill.TunedPrompt).
+func tunedPromptFor(t *testing.T, ctx context.Context, s Store, key string) string {
+	t.Helper()
+	skills, err := s.ListSkills(ctx)
+	if err != nil {
+		t.Fatalf("list skills: %v", err)
+	}
+	for _, sk := range skills {
+		if sk.Key == key {
+			return sk.TunedPrompt
+		}
+	}
+	t.Fatalf("skill %q not found", key)
+	return ""
+}
+
 // TestListLowScoreTracesWithSkills covers the self-tuner's review query: it must
 // return only scored-low traces that (a) belong to the user, (b) have a
 // non-empty skills array, and (c) score at or below the threshold — worst
 // first — and must populate Skills/Tools for the report.
 func TestListLowScoreTracesWithSkills(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestHybrid(t)
 	ctx := context.Background()
 	const uid = int64(7)
 
@@ -63,7 +82,7 @@ func TestListLowScoreTracesWithSkills(t *testing.T) {
 // TestUpdateSkillTunedPrompt covers the override write + EffectivePrompt fallback
 // and that clearing reverts to the shipped default.
 func TestUpdateSkillTunedPrompt(t *testing.T) {
-	s := newTestStore(t)
+	s := newTestHybrid(t)
 	ctx := context.Background()
 
 	skills, err := s.ListSkills(ctx)
@@ -82,12 +101,7 @@ func TestUpdateSkillTunedPrompt(t *testing.T) {
 	if err := s.UpdateSkillTunedPrompt(ctx, target.Key, "TUNED VERSION"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	// Note: the SQLite ListSkills does not project tuned_prompt (runtime uses
-	// Postgres), so assert via a direct read of the column instead.
-	var tuned string
-	if err := s.db.QueryRowContext(ctx, `SELECT tuned_prompt FROM skills WHERE key = ?`, target.Key).Scan(&tuned); err != nil {
-		t.Fatalf("read tuned: %v", err)
-	}
+	tuned := tunedPromptFor(t, ctx, s, target.Key)
 	if tuned != "TUNED VERSION" {
 		t.Fatalf("tuned prompt not saved, got %q", tuned)
 	}
@@ -100,7 +114,7 @@ func TestUpdateSkillTunedPrompt(t *testing.T) {
 	if err := s.UpdateSkillTunedPrompt(ctx, target.Key, ""); err != nil {
 		t.Fatalf("clear: %v", err)
 	}
-	_ = s.db.QueryRowContext(ctx, `SELECT tuned_prompt FROM skills WHERE key = ?`, target.Key).Scan(&tuned)
+	tuned = tunedPromptFor(t, ctx, s, target.Key)
 	if tuned != "" {
 		t.Fatalf("expected tuned cleared, got %q", tuned)
 	}

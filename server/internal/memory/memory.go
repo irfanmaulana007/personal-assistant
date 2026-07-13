@@ -1,5 +1,5 @@
 // Package memory is the agent's long-term memory: durable facts persisted per
-// user and retrieved via SQLite FTS5.
+// user and retrieved via PostgreSQL full-text search.
 package memory
 
 import (

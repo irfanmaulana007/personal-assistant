@@ -4,7 +4,7 @@
 // DatabaseConfig routed through store.Open must build a working HybridStore
 // against real postgres:17 + mongo:7. Requires Docker.
 //
-//	go test -tags 'sqlite_fts5 integration' ./internal/store/ -run OpenHybrid
+//	go test -tags integration ./internal/store/ -run OpenHybrid
 package store
 
 import (

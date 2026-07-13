@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/intent"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store/storetest"
 )
 
 var testTZ = time.FixedZone("WIB", 7*3600) // UTC+7, no DST
@@ -322,10 +322,7 @@ func TestCalendarHash_ChangesWithSchedule(t *testing.T) {
 }
 
 func TestScheduleCreatesVisibleRecurring(t *testing.T) {
-	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
+	st := storetest.New(t)
 	h := &Handler{store: st, timezone: testTZ, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx := authctx.WithUserID(context.Background(), 1)
 
@@ -354,10 +351,7 @@ func TestScheduleCreatesVisibleRecurring(t *testing.T) {
 }
 
 func TestScheduleUsesDefaultTimeWhenOmitted(t *testing.T) {
-	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
+	st := storetest.New(t)
 	svc := settings.New(st, nil)
 	ctx := authctx.WithUserID(context.Background(), 1)
 	if err := svc.SetReminderDefaultTime(ctx, "22:00"); err != nil {

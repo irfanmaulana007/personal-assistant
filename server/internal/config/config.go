@@ -66,8 +66,7 @@ func (o OwnerConfig) PrimaryJID() string {
 }
 
 type WhatsAppConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Database string `yaml:"database"`
+	Enabled bool `yaml:"enabled"`
 }
 
 type WebConfig struct {
@@ -78,9 +77,7 @@ type WebConfig struct {
 }
 
 // DatabaseConfig configures the storage backend. The application runs on a
-// hybrid backend only — PostgreSQL for main data, MongoDB for logs. (SQLite is
-// no longer an application backend; it survives solely as the read source for
-// the one-time `migrate-db` ETL, which takes its path via --sqlite.)
+// hybrid backend only — PostgreSQL for main data, MongoDB for logs.
 type DatabaseConfig struct {
 	// PostgresDSN is the PostgreSQL connection string (main data). Required.
 	PostgresDSN string `yaml:"postgres_dsn"`
@@ -174,8 +171,7 @@ func defaults() *Config {
 			Timezone: "UTC",
 		},
 		WhatsApp: WhatsAppConfig{
-			Enabled:  true,
-			Database: "data/whatsmeow.db",
+			Enabled: true,
 		},
 		Web: WebConfig{
 			Enabled:   true,
@@ -248,9 +244,8 @@ func validate(cfg *Config) error {
 		errs = append(errs, "owner.whatsapp_jid is required")
 	}
 
-	if cfg.WhatsApp.Enabled && cfg.WhatsApp.Database == "" {
-		errs = append(errs, "whatsapp.database is required when whatsapp is enabled")
-	}
+	// WhatsApp (whatsmeow) persists its session in Postgres too, so it needs no
+	// separate database setting — the postgres_dsn check below covers it.
 
 	// The application runs on the hybrid Postgres + Mongo backend only.
 	if cfg.Database.PostgresDSN == "" {
