@@ -9,6 +9,7 @@ import { usePreferences } from '../contexts/preferences';
 import { Markdown } from './Markdown';
 import { Skeleton } from './ui/Skeleton';
 import { parseFilterList, serializeFilterList } from '../lib/filters';
+import { APP_VERSION_LABEL } from '../appVersion';
 import { CHANNEL_VALUES, SCORE_VALUES } from '../types';
 import type { Trace, TraceScore } from '../types';
 
@@ -57,6 +58,7 @@ function buildDebugText(t: Trace): string {
   };
 
   L.push('=== RUN DETAIL ===');
+  add('App version', APP_VERSION_LABEL);
   add('ID', t.id);
   add('Environment', t.environment);
   add('Status', t.status);
