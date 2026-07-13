@@ -201,6 +201,10 @@ func main() {
 		}
 		wa.SetAllowedSenders(allow)
 		wa.SetAllowAll(settingsSvc.WhatsAppAllowAll(ctx))
+		// A "/t" translator command works in a group without @mentioning the
+		// assistant; ordinary prompts still require a mention. General prompts
+		// are addressed by mentioning the assistant.
+		wa.SetGroupBypass(translate.IsCommand)
 		wa.SetMessageHandler(func(msg *transport.Message) {
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.
