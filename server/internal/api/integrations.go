@@ -60,6 +60,10 @@ type integrationsResp struct {
 	// OpenAI key powers the Image Generator skill (gpt-image-1).
 	OpenAIConfigured bool   `json:"openai_configured"`
 	OpenAIKeyMask    string `json:"openai_key_mask"`
+	// Trello key + token power the Trello Board Review and Card Creator skills.
+	TrelloConfigured bool   `json:"trello_configured"`
+	TrelloKeyMask    string `json:"trello_key_mask"`
+	TrelloTokenMask  string `json:"trello_token_mask"`
 }
 
 func statusFromComposio(s string) string {
@@ -111,6 +115,16 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 		resp.OpenAIKeyMask = settings.Mask(oaKey)
 	} else {
 		s.log.Warn("resolve openai key", "error", err)
+	}
+
+	// Trello credentials status (board review + card creation; independent of
+	// Composio). Both the key and the token must be present to be "configured".
+	if tKey, tToken, err := s.settings.TrelloCreds(r.Context()); err == nil {
+		resp.TrelloConfigured = tKey != "" && tToken != ""
+		resp.TrelloKeyMask = settings.Mask(tKey)
+		resp.TrelloTokenMask = settings.Mask(tToken)
+	} else {
+		s.log.Warn("resolve trello creds", "error", err)
 	}
 
 	// Gather all connections per toolkit slug (a user may have several).
@@ -199,6 +213,23 @@ func (s *Server) handleSetOpenAIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.settings.SetOpenAIKey(r.Context(), strings.TrimSpace(req.APIKey)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+		return
+	}
+	s.handleListIntegrations(w, r)
+}
+
+// handleSetTrelloCreds stores/clears the Trello API key and user token.
+func (s *Server) handleSetTrelloCreds(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		APIKey string `json:"api_key"`
+		Token  string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := s.settings.SetTrelloCreds(r.Context(), strings.TrimSpace(req.APIKey), strings.TrimSpace(req.Token)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
 		return
 	}
 	s.handleListIntegrations(w, r)

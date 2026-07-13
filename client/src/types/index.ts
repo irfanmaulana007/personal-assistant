@@ -152,6 +152,9 @@ export interface Integrations {
   web_search_key_mask: string;
   openai_configured: boolean;
   openai_key_mask: string;
+  trello_configured: boolean;
+  trello_key_mask: string;
+  trello_token_mask: string;
 }
 
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';
