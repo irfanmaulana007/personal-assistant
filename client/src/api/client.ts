@@ -389,6 +389,13 @@ export async function setOpenAIKey(apiKey: string): Promise<Integrations> {
   });
 }
 
+export async function setTrelloCreds(apiKey: string, token: string): Promise<Integrations> {
+  return request<Integrations>('/api/integrations/trello-creds', {
+    method: 'PUT',
+    body: JSON.stringify({ api_key: apiKey, token }),
+  });
+}
+
 export async function connectIntegration(slug: string): Promise<{ redirect_url: string }> {
   return request<{ redirect_url: string }>(`/api/integrations/${slug}/connect`, { method: 'POST' });
 }
