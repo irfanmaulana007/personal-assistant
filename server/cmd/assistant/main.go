@@ -29,6 +29,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/reminder"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/selftune"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/travel"
+	trellocap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/trello"
 	websearchcap "github.com/irfanmaulana007/personal-assistant/server/internal/capability/websearch"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composiotools"
@@ -47,6 +48,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/translate"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/transport/whatsapp"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/trello"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/websearch"
 )
 
@@ -164,6 +166,7 @@ func main() {
 	handlers = append(handlers, hiking.New(db, timezone, log))
 	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
 	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
+	handlers = append(handlers, trellocap.New(trello.New(), settingsSvc, log))
 	handlers = append(handlers, selftune.New(db, log))
 
 	router := capability.NewRouter(log, handlers...)

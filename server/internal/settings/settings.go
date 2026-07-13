@@ -27,6 +27,9 @@ const (
 
 	KeyOpenAIAPIKey = "openai.api_key" // encrypted (OpenAI key for image generation)
 
+	KeyTrelloAPIKey = "trello.api_key" // encrypted (Trello API key)
+	KeyTrelloToken  = "trello.token"   // encrypted (Trello user token)
+
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
 	KeyReminderDigestTime  = "reminder_digest_time"  // legacy: local "HH:MM" daily recap (migrated to the start_of_day routine)
@@ -278,6 +281,60 @@ func (s *Service) SetOpenAIKey(ctx context.Context, key string) error {
 		return fmt.Errorf("encrypt openai key: %w", err)
 	}
 	return s.store.SetSetting(ctx, KeyOpenAIAPIKey, enc)
+}
+
+// TrelloCreds returns the decrypted Trello API key and user token, or empty
+// strings if unset. Both are needed to authenticate a Trello request.
+func (s *Service) TrelloCreds(ctx context.Context) (apiKey, token string, err error) {
+	apiKey, err = s.decryptSetting(ctx, KeyTrelloAPIKey)
+	if err != nil {
+		return "", "", fmt.Errorf("decrypt trello key: %w", err)
+	}
+	token, err = s.decryptSetting(ctx, KeyTrelloToken)
+	if err != nil {
+		return "", "", fmt.Errorf("decrypt trello token: %w", err)
+	}
+	return apiKey, token, nil
+}
+
+// SetTrelloCreds stores the Trello API key and user token encrypted. An empty
+// value for either clears that field.
+func (s *Service) SetTrelloCreds(ctx context.Context, apiKey, token string) error {
+	if err := s.setEncrypted(ctx, KeyTrelloAPIKey, apiKey); err != nil {
+		return fmt.Errorf("store trello key: %w", err)
+	}
+	if err := s.setEncrypted(ctx, KeyTrelloToken, token); err != nil {
+		return fmt.Errorf("store trello token: %w", err)
+	}
+	return nil
+}
+
+// decryptSetting reads and decrypts a stored secret, returning "" if unset.
+func (s *Service) decryptSetting(ctx context.Context, key string) (string, error) {
+	enc, err := s.store.GetSetting(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if len(enc) == 0 {
+		return "", nil
+	}
+	dec, err := crypto.Decrypt(s.encKey, enc)
+	if err != nil {
+		return "", err
+	}
+	return string(dec), nil
+}
+
+// setEncrypted stores a secret encrypted; an empty value clears it.
+func (s *Service) setEncrypted(ctx context.Context, key, value string) error {
+	if value == "" {
+		return s.store.SetSetting(ctx, key, []byte{})
+	}
+	enc, err := crypto.Encrypt(s.encKey, []byte(value))
+	if err != nil {
+		return err
+	}
+	return s.store.SetSetting(ctx, key, enc)
 }
 
 // Mask returns a masked view of a secret (e.g. "••••7890"), or "" if empty.
