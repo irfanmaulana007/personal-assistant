@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
+import { APP_VERSION_LABEL } from '../appVersion';
 import { usePreferences } from '../contexts/preferences';
 import type { User } from '../types';
 
@@ -256,6 +257,9 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
 
         <div className="border-t border-white/10 p-2">
           <UserMenu user={user} onLogout={onLogout} />
+          <p className="px-2 pt-1.5 text-[11px] font-medium tracking-wide text-white/40">
+            {APP_VERSION_LABEL}
+          </p>
         </div>
       </aside>
 
