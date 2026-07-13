@@ -348,6 +348,19 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	groupBypass := t.groupBypass
 	t.mu.RUnlock()
 
+	text := evt.Message.GetConversation()
+	if text == "" && evt.Message.GetExtendedTextMessage() != nil {
+		text = evt.Message.GetExtendedTextMessage().GetText()
+	}
+
+	// A self-contained "/t" translator command in a group is open to every
+	// participant: it neither requires the assistant to be @mentioned nor the
+	// sender to be in the allowlist, so a foreign friend in the group can use it
+	// too. This bypass applies only to group "/t" commands — ordinary group
+	// prompts and all 1:1 messages still go through the allowlist and mention
+	// gates below.
+	groupCmdBypass := evt.Info.IsGroup && groupBypass != nil && groupBypass(text)
+
 	// WhatsApp may address the sender by LID (e.g. "…@lid") rather than their
 	// phone number. Collect every known identity so an OWNER_JID allowlist of
 	// phone JIDs still matches: the sender itself, the alternate address the
@@ -380,26 +393,20 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	default:
 		permitted = ownerJID == "" || senderJID == ownerJID
 	}
-	if !permitted {
+	if !permitted && !groupCmdBypass {
 		t.log.Info("ignoring WhatsApp message: sender not in OWNER_JID allowlist",
 			"sender", senderJID, "candidates", candidates, "allowlist_size", len(allowed))
 		return
 	}
 
-	text := evt.Message.GetConversation()
-	if text == "" && evt.Message.GetExtendedTextMessage() != nil {
-		text = evt.Message.GetExtendedTextMessage().GetText()
-	}
-
 	// Group chats are noisy, so the assistant only speaks up when it is directly
 	// addressed: either @mentioned, or someone replies to one of its own
 	// messages. The one exception is a self-contained "/t" translator command,
-	// which groupBypass recognises and lets through without a mention. Any other
-	// group chatter is ignored. 1:1 chats always pass.
+	// which groupCmdBypass recognises and lets through without a mention. Any
+	// other group chatter is ignored. 1:1 chats always pass.
 	if evt.Info.IsGroup {
 		ctxInfo := messageContextInfo(evt.Message)
-		bypass := groupBypass != nil && groupBypass(text)
-		if !bypass && !t.botAddressed(ctxInfo, client) {
+		if !groupCmdBypass && !t.botAddressed(ctxInfo, client) {
 			t.log.Info("ignoring WhatsApp group message: assistant not mentioned or replied to",
 				"chat", evt.Info.Chat.String(), "sender", senderJID)
 			return
