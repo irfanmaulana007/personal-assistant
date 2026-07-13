@@ -110,8 +110,44 @@ The single source of truth for the app version is the root `package.json`
    git push origin v<NEW_VERSION>
    ```
 
-10. **Report** the released version, the PR number/URL, and the pushed tag.
-    Leave `main` checked out and clean.
+10. **Move released Trello cards to `Done`.** The `/trello-feat` and
+    `/trello-fix` commands stamp each PR's commit with a `Trello: <card url>`
+    trailer and put the card link in the PR body. Any of those cards that are
+    part of this release must now be marked done on their board.
+
+    a. **Collect the released card links** from the commits being promoted.
+       Using the previous release tag as the lower bound:
+
+       ```
+       PREV=$(git describe --tags --abbrev=0 v<NEW_VERSION>^ 2>/dev/null)
+       git log ${PREV:+$PREV..}v<NEW_VERSION> --pretty=%B \
+         | grep -oiE 'https://trello\.com/c/[A-Za-z0-9]+' | sort -u
+       ```
+
+       If there are no matches, there are no Trello tasks in this release —
+       skip the rest of this step and note that in the report.
+
+    b. **For each unique card link, move it to `Done`.** Extract the card's
+       shortLink (the segment after `/c/`) and call the `trello` MCP server's
+       `get_card` with it to read the card's `idBoard`, then `move_card` it into
+       the matching board's `Done` list:
+
+       - Board **Task Management** (`6a54dd8eecaab3bd510528ba`) → Done list
+         `6a54ddadf123f4f7f7955c95`
+       - Board **Issue** (`6a54edaae21957ab935c81f6`) → Done list
+         `6a54edaae21957ab935c8211`
+
+       A card may sit on either board (features vs. bugs) — always move it to
+       the `Done` list **of its own board**, never across boards. Optionally
+       `add_comment` on the card, e.g. `Released in v<NEW_VERSION>`.
+
+       If the `trello` MCP tools aren't loaded in the session, report which
+       cards should be moved to `Done` (with their links) so the user can do it
+       manually, rather than failing the release.
+
+11. **Report** the released version, the PR number/URL, the pushed tag, and the
+    Trello cards moved to `Done` (or a note that the release contained no Trello
+    tasks). Leave `main` checked out and clean.
 
 ## Rules
 
@@ -123,3 +159,6 @@ The single source of truth for the app version is the root `package.json`
   everything else goes through the `staging → main` PR.
 - If any step fails (dirty tree, failing build, non-monotonic version, existing
   tag), stop and report rather than forcing the release through.
+- Moving Trello cards to `Done` is the last step and must never block the
+  release: if the Trello sync fails or its tools are unavailable, the release is
+  still complete — just report which cards need moving by hand.
