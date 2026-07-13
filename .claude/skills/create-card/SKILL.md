@@ -20,6 +20,16 @@ returns an error.
 | **Backlog** (Task Management) | `6a54dd8eecaab3bd510528ba` | `6a54dda0cf5b49c7fb6f8b15` |
 | **Bug** (Issue) | `6a54edaae21957ab935c81f6` | `6a54edaae21957ab935c820f` |
 
+**Backlog card labels** (Task Management board) — attach exactly one:
+| Label | labelId |
+| --- | --- |
+| Feature | `6a54dd8eecaab3bd510528d4` |
+| Improvement | `6a54dd8eecaab3bd510528d7` |
+| Chore | `6a54dd8eecaab3bd510528d6` |
+| Refactor | `6a54dd8eecaab3bd510528d5` |
+
+Only re-list via `mcp__trello__get_board_labels` if a `labelId` returns an error.
+
 ## Step 1 — Choose the board
 
 Decide **task vs. bug** from the intent of the ask, not just keywords:
@@ -54,6 +64,18 @@ a clear, well-formed card. **All fields in English.**
 - **Acceptance criteria** — a checklist of the concrete, verifiable conditions
   that must be true for the task to be considered done. Write 2–5 items, each a
   testable statement (prefer "Given/When/Then" or "User can…" phrasing).
+- **Label** — pick **exactly one** from the Backlog-label table above, by the
+  nature of the work:
+  - **Feature** — net-new user-facing capability or behavior that didn't exist.
+  - **Improvement** — enhances something that already exists (better UX, more
+    performance, expanded scope of an existing feature).
+  - **Chore** — maintenance / housekeeping with no user-facing behavior change
+    (deps, config, tooling, docs, cleanup, releases).
+  - **Refactor** — restructuring existing code without changing its behavior.
+
+  When two fit, prefer the most specific: new capability → Feature; behavior-
+  preserving code restructure → Refactor over Chore; user-visible enhancement →
+  Improvement over Feature.
 
 Compose the **description field** as:
 
@@ -93,7 +115,8 @@ Compose the **description field** as:
 
 2. Create the card with `mcp__trello__add_card_to_list`, passing `boardId`,
    `listId`, `name` (title), and `description` (the composed markdown from
-   step 2).
+   step 2). **For a Backlog card, also pass `labels: ["<labelId>"]`** with the
+   single label id chosen in step 2. (Bug cards take no label.)
 
 3. **Backlog only — add the acceptance criteria as a real checklist** so it's
    trackable in Trello, not just prose:
@@ -102,8 +125,8 @@ Compose the **description field** as:
    - one `mcp__trello__add_checklist_item` per criterion (`checkListName:
      "Acceptance Criteria"`, `cardId`, `text`).
 
-4. **Report back** with the card name, which board/list it landed on, and the
-   card URL returned by the create call.
+4. **Report back** with the card name, which board/list it landed on, the label
+   (for Backlog cards), and the card URL returned by the create call.
 
 ## Notes
 
