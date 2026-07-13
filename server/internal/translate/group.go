@@ -84,7 +84,7 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 			return "Sorry, I couldn't save those languages. Please try again.", true
 		}
 		return fmt.Sprintf(
-			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now mention me with `/t <message>` and I'll reply with the translation.\nUse `/t mode both` to also show the original, or `/t formality casual`/`formal` to set the tone.",
+			"✅ Translator is set for this group: *%s* ↔ *%s*.\nAnyone can now send `/t <message>` (no need to mention me) and I'll reply with the translation.\nUse `/t mode both` to also show the original, or `/t formality casual`/`formal` to set the tone.",
 			cmd.langA, cmd.langB,
 		), true
 
@@ -209,6 +209,15 @@ var (
 	// joins them with a word/symbol rather than a plain space.
 	pairSeps = regexp.MustCompile(`(?i)\s*(?:↔|<->|<>|->|→|/|,|;|\||&|\band\b|\bdan\b)\s*`)
 )
+
+// IsCommand reports whether a group message is a translator command (`/t` or
+// `/translate`, after any @-mentions are stripped). Transports use it to let a
+// self-contained `/t` command through a group without the assistant being
+// @mentioned, while ordinary prompts still require a mention.
+func IsCommand(raw string) bool {
+	_, ok := parseCommand(raw)
+	return ok
+}
 
 // parseCommand recognises a `/t` (or `/translate`) command in a group message,
 // after removing any @-mentions of the assistant. It returns ok=false when the
@@ -445,7 +454,7 @@ func helpText() string {
 	b.WriteString("• `/t formality asis` / `casual` / `formal` — keep the tone, or make it casual or formal\n")
 	b.WriteString("• `/t status` — show the current settings\n")
 	b.WriteString("• `/t off` — clear the languages\n\n")
-	b.WriteString("Grammar is always corrected in the translation. Always mention me together with the command.")
+	b.WriteString("Grammar is always corrected in the translation. Just send `/t …` — no need to mention me. To ask me anything else, mention me.")
 	return b.String()
 }
 
@@ -459,7 +468,7 @@ func statusText(langA, langB, mode, formality string) string {
 		b.WriteString("• Display: *original + translation*\n")
 	}
 	b.WriteString("• Formality: *" + formalityLabel(formality) + "* (grammar always corrected)\n")
-	b.WriteString("\nMention me with `/t <message>` to translate.")
+	b.WriteString("\nSend `/t <message>` to translate — no need to mention me.")
 	return b.String()
 }
 

@@ -66,6 +66,31 @@ func TestParseCommand(t *testing.T) {
 	}
 }
 
+func TestIsCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"plain prompt is not a command", "hello there", false},
+		{"general prompt with mention is not a command", "@6281234567890 what's the weather?", false},
+		{"t as a word is not a command", "the quick brown fox", false},
+		{"bare /t is a command", "/t", true},
+		{"translate is a command", "/t Apa kabar?", true},
+		{"translate without mention is a command", "/t Halo Pak Tanaka", true},
+		{"long form is a command", "/translate お元気ですか？", true},
+		{"set is a command", "/t set Indonesian Japanese", true},
+		{"command after a mention is a command", "@6281234567890 /t Apa kabar?", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsCommand(tt.in); got != tt.want {
+				t.Errorf("IsCommand(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseMode(t *testing.T) {
 	cases := []struct {
 		in       string
