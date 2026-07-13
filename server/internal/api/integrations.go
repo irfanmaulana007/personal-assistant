@@ -19,6 +19,7 @@ var supportedToolkits = []struct {
 	{"googlecalendar", "Google Calendar"},
 	{"github", "GitHub"},
 	{"sentry", "Sentry"},
+	{"trello", "Trello"},
 }
 
 func toolkitName(slug string) (string, bool) {
