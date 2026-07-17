@@ -309,11 +309,99 @@ export async function deleteUser(id: number): Promise<void> {
   await request(`/api/users/${id}`, { method: 'DELETE' });
 }
 
-export async function sendMessage(message: string, image?: string): Promise<ChatResponse> {
-  return request<ChatResponse>('/api/chat', {
+export interface ChatStreamHandlers {
+  // onDelta receives the full accumulated reply text so far (not just the latest
+  // fragment), so a caller can render it by simply replacing the message body.
+  onDelta?: (text: string) => void;
+}
+
+// sendMessage posts a chat message and returns the assistant's reply. Delivery
+// is decided by the server's admin "response mode": in block mode it replies
+// with a single JSON body; in stream mode it replies with Server-Sent Events,
+// which this function consumes, invoking handlers.onDelta as text arrives. The
+// final ChatResponse is returned identically either way, so callers that don't
+// pass handlers still work unchanged.
+export async function sendMessage(
+  message: string,
+  image?: string,
+  handlers?: ChatStreamHandlers,
+): Promise<ChatResponse> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch('/api/chat', {
     method: 'POST',
+    headers,
     body: JSON.stringify({ message, image: image ?? '' }),
   });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.reload();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed: ${res.status}`);
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !res.body) {
+    return res.json();
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let response = '';
+  let images: string[] | undefined;
+  let errored: string | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by a blank line.
+    let sep: number;
+    while ((sep = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+      if (!dataLine) continue;
+      const payload = dataLine.slice(5).trim();
+      if (!payload) continue;
+      let evt: {
+        type?: string;
+        text?: string;
+        response?: string;
+        images?: string[];
+        error?: string;
+      };
+      try {
+        evt = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+      if (evt.type === 'delta') {
+        response += evt.text ?? '';
+        handlers?.onDelta?.(response);
+      } else if (evt.type === 'done') {
+        if (typeof evt.response === 'string') response = evt.response;
+        images = evt.images;
+        handlers?.onDelta?.(response);
+      } else if (evt.type === 'error') {
+        errored = evt.error ?? 'Streaming failed';
+      }
+    }
+  }
+
+  if (errored) throw new Error(errored);
+  return { response, images };
 }
 
 export async function getChatHistory(): Promise<HistoryEntry[]> {

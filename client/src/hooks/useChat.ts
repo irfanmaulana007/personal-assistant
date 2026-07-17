@@ -39,16 +39,44 @@ export function useChat() {
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
+    // In stream mode the assistant bubble is created on the first token and
+    // updated in place; in block mode no delta fires and it's added on completion.
+    const assistantId = nextId();
+    let streaming = false;
+
     try {
-      const res = await apiSendMessage(text, image);
-      const assistantMsg: ChatMessage = {
-        id: nextId(),
+      const res = await apiSendMessage(text, image, {
+        onDelta: (full) => {
+          setMessages((prev) => {
+            if (!streaming) {
+              streaming = true;
+              return [
+                ...prev,
+                {
+                  id: assistantId,
+                  direction: 'in',
+                  body: full,
+                  timestamp: new Date().toISOString(),
+                },
+              ];
+            }
+            return prev.map((m) => (m.id === assistantId ? { ...m, body: full } : m));
+          });
+        },
+      });
+      // Reconcile to the authoritative final reply (and attach any images).
+      const finalMsg: ChatMessage = {
+        id: assistantId,
         direction: 'in',
         body: res.response,
         timestamp: new Date().toISOString(),
         images: res.images,
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) =>
+        prev.some((m) => m.id === assistantId)
+          ? prev.map((m) => (m.id === assistantId ? finalMsg : m))
+          : [...prev, finalMsg],
+      );
     } catch {
       const errorMsg: ChatMessage = {
         id: nextId(),
