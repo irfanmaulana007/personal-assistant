@@ -2,9 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *PostgresStore) ListMountains(ctx context.Context, userID int64) ([]Mountain, error) {
@@ -112,6 +115,37 @@ func (s *PostgresStore) AddHikeParticipant(ctx context.Context, hikeID, hikerID 
 		`INSERT INTO hike_hikers (hike_id, participant_id) VALUES ($1, $2)
 		 ON CONFLICT (hike_id, participant_id) DO NOTHING`, hikeID, hikerID)
 	return err
+}
+
+// GetHike returns one of the user's logged hikes by id (with mountain, track,
+// and participant detail), or (nil, nil) when no row matches. Used to confirm a
+// just-logged hike actually persisted.
+func (s *PostgresStore) GetHike(ctx context.Context, userID, id int64) (*HikeDetail, error) {
+	var d HikeDetail
+	var participants string
+	err := s.pool.QueryRow(ctx,
+		`SELECT h.id, h.mountain_id, h.camped, h.up_track_id, h.down_track_id, h.days, h.nights, h.hiked_on,
+		        m.name, COALESCE(ut.name, ''), COALESCE(dt.name, ''),
+		        COALESCE((SELECT string_agg(p.name, ', ') FROM hike_hikers hh
+		                  JOIN hike_participants p ON p.id = hh.participant_id
+		                  WHERE hh.hike_id = h.id), '')
+		 FROM hikes h
+		 JOIN hike_mountains m ON m.id = h.mountain_id
+		 LEFT JOIN hike_tracks ut ON ut.id = h.up_track_id
+		 LEFT JOIN hike_tracks dt ON dt.id = h.down_track_id
+		 WHERE h.user_id = $1 AND h.id = $2`, userID, id).
+		Scan(&d.ID, &d.MountainID, &d.Camped, &d.UpTrackID, &d.DownTrackID, &d.Days, &d.Nights, &d.HikedOn,
+			&d.Mountain, &d.UpTrack, &d.DownTrack, &participants)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get hike: %w", err)
+	}
+	if participants != "" {
+		d.Participants = strings.Split(participants, ", ")
+	}
+	return &d, nil
 }
 
 func (s *PostgresStore) ListHikes(ctx context.Context, userID int64, limit int) ([]HikeDetail, error) {

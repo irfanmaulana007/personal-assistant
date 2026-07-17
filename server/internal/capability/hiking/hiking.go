@@ -122,6 +122,14 @@ func (h *Handler) logHike(ctx context.Context, result *intent.ParseResult) (stri
 		people = append(people, hiker.Name)
 	}
 
+	// Read-after-write: confirm the hike (with its participants) actually
+	// persisted before telling the user it was logged.
+	if saved, err := h.store.GetHike(ctx, userID, hikeID); err != nil {
+		return "", fmt.Errorf("verify hike saved: %w", err)
+	} else if saved == nil {
+		return "", fmt.Errorf("verify hike saved: hike not found after create")
+	}
+
 	return h.formatLogged(mountain.Name, upName, downName, hike, people, notes), nil
 }
 

@@ -72,9 +72,20 @@ func (h *Handler) save(ctx context.Context, result *intent.ParseResult) (string,
 		return fmt.Sprintf("Note content is too long (max %d characters).", h.maxNoteLength), nil
 	}
 
-	note, err := h.store.CreateNote(ctx, authctx.UserID(ctx), title, content, tags)
+	userID := authctx.UserID(ctx)
+	note, err := h.store.CreateNote(ctx, userID, title, content, tags)
 	if err != nil {
 		return "", fmt.Errorf("create note: %w", err)
+	}
+
+	// Read-after-write: confirm the note actually persisted before telling the
+	// user it was saved, and build the confirmation from the re-read record.
+	note, err = h.store.GetNote(ctx, userID, note.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify note saved: %w", err)
+	}
+	if note == nil {
+		return "", fmt.Errorf("verify note saved: note not found after create")
 	}
 
 	response := fmt.Sprintf("Note saved (#%d): *%s*", note.ID, note.Title)

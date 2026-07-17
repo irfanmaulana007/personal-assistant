@@ -21,6 +21,7 @@ const (
 	KeyLLMModel       = "llm.model"        // plaintext
 	KeyLLMBaseURL     = "llm.base_url"     // plaintext
 	KeyLLMVision      = "llm.vision"       // plaintext "true"/"false"; absent ⇒ false
+	KeyResponseMode   = "response.mode"    // "block" (default) or "stream"; controls whether chat replies stream token-by-token
 	KeyComposioAPIKey = "composio.api_key" // encrypted
 
 	KeyWebSearchAPIKey = "websearch.api_key" // encrypted (Tavily Search API key)
@@ -110,13 +111,14 @@ func (s *Service) LLMConfig(ctx context.Context) (llm.Config, error) {
 
 // LLMView is the masked, safe-to-expose view of the LLM settings.
 type LLMView struct {
-	Provider   string             `json:"provider"`
-	Configured bool               `json:"configured"`
-	APIKeyMask string             `json:"api_key_mask"`
-	Model      string             `json:"model"`
-	BaseURL    string             `json:"base_url"`
-	Vision     bool               `json:"vision"`
-	Providers  []llm.ProviderInfo `json:"providers"`
+	Provider     string             `json:"provider"`
+	Configured   bool               `json:"configured"`
+	APIKeyMask   string             `json:"api_key_mask"`
+	Model        string             `json:"model"`
+	BaseURL      string             `json:"base_url"`
+	Vision       bool               `json:"vision"`
+	ResponseMode string             `json:"response_mode"`
+	Providers    []llm.ProviderInfo `json:"providers"`
 }
 
 // LLMView returns the current settings with the API key masked, plus the list
@@ -134,24 +136,26 @@ func (s *Service) LLMView(ctx context.Context) (LLMView, error) {
 		provider = llm.DefaultProvider
 	}
 	return LLMView{
-		Provider:   provider,
-		Configured: cfg.APIKey != "",
-		APIKeyMask: mask(cfg.APIKey),
-		Model:      cfg.Model,
-		BaseURL:    cfg.BaseURL,
-		Vision:     cfg.Vision,
-		Providers:  llm.Providers,
+		Provider:     provider,
+		Configured:   cfg.APIKey != "",
+		APIKeyMask:   mask(cfg.APIKey),
+		Model:        cfg.Model,
+		BaseURL:      cfg.BaseURL,
+		Vision:       cfg.Vision,
+		ResponseMode: s.ResponseMode(ctx),
+		Providers:    llm.Providers,
 	}, nil
 }
 
 // LLMUpdate describes a partial update. A nil field is left unchanged. An empty
 // (non-nil) APIKey clears the stored key.
 type LLMUpdate struct {
-	Provider *string
-	APIKey   *string
-	Model    *string
-	BaseURL  *string
-	Vision   *bool
+	Provider     *string
+	APIKey       *string
+	Model        *string
+	BaseURL      *string
+	Vision       *bool
+	ResponseMode *string
 }
 
 // UpdateLLM persists the provided LLM settings.
@@ -195,7 +199,33 @@ func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 			return err
 		}
 	}
+	if u.ResponseMode != nil {
+		if err := s.SetResponseMode(ctx, *u.ResponseMode); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// ResponseMode reports how chat replies are delivered: "stream" (token-by-token
+// SSE) or "block" (a single response once complete). Blocking is the default;
+// only an explicit "stream" opts in.
+func (s *Service) ResponseMode(ctx context.Context) string {
+	v, _ := s.getString(ctx, KeyResponseMode)
+	if v == "stream" {
+		return "stream"
+	}
+	return "block"
+}
+
+// SetResponseMode persists the reply-delivery mode. Any value other than
+// "stream" is normalised to "block".
+func (s *Service) SetResponseMode(ctx context.Context, mode string) error {
+	val := "block"
+	if mode == "stream" {
+		val = "stream"
+	}
+	return s.store.SetSetting(ctx, KeyResponseMode, []byte(val))
 }
 
 // ComposioKey returns the decrypted Composio API key, or "" if unset.

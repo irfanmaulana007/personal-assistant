@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -76,6 +77,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Body:      inputBody,
 	})
 
+	// Stream mode (admin-configured) delivers the reply token-by-token over SSE;
+	// otherwise fall through to the single-JSON-response path below.
+	if s.settings.ResponseMode(r.Context()) == "stream" {
+		if _, ok := w.(http.Flusher); ok {
+			s.streamChat(w, r, userID, inputBody, req, history)
+			return
+		}
+		// No flusher (unusual) — degrade gracefully to the blocking path.
+	}
+
 	// Run the LLM agent.
 	start := time.Now()
 	res, err := s.agent.Run(r.Context(), req.Message, history, req.Image)
@@ -100,8 +111,71 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	images := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
+	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images})
+}
+
+// streamChat runs the agent with token-by-token streaming and emits the reply
+// as Server-Sent Events. Frames:
+//   - {"type":"delta","text":"…"}      incremental reply text
+//   - {"type":"done","response":"…","images":[…]}  final authoritative reply
+//   - {"type":"error","error":"…"}     failure (also ends the stream)
+//
+// All logging/tracing happens on completion via recordChatOutcome, identically
+// to the blocking path — streaming only changes delivery, not bookkeeping.
+func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, userID int64, inputBody string, req chatRequest, history []agent.Message) {
+	flusher := w.(http.Flusher)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // ask proxies (nginx) not to buffer
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	sendEvent := func(v any) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+		flusher.Flush()
+	}
+
+	start := time.Now()
+	res, err := s.agent.RunStream(r.Context(), req.Message, history, req.Image, func(delta string) {
+		sendEvent(map[string]string{"type": "delta", "text": delta})
+	})
+	latencyMs := int(time.Since(start).Milliseconds())
+	if err != nil {
+		msg := "The assistant ran into a problem talking to the LLM. Check your Settings and try again."
+		if errors.Is(err, agent.ErrNotConfigured) {
+			msg = "The assistant isn't configured yet. Add your LLM API key in Settings to start chatting."
+		} else {
+			s.log.Error("agent stream failed", "error", err)
+		}
+		_, _ = s.store.CreateTrace(r.Context(), &store.Trace{
+			UserID:    userID,
+			Platform:  "web",
+			Input:     inputBody,
+			LatencyMs: latencyMs,
+			Status:    "error",
+			Error:     err.Error(),
+		})
+		sendEvent(map[string]string{"type": "error", "error": msg})
+		return
+	}
+
+	images := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
+	sendEvent(map[string]any{"type": "done", "response": res.Reply, "images": images})
+}
+
+// recordChatOutcome logs the assistant reply, writes the full trace, records
+// per-tool usage, and kicks off inline eval sampling. It returns the reply's
+// image data URLs (never nil) for the response. Shared by the blocking and
+// streaming paths so their bookkeeping stays identical.
+func (s *Server) recordChatOutcome(ctx context.Context, userID int64, inputBody string, res *agent.Result, latencyMs int) []string {
 	// Log outgoing message (chat history)
-	_ = s.store.LogMessage(r.Context(), &store.MessageLog{
+	_ = s.store.LogMessage(ctx, &store.MessageLog{
 		UserID:    userID,
 		Platform:  "web",
 		Direction: "out",
@@ -112,7 +186,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Record the full trace (dashboard + logs) and per-tool usage.
-	traceID, _ := s.store.CreateTrace(r.Context(), &store.Trace{
+	traceID, _ := s.store.CreateTrace(ctx, &store.Trace{
 		UserID:                userID,
 		Platform:              "web",
 		Input:                 inputBody,
@@ -133,18 +207,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		Status:                "ok",
 	})
 	for _, tool := range res.Tools {
-		_ = s.store.LogToolUsage(r.Context(), userID, tool.Name, "web")
+		_ = s.store.LogToolUsage(ctx, userID, tool.Name, "web")
 	}
 	// Judge a sampled fraction of live replies out of band (never blocks).
 	if s.eval != nil {
-		s.eval.JudgeInline(r.Context(), traceID)
+		s.eval.JudgeInline(ctx, traceID)
 	}
 
 	images := make([]string, 0, len(res.Images))
 	for _, img := range res.Images {
 		images = append(images, img.DataURL())
 	}
-	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images})
+	return images
 }
 
 // toStoreTools converts agent tool invocations to the store representation,

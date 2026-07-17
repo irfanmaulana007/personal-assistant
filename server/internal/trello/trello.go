@@ -83,6 +83,17 @@ func (c *Client) BoardCards(ctx context.Context, apiKey, token, boardID string) 
 	return cards, nil
 }
 
+// GetCard fetches a single card by id. Used to confirm a just-created card
+// actually persisted (read-after-write verification).
+func (c *Client) GetCard(ctx context.Context, apiKey, token, cardID string) (*Card, error) {
+	q := url.Values{"fields": {"name,desc,idList,shortUrl,labels"}}
+	var card Card
+	if err := c.get(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
+		return nil, err
+	}
+	return &card, nil
+}
+
 // CreateCard creates a card and returns it (with its id and short URL).
 func (c *Client) CreateCard(ctx context.Context, apiKey, token string, in CreateCardInput) (*Card, error) {
 	q := url.Values{

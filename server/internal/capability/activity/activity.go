@@ -60,9 +60,20 @@ func (h *Handler) logActivity(ctx context.Context, result *intent.ParseResult) (
 		}
 	}
 
-	a, err := h.store.CreateActivity(ctx, authctx.UserID(ctx), actType, description, occurredAt, "chat")
+	userID := authctx.UserID(ctx)
+	a, err := h.store.CreateActivity(ctx, userID, actType, description, occurredAt, "chat")
 	if err != nil {
 		return "", fmt.Errorf("create activity: %w", err)
+	}
+
+	// Read-after-write: confirm the activity actually persisted before telling the
+	// user it was logged, and build the confirmation from the re-read record.
+	a, err = h.store.GetActivity(ctx, userID, a.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify activity saved: %w", err)
+	}
+	if a == nil {
+		return "", fmt.Errorf("verify activity saved: activity not found after create")
 	}
 	return fmt.Sprintf("Logged: *%s* on %s.", a.Type, a.OccurredAt.In(h.timezone).Format("Mon, Jan 2")), nil
 }

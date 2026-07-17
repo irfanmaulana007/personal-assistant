@@ -14,10 +14,12 @@ export function ModelSettings() {
   const [modelInput, setModelInput] = useState<string | null>(null);
   const [baseURLInput, setBaseURLInput] = useState<string | null>(null);
   const [visionInput, setVisionInput] = useState<boolean | null>(null);
+  const [responseModeInput, setResponseModeInput] = useState<string | null>(null);
   const provider = providerInput ?? settings?.provider ?? 'deepseek';
   const model = modelInput ?? settings?.model ?? '';
   const baseURL = baseURLInput ?? settings?.base_url ?? '';
   const vision = visionInput ?? settings?.vision ?? false;
+  const responseMode = responseModeInput ?? settings?.response_mode ?? 'block';
   const providers = settings?.providers ?? [];
 
   const [saving, setSaving] = useState(false);
@@ -44,12 +46,14 @@ export function ModelSettings() {
       model: string;
       base_url: string;
       vision: boolean;
+      response_mode: string;
       api_key?: string;
     } = {
       provider,
       model: model.trim(),
       base_url: baseURL.trim(),
       vision,
+      response_mode: responseMode,
     };
     if (apiKey !== '') update.api_key = apiKey.trim();
     const ok = await save(update);
@@ -59,6 +63,7 @@ export function ModelSettings() {
       setModelInput(null);
       setBaseURLInput(null);
       setVisionInput(null);
+      setResponseModeInput(null);
       setSaved(true);
     }
     setSaving(false);
@@ -188,6 +193,24 @@ export function ModelSettings() {
               </span>
             </span>
           </label>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Response delivery
+          </label>
+          <select
+            value={responseMode}
+            onChange={(e) => setResponseModeInput(e.target.value)}
+            className={inputClass}
+          >
+            <option value="block">Block — send the full reply at once</option>
+            <option value="stream">Stream — reveal the reply token-by-token</option>
+          </select>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Streaming shows the answer as it's generated (feels faster); blocking waits for the
+            complete reply. Applies to every chat. Tool calls run before the reply either way.
+          </p>
         </div>
       </div>
 

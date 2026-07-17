@@ -114,9 +114,16 @@ func (h *Handler) set(ctx context.Context, result *intent.ParseResult) (string, 
 		Times:      []string{local.Format("15:04")},
 		Enabled:    true,
 	}
-	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), in)
+	userID := authctx.UserID(ctx)
+	reminder, err := h.store.CreateReminder(ctx, userID, in)
 	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
+	}
+
+	// Read-after-write: confirm the reminder actually persisted before telling
+	// the user it was set.
+	if reminder, err = h.verifyReminder(ctx, userID, reminder.ID); err != nil {
+		return "", err
 	}
 
 	return fmt.Sprintf("Reminder set (#%d): _%s_\nI'll remind you %s",
@@ -169,11 +176,32 @@ func (h *Handler) schedule(ctx context.Context, result *intent.ParseResult) (str
 		in.OnceDate = date
 	}
 
-	reminder, err := h.store.CreateReminder(ctx, authctx.UserID(ctx), in)
+	userID := authctx.UserID(ctx)
+	reminder, err := h.store.CreateReminder(ctx, userID, in)
 	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
 	}
+
+	// Read-after-write: confirm the reminder actually persisted before telling
+	// the user it was scheduled.
+	if reminder, err = h.verifyReminder(ctx, userID, reminder.ID); err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("Reminder scheduled (#%d): _%s_\n%s", reminder.ID, title, describeSchedule(*reminder, h.timezone)), nil
+}
+
+// verifyReminder re-reads a just-created reminder to confirm it persisted,
+// returning the stored record. It errors when the reminder cannot be read back,
+// so callers never claim success for a write that did not land.
+func (h *Handler) verifyReminder(ctx context.Context, userID, id int64) (*store.Reminder, error) {
+	got, err := h.store.GetReminder(ctx, userID, id)
+	if err != nil {
+		return nil, fmt.Errorf("verify reminder saved: %w", err)
+	}
+	if got == nil {
+		return nil, fmt.Errorf("verify reminder saved: reminder not found after create")
+	}
+	return got, nil
 }
 
 // defaultTime returns the user's configured default reminder time (HH:MM),

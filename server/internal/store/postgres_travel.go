@@ -42,6 +42,14 @@ func (s *PostgresStore) pgScanTrip(row pgx.Row) (*Trip, error) {
 	return &t, nil
 }
 
+// GetTrip returns one of the user's trips by id, or (nil, nil) when no row
+// matches. Used to confirm a just-created trip actually persisted.
+func (s *PostgresStore) GetTrip(ctx context.Context, userID, id int64) (*Trip, error) {
+	return s.pgScanTrip(s.pool.QueryRow(ctx,
+		`SELECT id, name, destination, budget, currency, active, started_at FROM trips
+		 WHERE user_id = $1 AND id = $2`, userID, id))
+}
+
 // ActiveTrip returns the user's current active trip, or nil if none.
 func (s *PostgresStore) ActiveTrip(ctx context.Context, userID int64) (*Trip, error) {
 	return s.pgScanTrip(s.pool.QueryRow(ctx,
@@ -70,6 +78,23 @@ func (s *PostgresStore) AddExpense(ctx context.Context, userID, tripID int64, am
 		return nil, fmt.Errorf("insert expense: %w", err)
 	}
 	return &TripExpense{ID: id, TripID: tripID, Amount: amount, Currency: currency, Category: category, Note: note, SpentAt: spentAt}, nil
+}
+
+// GetTripExpense returns one of the user's expenses by id, or (nil, nil) when
+// no row matches. Used to confirm a just-logged expense actually persisted.
+func (s *PostgresStore) GetTripExpense(ctx context.Context, userID, id int64) (*TripExpense, error) {
+	var e TripExpense
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, trip_id, amount, currency, category, note, spent_at FROM trip_expenses
+		 WHERE user_id = $1 AND id = $2`, userID, id,
+	).Scan(&e.ID, &e.TripID, &e.Amount, &e.Currency, &e.Category, &e.Note, &e.SpentAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get expense: %w", err)
+	}
+	return &e, nil
 }
 
 func (s *PostgresStore) ListTripExpenses(ctx context.Context, userID, tripID int64) ([]TripExpense, error) {
