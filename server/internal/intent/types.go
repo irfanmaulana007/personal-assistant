@@ -115,11 +115,12 @@ const (
 	ActionImageEdit     Action = "image_gen.edit"
 )
 
-// Trello actions (review the boards; file a task or a bug card)
+// Trello actions (review the boards; file a task or a bug card; capture a game idea)
 const (
 	ActionTrelloReview     Action = "trello.review"
 	ActionTrelloCreateTask Action = "trello.create_task"
 	ActionTrelloReportBug  Action = "trello.report_bug"
+	ActionTrelloGameIdea   Action = "trello.game_idea"
 )
 
 // Self-tuning actions (review low-quality runs and refine skill prompts)

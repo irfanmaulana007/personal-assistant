@@ -1,9 +1,11 @@
-// Package trello implements the two Trello skills: one that reviews every task
-// and bug across the user's project boards, and one that files a new card — a
-// task on the Task Management "Backlog" or a bug report on the Issue "Bug" list.
+// Package trello implements the Trello skills: one that reviews every task and
+// bug across the user's project boards, one that files a new card — a task on
+// the Task Management "Backlog" or a bug report on the Issue "Bug" list — and
+// one that captures an enriched game idea on the "Games" board's Ideas list.
 //
-// The workspace/board/list/label ids below are fixed to the user's "Personal
-// Assistant" Trello workspace. The handler only reads and writes; credentials
+// The workspace/board/list/label ids below are fixed to the user's Trello
+// workspaces ("Personal Assistant" for tasks/bugs, "Games" for game ideas). The
+// handler only reads and writes; credentials
 // (API key + token) are resolved per call from encrypted settings, and a missing
 // credential is reported back to the model as plain text so it can tell the user
 // to configure it on the Integrations page.
@@ -27,6 +29,10 @@ const (
 
 	boardIssue = "6a54edaae21957ab935c81f6"
 	listBug    = "6a54edaae21957ab935c820f"
+
+	// The "Games" workspace board and its Ideas list — where captured game
+	// ideas are filed.
+	listGameIdeas = "6a5a453925d775e49d6972d7"
 )
 
 // backlogLabels maps a task type to its Trello label id on the Task Management
@@ -74,6 +80,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return h.createTask(ctx, apiKey, token, result.Entities)
 	case intent.ActionTrelloReportBug:
 		return h.reportBug(ctx, apiKey, token, result.Entities)
+	case intent.ActionTrelloGameIdea:
+		return h.createGameIdea(ctx, apiKey, token, result.Entities)
 	default:
 		return "I understood a Trello request but not which action to take.", nil
 	}
@@ -221,6 +229,62 @@ func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[str
 		return fmt.Sprintf("I tried to file the bug card but couldn't verify it saved on Trello: %v", err), nil
 	}
 	return fmt.Sprintf("Filed bug %q on the Issue → Bug list.\n%s\nConfirm this to the user in their language.", title, card.ShortURL), nil
+}
+
+// createGameIdea files an enriched game-idea card on the "Games" board's Ideas
+// list, composing the concept, genre, core mechanics, references, and notes into
+// a single well-formed brief.
+func (h *Handler) createGameIdea(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+	title := strings.TrimSpace(e["title"])
+	if title == "" {
+		return "What's the game idea? I need a short title to add it to your Ideas list.", nil
+	}
+	concept := strings.TrimSpace(e["concept"])
+	genre := strings.TrimSpace(e["genre"])
+	mechanics := splitLines(e["core_mechanics"])
+	references := splitLines(e["references"])
+	notes := strings.TrimSpace(e["notes"])
+
+	var parts []string
+	if concept != "" {
+		parts = append(parts, concept)
+	}
+	if genre != "" {
+		parts = append(parts, "## Genre\n"+genre)
+	}
+	if len(mechanics) > 0 {
+		parts = append(parts, "## Core Mechanics\n"+bulletList(mechanics))
+	}
+	if len(references) > 0 {
+		parts = append(parts, "## References & Inspiration\n"+bulletList(references))
+	}
+	if notes != "" {
+		parts = append(parts, "## Notes\n"+notes)
+	}
+	body := strings.Join(parts, "\n\n")
+
+	card, err := h.client.CreateCard(ctx, apiKey, token, trello.CreateCardInput{ListID: listGameIdeas, Name: title, Desc: body})
+	if err != nil {
+		h.log.Warn("trello save game idea failed", "error", err)
+		return fmt.Sprintf("Couldn't save the game idea card: %v", err), nil
+	}
+
+	// Read-after-write: confirm the card actually exists on Trello before telling
+	// the user it was saved.
+	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+		h.log.Warn("trello verify game idea failed", "card", card.ID, "error", err)
+		return fmt.Sprintf("I tried to save the game idea but couldn't verify it saved on Trello: %v", err), nil
+	}
+	return fmt.Sprintf("Saved game idea %q to your Games board → Ideas list.\n%s\nConfirm this to the user in their language.", title, card.ShortURL), nil
+}
+
+// bulletList renders trimmed lines as a Markdown bullet list.
+func bulletList(items []string) string {
+	var b strings.Builder
+	for _, it := range items {
+		b.WriteString("- " + it + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // splitLines splits a newline-separated field into trimmed, non-empty lines,
