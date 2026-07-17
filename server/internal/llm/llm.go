@@ -4,6 +4,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -146,6 +148,16 @@ type chatRequest struct {
 	Messages   []Message `json:"messages"`
 	Tools      []Tool    `json:"tools,omitempty"`
 	ToolChoice string    `json:"tool_choice,omitempty"`
+	// Stream requests a token-by-token SSE response. When true, StreamOptions is
+	// set so the final chunk carries token usage.
+	Stream        bool           `json:"stream,omitempty"`
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+}
+
+// streamOptions asks the provider to include a usage block in the terminal SSE
+// chunk (supported by DeepSeek/OpenAI; ignored by providers that don't).
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type chatResponse struct {
@@ -158,6 +170,33 @@ type chatResponse struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
 	} `json:"error"`
+}
+
+// streamChunk is one SSE "data:" frame of a streaming chat completion. Content
+// and tool-call arguments arrive fragmented across many chunks and must be
+// accumulated; usage (when requested) appears only in the terminal chunk.
+type streamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content   string           `json:"content"`
+			ToolCalls []streamToolCall `json:"tool_calls"`
+		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+	Usage *Usage `json:"usage"`
+}
+
+// streamToolCall is a tool-call fragment within a streaming delta. Fragments
+// for the same call share an Index; Name/ID arrive in the first fragment and
+// Arguments accrue across subsequent ones.
+type streamToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 // CompletionResult is the parsed outcome of a chat completion request.
@@ -214,11 +253,10 @@ func isToolChoiceUnsupported(err error) bool {
 	return strings.Contains(msg, "tool_choice") || strings.Contains(msg, "tool choice")
 }
 
-func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, tools []Tool, toolChoice string) (*CompletionResult, error) {
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("no API key configured")
-	}
-
+// prepare resolves the effective base URL and assembles the request body,
+// applying the same model/tool_choice defaults used by both the blocking and
+// streaming paths.
+func (c *Client) prepare(cfg Config, messages []Message, tools []Tool, toolChoice string) (chatRequest, string) {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
@@ -242,6 +280,15 @@ func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, t
 	if len(tools) > 0 {
 		reqBody.ToolChoice = toolChoice
 	}
+	return reqBody, baseURL
+}
+
+func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, tools []Tool, toolChoice string) (*CompletionResult, error) {
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("no API key configured")
+	}
+
+	reqBody, baseURL := c.prepare(cfg, messages, tools, toolChoice)
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -283,4 +330,128 @@ func (c *Client) complete(ctx context.Context, cfg Config, messages []Message, t
 	}
 
 	return &CompletionResult{Message: parsed.Choices[0].Message, Usage: parsed.Usage, FinishReason: parsed.Choices[0].FinishReason}, nil
+}
+
+// CompleteStream behaves like Complete but consumes a streaming (SSE) response,
+// invoking onDelta with each text fragment as it arrives. It still returns the
+// fully-assembled assistant message (text + any tool calls) and token usage, so
+// callers get the same CompletionResult as the blocking path once the stream
+// finishes — the callback is purely for incremental UI. onDelta may be nil.
+//
+// Only text content is forwarded to onDelta; tool-call fragments are accumulated
+// silently and surfaced on the returned message. tool_choice is always "auto"
+// here (streaming is used for the model's own free-form turns, never a forced
+// save-intent tool call).
+func (c *Client) CompleteStream(ctx context.Context, cfg Config, messages []Message, tools []Tool, onDelta func(string)) (*CompletionResult, error) {
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("no API key configured")
+	}
+
+	choice := ""
+	if len(tools) > 0 {
+		choice = "auto"
+	}
+	reqBody, baseURL := c.prepare(cfg, messages, tools, choice)
+	reqBody.Stream = true
+	reqBody.StreamOptions = &streamOptions{IncludeUsage: true}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("call llm: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// A non-200 streaming request returns a normal JSON error body, not SSE.
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		var parsed chatResponse
+		if json.Unmarshal(body, &parsed) == nil && parsed.Error != nil {
+			return nil, fmt.Errorf("llm error (status %d): %s", resp.StatusCode, parsed.Error.Message)
+		}
+		return nil, fmt.Errorf("llm error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var content strings.Builder
+	var usage Usage
+	finishReason := ""
+	toolAcc := map[int]*ToolCall{}
+
+	scanner := bufio.NewScanner(resp.Body)
+	// Individual SSE frames can exceed bufio's default 64KB line cap (e.g. a large
+	// base64 tool argument), so grow the buffer.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var chunk streamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if chunk.Usage != nil {
+			usage = *chunk.Usage
+		}
+		for _, ch := range chunk.Choices {
+			if ch.Delta.Content != "" {
+				content.WriteString(ch.Delta.Content)
+				if onDelta != nil {
+					onDelta(ch.Delta.Content)
+				}
+			}
+			for _, tc := range ch.Delta.ToolCalls {
+				acc, ok := toolAcc[tc.Index]
+				if !ok {
+					acc = &ToolCall{Type: "function"}
+					toolAcc[tc.Index] = acc
+				}
+				if tc.ID != "" {
+					acc.ID = tc.ID
+				}
+				if tc.Type != "" {
+					acc.Type = tc.Type
+				}
+				if tc.Function.Name != "" {
+					acc.Function.Name = tc.Function.Name
+				}
+				acc.Function.Arguments += tc.Function.Arguments
+			}
+			if ch.FinishReason != "" {
+				finishReason = ch.FinishReason
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read stream: %w", err)
+	}
+
+	msg := Message{Role: "assistant", Content: content.String()}
+	if len(toolAcc) > 0 {
+		indices := make([]int, 0, len(toolAcc))
+		for idx := range toolAcc {
+			indices = append(indices, idx)
+		}
+		sort.Ints(indices)
+		for _, idx := range indices {
+			msg.ToolCalls = append(msg.ToolCalls, *toolAcc[idx])
+		}
+	}
+	return &CompletionResult{Message: msg, Usage: usage, FinishReason: finishReason}, nil
 }

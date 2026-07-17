@@ -19,6 +19,8 @@ type llmSettingsUpdate struct {
 	// Vision enables attaching inbound images to the chat request. Only turn on
 	// for a vision-capable model; text-only models reject image content.
 	Vision *bool `json:"vision"`
+	// ResponseMode is "stream" (token-by-token SSE) or "block" (single response).
+	ResponseMode *string `json:"response_mode"`
 }
 
 // handleSettings handles GET (masked view) and PUT (update) of LLM settings.
@@ -40,11 +42,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.settings.UpdateLLM(r.Context(), settings.LLMUpdate{
-			Provider: req.Provider,
-			APIKey:   req.APIKey,
-			Model:    req.Model,
-			BaseURL:  req.BaseURL,
-			Vision:   req.Vision,
+			Provider:     req.Provider,
+			APIKey:       req.APIKey,
+			Model:        req.Model,
+			BaseURL:      req.BaseURL,
+			Vision:       req.Vision,
+			ResponseMode: req.ResponseMode,
 		}); err != nil {
 			s.log.Error("failed to update settings", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})

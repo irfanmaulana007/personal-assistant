@@ -176,6 +176,29 @@ type Message struct {
 // to the model as an image_url block only when the configured model is
 // vision-capable (cfg.Vision) — text-only providers reject image content.
 func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, image string) (*Result, error) {
+	return a.run(ctx, userMessage, history, image, nil)
+}
+
+// RunStream is Run with incremental delivery: onDelta is invoked with each text
+// fragment of the assistant's free-form reply as the model produces it. It still
+// returns the same fully-assembled Result once the run completes, so callers do
+// all logging/tracing exactly as with Run — the callback is purely for a
+// token-by-token UI. Tool-calling turns produce no text and therefore no delta;
+// only the model's final (or budget-exhausted) answer streams.
+func (a *Agent) RunStream(ctx context.Context, userMessage string, history []Message, image string, onDelta func(string)) (*Result, error) {
+	return a.run(ctx, userMessage, history, image, onDelta)
+}
+
+// completeText runs one free-form (non-forced) completion, streaming it via
+// onDelta when set and otherwise blocking. Both return the same result shape.
+func (a *Agent) completeText(ctx context.Context, cfg llm.Config, messages []llm.Message, tools []llm.Tool, onDelta func(string)) (*llm.CompletionResult, error) {
+	if onDelta != nil {
+		return a.client.CompleteStream(ctx, cfg, messages, tools, onDelta)
+	}
+	return a.client.Complete(ctx, cfg, messages, tools)
+}
+
+func (a *Agent) run(ctx context.Context, userMessage string, history []Message, image string, onDelta func(string)) (*Result, error) {
 	cfg, err := a.settings.LLMConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve llm config: %w", err)
@@ -271,9 +294,11 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 		var res *llm.CompletionResult
 		var err error
 		if forceOnSaveIntent && len(used) == 0 {
+			// Forced save-intent turns must call a tool (no user-facing text), so
+			// they never stream.
 			res, err = a.client.CompleteRequiringTool(ctx, cfg, messages, tools)
 		} else {
-			res, err = a.client.Complete(ctx, cfg, messages, tools)
+			res, err = a.completeText(ctx, cfg, messages, tools, onDelta)
 		}
 		if err != nil {
 			return nil, err
@@ -321,7 +346,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string, history []Message, 
 
 	// Tool budget exhausted — force a final textual answer without tools.
 	start := time.Now()
-	res, err := a.client.Complete(ctx, cfg, messages, nil)
+	res, err := a.completeText(ctx, cfg, messages, nil, onDelta)
 	if err != nil {
 		return nil, err
 	}

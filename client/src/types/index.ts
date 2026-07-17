@@ -55,6 +55,7 @@ export interface LlmSettings {
   model: string;
   base_url: string;
   vision: boolean;
+  response_mode: string; // 'block' | 'stream'
   providers: LlmProvider[];
 }
 
@@ -64,6 +65,7 @@ export interface LlmSettingsUpdate {
   model?: string;
   base_url?: string;
   vision?: boolean;
+  response_mode?: string; // 'block' | 'stream'
 }
 
 export interface LlmTestResult {
