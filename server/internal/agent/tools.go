@@ -298,6 +298,15 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short summary of the defect, in English (e.g. 'Login button unresponsive on mobile Safari')."},"description":{"type":"string","description":"Context and, when known, the steps to reproduce, in English."},"actual_result":{"type":"string","description":"What currently happens — the wrong behaviour — in English."},"expected_result":{"type":"string","description":"What should happen instead, in English."}},"required":["title","actual_result","expected_result"]}`,
 		},
 	},
+	"game_idea": {
+		{
+			name:        "trello_save_game_idea",
+			description: "Save a video-game idea as a card on the user's Trello \"Games\" board (the Ideas list). Use this when the user shares a concept for a game they might build as a personal/side project — a mechanic, theme, pitch, or a vague one-liner. Do NOT use it for app work items (use trello_create_task / trello_report_bug) or personal life goals (use bucketlist_add). Enrich the idea from what the user said plus your own game-design knowledge, and ALWAYS write the card in English.",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloGameIdea,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short, catchy name for the game idea, in English (e.g. 'Time-rewind puzzle platformer')."},"concept":{"type":"string","description":"A 1-3 sentence pitch of the core idea and what makes it fun or unique, in English."},"genre":{"type":"string","description":"Genre and style, in English (e.g. 'Roguelike deck-builder', '2D metroidvania', 'Cozy farming sim')."},"core_mechanics":{"type":"string","description":"The main gameplay mechanics or core loop, in English — 2-6 items, ONE PER LINE (newline-separated). Do not number them."},"references":{"type":"string","description":"Reference games or inspirations that capture the vibe or mechanics, in English — 2-5 items, ONE PER LINE. Name the game and add a short note or URL where helpful. Fill this in from your own knowledge even if the user named none."},"notes":{"type":"string","description":"Optional extra context in English: target platform, art style, scope, monetization, or open questions."}},"required":["title","concept"]}`,
+		},
+	},
 	"self_tuning": {
 		{
 			name:        "review_skill_performance",
