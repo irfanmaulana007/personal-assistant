@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *PostgresStore) CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error) {
@@ -19,6 +22,23 @@ func (s *PostgresStore) CreateMemory(ctx context.Context, userID int64, content,
 		return nil, fmt.Errorf("create memory: %w", err)
 	}
 	return &Memory{ID: id, Content: content, Kind: kind, CreatedAt: now}, nil
+}
+
+// GetMemory returns one of the user's memories by id, or (nil, nil) when no
+// row matches. Used to confirm a just-written memory actually persisted.
+func (s *PostgresStore) GetMemory(ctx context.Context, userID, id int64) (*Memory, error) {
+	var m Memory
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, content, kind, created_at FROM memories WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&m.ID, &m.Content, &m.Kind, &m.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get memory: %w", err)
+	}
+	return &m, nil
 }
 
 // SearchMemories returns the user's memories matching arbitrary query text,

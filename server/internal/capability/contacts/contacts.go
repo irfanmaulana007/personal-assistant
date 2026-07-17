@@ -50,9 +50,20 @@ func (h *Handler) add(ctx context.Context, result *intent.ParseResult) (string, 
 	email := strings.TrimSpace(result.Entities["email"])
 	note := strings.TrimSpace(result.Entities["note"])
 
-	c, err := h.store.CreateContact(ctx, authctx.UserID(ctx), name, phone, email, note)
+	userID := authctx.UserID(ctx)
+	c, err := h.store.CreateContact(ctx, userID, name, phone, email, note)
 	if err != nil {
 		return "", fmt.Errorf("create contact: %w", err)
+	}
+
+	// Read-after-write: confirm the contact actually persisted before telling the
+	// user it was saved, and build the confirmation from the re-read record.
+	c, err = h.store.GetContact(ctx, userID, c.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify contact saved: %w", err)
+	}
+	if c == nil {
+		return "", fmt.Errorf("verify contact saved: contact not found after create")
 	}
 
 	var sb strings.Builder

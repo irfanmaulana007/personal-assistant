@@ -24,6 +24,12 @@ func (s *Service) Save(ctx context.Context, userID int64, content string) (*stor
 	return s.store.CreateMemory(ctx, userID, strings.TrimSpace(content), "")
 }
 
+// Get returns one of the user's memories by id, or (nil, nil) when none matches.
+// Used to confirm a just-saved memory actually persisted (read-after-write).
+func (s *Service) Get(ctx context.Context, userID, id int64) (*store.Memory, error) {
+	return s.store.GetMemory(ctx, userID, id)
+}
+
 // Relevant returns memories relevant to arbitrary text (e.g. the user's message),
 // for prompt injection. Never errors — returns nil on any problem. Query
 // sanitization is the store backend's responsibility, so raw text is passed
