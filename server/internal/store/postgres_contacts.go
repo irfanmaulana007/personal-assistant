@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,23 @@ func (s *PostgresStore) CreateContact(ctx context.Context, userID int64, name, p
 		return nil, fmt.Errorf("insert contact: %w", err)
 	}
 	return &Contact{ID: id, Name: name, Phone: phone, Email: email, Note: note, CreatedAt: now}, nil
+}
+
+// GetContact returns one of the user's contacts by id, or (nil, nil) when no
+// row matches. Used to confirm a just-written contact actually persisted.
+func (s *PostgresStore) GetContact(ctx context.Context, userID, id int64) (*Contact, error) {
+	var c Contact
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, phone, email, note, created_at FROM contacts WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Note, &c.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get contact: %w", err)
+	}
+	return &c, nil
 }
 
 // SearchContacts returns the user's contacts matching query across name, phone,

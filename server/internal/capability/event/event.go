@@ -121,8 +121,19 @@ func (h *Handler) create(ctx context.Context, result *intent.ParseResult) (strin
 		Times:      []string{local.Format("15:04")},
 		Enabled:    true,
 	}
-	if _, err := h.store.CreateReminder(ctx, userID, in); err != nil {
+	reminder, err := h.store.CreateReminder(ctx, userID, in)
+	if err != nil {
 		return "", fmt.Errorf("create reminder: %w", err)
+	}
+
+	// Read-after-write: confirm the reminder actually persisted before telling
+	// the user the event was saved.
+	got, err := h.store.GetReminder(ctx, userID, reminder.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify reminder saved: %w", err)
+	}
+	if got == nil {
+		return "", fmt.Errorf("verify reminder saved: reminder not found after create")
 	}
 	return fmt.Sprintf("Reminder set: *%s* — %s", title, local.Format("Mon, Jan 2 at 3:04 PM")), nil
 }

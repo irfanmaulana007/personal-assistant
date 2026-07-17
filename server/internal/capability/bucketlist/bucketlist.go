@@ -55,9 +55,20 @@ func (h *Handler) add(ctx context.Context, result *intent.ParseResult) (string, 
 	description := strings.TrimSpace(result.Entities["description"])
 	note := strings.TrimSpace(result.Entities["note"])
 	category := store.NormalizeCategory(result.Entities["category"])
-	g, err := h.store.CreateBucketItem(ctx, authctx.UserID(ctx), title, description, note, category, nil)
+	userID := authctx.UserID(ctx)
+	g, err := h.store.CreateBucketItem(ctx, userID, title, description, note, category, nil)
 	if err != nil {
 		return "", fmt.Errorf("create bucket item: %w", err)
+	}
+
+	// Read-after-write: confirm the item actually persisted before telling the
+	// user it was added, and build the confirmation from the re-read record.
+	g, err = h.store.GetBucketItem(ctx, userID, g.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify bucket item saved: %w", err)
+	}
+	if g == nil {
+		return "", fmt.Errorf("verify bucket item saved: item not found after create")
 	}
 	msg := fmt.Sprintf("Added to your bucket list: *%s* ☐", g.Title)
 	if g.Description != "" {

@@ -56,9 +56,20 @@ func (h *Handler) createTrip(ctx context.Context, result *intent.ParseResult) (s
 	currency := strings.TrimSpace(result.Entities["currency"])
 	budget, _ := strconv.ParseFloat(strings.TrimSpace(result.Entities["budget"]), 64)
 
-	t, err := h.store.CreateTrip(ctx, authctx.UserID(ctx), name, destination, currency, budget)
+	userID := authctx.UserID(ctx)
+	t, err := h.store.CreateTrip(ctx, userID, name, destination, currency, budget)
 	if err != nil {
 		return "", fmt.Errorf("create trip: %w", err)
+	}
+
+	// Read-after-write: confirm the trip actually persisted before telling the
+	// user it was started, and build the confirmation from the re-read record.
+	t, err = h.store.GetTrip(ctx, userID, t.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify trip saved: %w", err)
+	}
+	if t == nil {
+		return "", fmt.Errorf("verify trip saved: trip not found after create")
 	}
 
 	msg := fmt.Sprintf("Started trip *%s*", t.Name)
@@ -105,6 +116,16 @@ func (h *Handler) addExpense(ctx context.Context, result *intent.ParseResult) (s
 	e, err := h.store.AddExpense(ctx, userID, trip.ID, amount, currency, category, note, time.Now())
 	if err != nil {
 		return "", fmt.Errorf("add expense: %w", err)
+	}
+
+	// Read-after-write: confirm the expense actually persisted before telling the
+	// user it was logged, and build the confirmation from the re-read record.
+	e, err = h.store.GetTripExpense(ctx, userID, e.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify expense saved: %w", err)
+	}
+	if e == nil {
+		return "", fmt.Errorf("verify expense saved: expense not found after create")
 	}
 
 	// Running total.

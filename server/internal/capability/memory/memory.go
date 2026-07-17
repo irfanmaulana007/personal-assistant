@@ -46,10 +46,22 @@ func (h *Handler) remember(ctx context.Context, result *intent.ParseResult) (str
 	if content == "" {
 		return "What should I remember?", nil
 	}
-	if _, err := h.mem.Save(ctx, authctx.UserID(ctx), content); err != nil {
+	userID := authctx.UserID(ctx)
+	saved, err := h.mem.Save(ctx, userID, content)
+	if err != nil {
 		return "", fmt.Errorf("save memory: %w", err)
 	}
-	return fmt.Sprintf("Got it — I'll remember that: %s", content), nil
+
+	// Read-after-write: confirm the memory actually persisted before telling the
+	// user it was remembered.
+	got, err := h.mem.Get(ctx, userID, saved.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify memory saved: %w", err)
+	}
+	if got == nil {
+		return "", fmt.Errorf("verify memory saved: memory not found after create")
+	}
+	return fmt.Sprintf("Got it — I'll remember that: %s", got.Content), nil
 }
 
 func (h *Handler) recall(ctx context.Context, result *intent.ParseResult) (string, error) {

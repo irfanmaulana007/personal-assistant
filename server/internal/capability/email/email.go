@@ -163,5 +163,11 @@ func (h *Handler) draft(ctx context.Context, result *intent.ParseResult) (string
 		return "", fmt.Errorf("create draft: %w", err)
 	}
 
+	// Read-after-write: confirm the draft actually exists in the mailbox before
+	// telling the user it was created.
+	if _, err := h.client.DraftExists(ctx, draftID); err != nil {
+		return "", fmt.Errorf("verify draft saved: %w", err)
+	}
+
 	return fmt.Sprintf("Draft created (ID: %s).\nTo: %s\n\n_%s_\n\nNote: This is saved as a *draft* — it has NOT been sent.", draftID, to, body), nil
 }

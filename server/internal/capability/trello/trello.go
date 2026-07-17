@@ -159,6 +159,13 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 		return fmt.Sprintf("Couldn't create the task card: %v", err), nil
 	}
 
+	// Read-after-write: confirm the card actually exists on Trello before telling
+	// the user it was filed.
+	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+		h.log.Warn("trello verify task failed", "card", card.ID, "error", err)
+		return fmt.Sprintf("I tried to create the task card but couldn't verify it saved on Trello: %v", err), nil
+	}
+
 	// Add the acceptance criteria as a real, trackable checklist too.
 	if len(criteria) > 0 {
 		if clID, err := h.client.AddChecklist(ctx, apiKey, token, card.ID, "Acceptance Criteria"); err != nil {
@@ -205,6 +212,13 @@ func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[str
 	if err != nil {
 		h.log.Warn("trello report bug failed", "error", err)
 		return fmt.Sprintf("Couldn't file the bug card: %v", err), nil
+	}
+
+	// Read-after-write: confirm the card actually exists on Trello before telling
+	// the user it was filed.
+	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+		h.log.Warn("trello verify bug failed", "card", card.ID, "error", err)
+		return fmt.Sprintf("I tried to file the bug card but couldn't verify it saved on Trello: %v", err), nil
 	}
 	return fmt.Sprintf("Filed bug %q on the Issue → Bug list.\n%s\nConfirm this to the user in their language.", title, card.ShortURL), nil
 }

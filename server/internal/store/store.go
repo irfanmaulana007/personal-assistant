@@ -570,12 +570,14 @@ type DataStore interface {
 	// SearchMemories takes raw query text; the backend sanitizes it for its
 	// PostgreSQL tsquery search.
 	CreateMemory(ctx context.Context, userID int64, content, kind string) (*Memory, error)
+	GetMemory(ctx context.Context, userID, id int64) (*Memory, error)
 	SearchMemories(ctx context.Context, userID int64, query string, limit int) ([]Memory, error)
 	ListMemories(ctx context.Context, userID int64, limit int) ([]Memory, error)
 	DeleteMemory(ctx context.Context, userID, id int64) error
 
 	// Contacts (scoped to a user)
 	CreateContact(ctx context.Context, userID int64, name, phone, email, note string) (*Contact, error)
+	GetContact(ctx context.Context, userID, id int64) (*Contact, error)
 	SearchContacts(ctx context.Context, userID int64, query string) ([]Contact, error)
 
 	// Bucket list (a categorized life checklist, scoped to a user)
@@ -595,14 +597,17 @@ type DataStore interface {
 	ListHikers(ctx context.Context, userID int64) ([]Hiker, error)
 	CreateHiker(ctx context.Context, userID int64, name string) (*Hiker, error)
 	CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error)
+	GetHike(ctx context.Context, userID, id int64) (*HikeDetail, error)
 	AddHikeParticipant(ctx context.Context, hikeID, hikerID int64) error
 	ListHikes(ctx context.Context, userID int64, limit int) ([]HikeDetail, error)
 
 	// Travel (scoped to a user)
 	CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error)
+	GetTrip(ctx context.Context, userID, id int64) (*Trip, error)
 	ActiveTrip(ctx context.Context, userID int64) (*Trip, error)
 	FindTrip(ctx context.Context, userID int64, name string) (*Trip, error)
 	AddExpense(ctx context.Context, userID, tripID int64, amount float64, currency, category, note string, spentAt time.Time) (*TripExpense, error)
+	GetTripExpense(ctx context.Context, userID, id int64) (*TripExpense, error)
 	ListTripExpenses(ctx context.Context, userID, tripID int64) ([]TripExpense, error)
 
 	// Notes (scoped to a user)
@@ -641,6 +646,7 @@ type DataStore interface {
 type LogStore interface {
 	// Activities (scoped to a user)
 	CreateActivity(ctx context.Context, userID int64, actType, description string, occurredAt time.Time, source string) (*Activity, error)
+	GetActivity(ctx context.Context, userID, id int64) (*Activity, error)
 	ListActivitiesSince(ctx context.Context, userID int64, since time.Time) ([]Activity, error)
 
 	// Message log (scoped to a user)

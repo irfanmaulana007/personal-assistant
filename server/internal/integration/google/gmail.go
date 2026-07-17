@@ -237,6 +237,21 @@ func (g *GmailClient) CreateDraft(ctx context.Context, to, subject, body, thread
 	return created.Id, nil
 }
 
+// DraftExists reports whether a draft with the given id is present in the user's
+// mailbox. Used to confirm a just-created draft actually persisted
+// (read-after-write verification).
+func (g *GmailClient) DraftExists(ctx context.Context, draftID string) (bool, error) {
+	srv, err := g.service(ctx)
+	if err != nil {
+		return false, fmt.Errorf("create gmail service: %w", err)
+	}
+	// "minimal" keeps the round-trip cheap: we only need to know it exists.
+	if _, err := srv.Users.Drafts.Get("me", draftID).Format("minimal").Context(ctx).Do(); err != nil {
+		return false, fmt.Errorf("get draft: %w", err)
+	}
+	return true, nil
+}
+
 // extractBody extracts plain text from a MIME message payload.
 func extractBody(payload *gmail.MessagePart) string {
 	if payload.MimeType == "text/plain" && payload.Body.Data != "" {

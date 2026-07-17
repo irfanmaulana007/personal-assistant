@@ -188,6 +188,16 @@ func (h *Handler) apply(ctx context.Context, result *intent.ParseResult) (string
 	if err := h.store.UpdateSkillTunedPrompt(ctx, key, prompt); err != nil {
 		return "", fmt.Errorf("update skill prompt: %w", err)
 	}
+
+	// Read-after-write: re-read the skill and confirm the new tuned prompt
+	// actually persisted before telling the user it was updated.
+	saved, err := h.store.GetSkill(ctx, found.ID)
+	if err != nil {
+		return "", fmt.Errorf("verify skill prompt saved: %w", err)
+	}
+	if saved == nil || saved.TunedPrompt != prompt {
+		return "", fmt.Errorf("verify skill prompt saved: stored prompt does not match after update")
+	}
 	h.log.Info("skill prompt auto-tuned", "skill", key, "reason", reason, "chars", len(prompt))
 	msg := fmt.Sprintf("Updated the %q (%s) skill prompt.", found.Name, key)
 	if reason != "" {

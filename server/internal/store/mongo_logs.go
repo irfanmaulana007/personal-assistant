@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -135,6 +137,27 @@ func (m *MongoStore) CreateActivity(ctx context.Context, userID int64, actType, 
 		return nil, fmt.Errorf("insert activity: %w", err)
 	}
 	return &Activity{ID: id, Type: actType, Description: description, OccurredAt: occurredAt, Source: source, CreatedAt: now}, nil
+}
+
+// GetActivity returns one of the user's activities by id, or (nil, nil) when no
+// document matches. Used to confirm a just-logged activity actually persisted.
+func (m *MongoStore) GetActivity(ctx context.Context, userID, id int64) (*Activity, error) {
+	var d mongoActivity
+	err := m.col(colActivities).FindOne(ctx, bson.M{"id": id, "user_id": userID}).Decode(&d)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get activity: %w", err)
+	}
+	return &Activity{
+		ID:          d.ID,
+		Type:        d.Type,
+		Description: d.Description,
+		OccurredAt:  d.OccurredAt,
+		Source:      d.Source,
+		CreatedAt:   d.CreatedAt,
+	}, nil
 }
 
 // ListActivitiesSince returns the user's activities on or after since, newest first.
