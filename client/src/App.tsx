@@ -29,7 +29,12 @@ import { IntegrationsWhatsApp } from './components/IntegrationsWhatsApp';
 import { IntegrationsTrello } from './components/IntegrationsTrello';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
-import { ProjectsOverview } from './components/dashboard/ProjectsOverview';
+import { GlobalDashboard } from './components/GlobalDashboard';
+import { GlobalOverview } from './components/dashboard/global/GlobalOverview';
+import { GlobalUsage } from './components/dashboard/global/GlobalUsage';
+import { GlobalActivity } from './components/dashboard/global/GlobalActivity';
+import { GlobalPerformance } from './components/dashboard/global/GlobalPerformance';
+import { GlobalUsers } from './components/dashboard/global/GlobalUsers';
 import {
   ProjectOverviewSettings,
   ProjectMembersSettings,
@@ -56,7 +61,7 @@ function SuperadminRoute({ isAdmin, children }: { isAdmin: boolean; children: Re
 // RootRedirect decides the landing page: superadmins get the global overview,
 // members get the Projects picker (their only top-level surface).
 function RootRedirect({ isAdmin }: { isAdmin: boolean }) {
-  return isAdmin ? <Navigate to="/overview" replace /> : <Navigate to="/projects" replace />;
+  return isAdmin ? <Navigate to="/dashboard" replace /> : <Navigate to="/projects" replace />;
 }
 
 // Old flat project paths that predate the /:slug prefix. A bookmark to one of
@@ -130,13 +135,19 @@ function App() {
               only, except Projects which every member reaches as their picker. */}
           <Route element={<Layout mode="global" onLogout={logout} isAdmin={isAdmin} user={user} />}>
             <Route
-              path="overview"
+              path="dashboard"
               element={
                 <SuperadminRoute isAdmin={isAdmin}>
-                  <ProjectsOverview />
+                  <GlobalDashboard />
                 </SuperadminRoute>
               }
-            />
+            >
+              <Route index element={<GlobalOverview />} />
+              <Route path="usage" element={<GlobalUsage />} />
+              <Route path="activity" element={<GlobalActivity />} />
+              <Route path="performance" element={<GlobalPerformance />} />
+              <Route path="users" element={<GlobalUsers />} />
+            </Route>
             <Route
               path="account"
               element={

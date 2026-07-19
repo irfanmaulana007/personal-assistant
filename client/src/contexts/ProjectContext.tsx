@@ -24,7 +24,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   // First path segment, e.g. "acme" from /acme/chat. When it matches a project's
   // slug we're inside that project's shell; otherwise (or on a global page like
-  // /overview) it's empty for our purposes.
+  // /dashboard) it's empty for our purposes.
   const urlSlug = location.pathname.split('/')[1] ?? '';
 
   useEffect(() => {

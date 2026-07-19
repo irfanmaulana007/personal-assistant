@@ -92,29 +92,6 @@ export interface WhatsAppMapping {
   created_at: string;
 }
 
-export interface ProjectOverviewRow {
-  project_id: number;
-  name: string;
-  member_count: number;
-  enabled_skills: number;
-  requests: number;
-  total_tokens: number;
-  estimated_cost_usd: number;
-}
-
-export interface AdminOverview {
-  from: string;
-  to: string;
-  projects: ProjectOverviewRow[];
-  summary: {
-    requests: number;
-    total_tokens: number;
-    estimated_cost_usd: number;
-    errors: number;
-    active_users: number;
-  };
-}
-
 export interface AuthResponse {
   token: string;
   expires_at: number;
