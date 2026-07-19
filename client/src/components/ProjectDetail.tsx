@@ -6,6 +6,7 @@ import {
   deleteProject,
   listProjectMembers,
   addProjectMember,
+  createProjectMember,
   updateProjectMember,
   removeProjectMember,
   listProjectAudit,
@@ -509,6 +510,7 @@ function MembersCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const adminCount = useMemo(() => members.filter((m) => m.role === 'admin').length, [members]);
 
@@ -528,7 +530,17 @@ function MembersCard({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-      <h2 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">Members</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">Members</h2>
+        {canManage && (
+          <button
+            onClick={() => setCreating(true)}
+            className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
+          >
+            Create user
+          </button>
+        )}
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -630,7 +642,137 @@ function MembersCard({
           onAdd={(email, role) => run(() => addProjectMember(projectId, email, role))}
         />
       )}
+
+      <CreateUserModal
+        projectId={projectId}
+        isSuperadmin={isSuperadmin}
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={onChanged}
+      />
     </div>
+  );
+}
+
+// CreateUserModal creates a brand-new account and adds them to the project in
+// one step, for onboarding someone who has no account yet. This complements
+// AddMemberForm, which only attaches an existing user by email.
+function CreateUserModal({
+  projectId,
+  isSuperadmin,
+  open,
+  onClose,
+  onCreated,
+}: {
+  projectId: number;
+  isSuperadmin: boolean;
+  open: boolean;
+  onClose: () => void;
+  onCreated: (m: ProjectMember[]) => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<ProjectRole>('member');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const reset = () => {
+    setEmail('');
+    setPassword('');
+    setRole('member');
+    setErr('');
+  };
+
+  const close = () => {
+    if (busy) return;
+    reset();
+    onClose();
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const next = await createProjectMember(projectId, email.trim(), password, role);
+      onCreated(next);
+      reset();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed to create user');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Create user"
+      description="Create a new account and add them to this project."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Email
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="member@email.com"
+            autoFocus
+            className={`${inputClass} w-full`}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Password
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            className={`${inputClass} w-full`}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Project role
+          </label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as ProjectRole)}
+            className={`${inputClass} w-full`}
+          >
+            <option value="member">member</option>
+            {/* Appointing a project admin is a superadmin-only action. */}
+            {isSuperadmin && <option value="admin">admin</option>}
+          </select>
+        </div>
+        {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={close}
+            disabled={busy}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !email.trim() || !password}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+          >
+            {busy ? 'Creating…' : 'Create user'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
