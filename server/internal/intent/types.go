@@ -19,6 +19,7 @@ const (
 	CapabilityImageGen   Capability = "image_gen"
 	CapabilityTrello     Capability = "trello"
 	CapabilitySelfTune   Capability = "self_tune"
+	CapabilityAutoTriage Capability = "auto_triage"
 	CapabilityHelp       Capability = "help"
 	CapabilityUnknown    Capability = "unknown"
 )
@@ -115,11 +116,13 @@ const (
 	ActionImageEdit     Action = "image_gen.edit"
 )
 
-// Trello actions (review the boards; file a task or a bug card; capture a game idea)
+// Trello actions (review the boards; file a task or a bug card; update an
+// existing card; capture a game idea)
 const (
 	ActionTrelloReview     Action = "trello.review"
 	ActionTrelloCreateTask Action = "trello.create_task"
 	ActionTrelloReportBug  Action = "trello.report_bug"
+	ActionTrelloUpdateCard Action = "trello.update_card"
 	ActionTrelloGameIdea   Action = "trello.game_idea"
 )
 
@@ -127,6 +130,14 @@ const (
 const (
 	ActionSelfTuneReview Action = "self_tune.review"
 	ActionSelfTuneApply  Action = "self_tune.apply"
+)
+
+// Auto-triage actions (scan recent failures for recurring patterns, file bug
+// cards on the Issue board with duplicate detection, and refine skill prompts)
+const (
+	ActionAutoTriageScan          Action = "auto_triage.scan"
+	ActionAutoTriageFileBug       Action = "auto_triage.file_bug"
+	ActionAutoTriageImprovePrompt Action = "auto_triage.improve_prompt"
 )
 
 const (

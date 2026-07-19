@@ -1,6 +1,102 @@
 package translate
 
-import "testing"
+import (
+	"context"
+	"io"
+	"log/slog"
+	"testing"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+)
+
+// fakeTraceRecorder captures the trace a translation logs.
+type fakeTraceRecorder struct {
+	trace *store.Trace
+	id    int64
+	err   error
+	calls int
+}
+
+func (f *fakeTraceRecorder) CreateTrace(_ context.Context, t *store.Trace) (int64, error) {
+	f.calls++
+	f.trace = t
+	return f.id, f.err
+}
+
+// fakeJudge records the trace ids handed to it for scoring.
+type fakeJudge struct{ judged []int64 }
+
+func (f *fakeJudge) JudgeInline(_ context.Context, traceID int64) {
+	f.judged = append(f.judged, traceID)
+}
+
+func quietGroup(rec traceRecorder, judge traceJudge) *GroupService {
+	return &GroupService{traces: rec, judge: judge, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+}
+
+func TestRecordTranslationLogsAndJudges(t *testing.T) {
+	rec := &fakeTraceRecorder{id: 42}
+	judge := &fakeJudge{}
+	g := quietGroup(rec, judge)
+
+	res := BetweenResult{
+		Source: "Indonesian", Translated: "お元気ですか？", Model: "deepseek-v4-flash",
+		PromptTokens: 12, CompletionTokens: 5, TotalTokens: 17,
+	}
+	g.recordTranslation(context.Background(), 7, "123@g.us", "Apa kabar?", res, nil, 123)
+
+	if rec.calls != 1 {
+		t.Fatalf("CreateTrace calls = %d, want 1", rec.calls)
+	}
+	tr := rec.trace
+	if tr.UserID != 7 || tr.Platform != "whatsapp" || tr.Source != "chat" {
+		t.Errorf("identity = (user %d, platform %q, source %q), want (7, whatsapp, chat)", tr.UserID, tr.Platform, tr.Source)
+	}
+	if tr.Input != "Apa kabar?" || tr.Output != "お元気ですか？" {
+		t.Errorf("io = (%q -> %q), want (Apa kabar? -> お元気ですか？)", tr.Input, tr.Output)
+	}
+	if tr.Model != "deepseek-v4-flash" || tr.PromptTokens != 12 || tr.CompletionTokens != 5 || tr.TotalTokens != 17 {
+		t.Errorf("usage = (%q, %d/%d/%d), want (deepseek-v4-flash, 12/5/17)", tr.Model, tr.PromptTokens, tr.CompletionTokens, tr.TotalTokens)
+	}
+	if tr.LatencyMs != 123 || tr.Status != "ok" || tr.Error != "" {
+		t.Errorf("meta = (latency %d, status %q, err %q), want (123, ok, )", tr.LatencyMs, tr.Status, tr.Error)
+	}
+	if len(tr.Skills) != 1 || tr.Skills[0] != SkillKey {
+		t.Errorf("skills = %v, want [%q]", tr.Skills, SkillKey)
+	}
+	if len(judge.judged) != 1 || judge.judged[0] != 42 {
+		t.Errorf("judged = %v, want [42]", judge.judged)
+	}
+}
+
+func TestRecordTranslationErrorIsLoggedButNotJudged(t *testing.T) {
+	rec := &fakeTraceRecorder{id: 9}
+	judge := &fakeJudge{}
+	g := quietGroup(rec, judge)
+
+	res := BetweenResult{Model: "deepseek-v4-flash", PromptTokens: 3}
+	g.recordTranslation(context.Background(), 1, "123@g.us", "halo", res, io.ErrUnexpectedEOF, 50)
+
+	if rec.calls != 1 {
+		t.Fatalf("CreateTrace calls = %d, want 1", rec.calls)
+	}
+	if rec.trace.Status != "error" || rec.trace.Error != io.ErrUnexpectedEOF.Error() {
+		t.Errorf("failed trace = (status %q, err %q), want (error, %q)", rec.trace.Status, rec.trace.Error, io.ErrUnexpectedEOF)
+	}
+	if len(judge.judged) != 0 {
+		t.Errorf("judged = %v, want none for a failed translation", judge.judged)
+	}
+}
+
+func TestRecordTranslationNoRecorderIsNoop(t *testing.T) {
+	// With no trace recorder wired, recording must not panic and must not judge.
+	judge := &fakeJudge{}
+	g := quietGroup(nil, judge)
+	g.recordTranslation(context.Background(), 1, "123@g.us", "halo", BetweenResult{Translated: "hello"}, nil, 1)
+	if len(judge.judged) != 0 {
+		t.Errorf("judged = %v, want none without a recorder", judge.judged)
+	}
+}
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {

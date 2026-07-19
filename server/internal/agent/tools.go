@@ -297,6 +297,13 @@ var skillTools = map[string][]toolSpec{
 			action:      intent.ActionTrelloReportBug,
 			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short summary of the defect, in English (e.g. 'Login button unresponsive on mobile Safari')."},"description":{"type":"string","description":"Context and, when known, the steps to reproduce, in English."},"actual_result":{"type":"string","description":"What currently happens — the wrong behaviour — in English."},"expected_result":{"type":"string","description":"What should happen instead, in English."}},"required":["title","actual_result","expected_result"]}`,
 		},
+		{
+			name:        "trello_update_card",
+			description: "Edit an EXISTING task card on the Trello Task Management board — retitle it, rewrite its description, replace its acceptance criteria, change or remove its type label, and/or move it to another list (Backlog / Todo / In Progress / Done, e.g. mark a task in progress or done). Identify the card by its current title (or a distinctive part of it, as shown by trello_review). Only pass the fields you want to change; omitted fields are left untouched. Use this when the user wants to change, edit, rename, re-scope, relabel, or move a task that already exists — NOT to create a new one (use trello_create_task) and NOT for bugs on the Issue board. Write any text in English.",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloUpdateCard,
+			parameters:  `{"type":"object","properties":{"card":{"type":"string","description":"Which task to update: its current title, or a distinctive part of it, exactly as it appears on the board (from trello_review). Matched on the Task Management board."},"title":{"type":"string","description":"New title for the card. Omit to keep the current title."},"description":{"type":"string","description":"New description/context for the card, in English. Replaces the current description. Do NOT put acceptance criteria here — use acceptance_criteria. Omit to keep the current description."},"acceptance_criteria":{"type":"string","description":"Replacement acceptance criteria — 2-5 testable items, ONE PER LINE (newline-separated), no numbering. Replaces both the Acceptance Criteria section and the trackable checklist. Omit to leave them unchanged."},"label":{"type":"string","enum":["feature","improvement","chore","refactor","none"],"description":"Change the task type label; use 'none' to remove all labels. Omit to leave the label unchanged."},"list":{"type":"string","enum":["Backlog","Todo","In Progress","Done"],"description":"Move the card to this list on the Task Management board. Omit to leave it where it is."}},"required":["card"]}`,
+		},
 	},
 	"game_idea": {
 		{
@@ -321,6 +328,29 @@ var skillTools = map[string][]toolSpec{
 			capability:  intent.CapabilitySelfTune,
 			action:      intent.ActionSelfTuneApply,
 			parameters:  `{"type":"object","properties":{"skill":{"type":"string","description":"The stable key of the skill to update (e.g. 'web_search', 'bucket_list'), exactly as shown by review_skill_performance."},"prompt":{"type":"string","description":"The complete new instruction prompt for the skill. This replaces the whole prompt — do not send only a diff. Preserve tool names and any required output markers exactly."},"reason":{"type":"string","description":"A one-line note on what you changed and why (for the audit log)."}},"required":["skill","prompt"]}`,
+		},
+	},
+	"auto_triage": {
+		{
+			name:        "triage_scan_failures",
+			description: "Scan the assistant's own recent runs for things it couldn't handle automatically — agent errors and low-quality (poorly judged) replies — and return them grouped into recurring failure patterns. Each group has a stable 'signature', how many times it occurred, the skills involved, a sample input and error, and first/last-seen timestamps; the report also includes the current prompt of every skill that appears. Call this first, with no arguments, to get everything you need to file bugs and improve prompts.",
+			capability:  intent.CapabilityAutoTriage,
+			action:      intent.ActionAutoTriageScan,
+			parameters:  `{"type":"object","properties":{"hours":{"type":"integer","description":"How many hours back to look. Default 24."}}}`,
+		},
+		{
+			name:        "triage_file_bug",
+			description: "File a bug card on the Trello Issue board's Bug list for a recurring failure pattern found by triage_scan_failures, with built-in duplicate detection: if an open card already carries the same signature (or the same title), it adds a recurrence note to that card instead of creating a duplicate. Pass the group's 'signature' verbatim so future runs can recognise it. Enrich the description with the failure context (sample input, error, occurrence count, timestamps) and write it in English.",
+			capability:  intent.CapabilityAutoTriage,
+			action:      intent.ActionAutoTriageFileBug,
+			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short summary of the failure, in English (e.g. 'Web search returns nothing for sports scores')."},"signature":{"type":"string","description":"The failure pattern's stable signature, copied verbatim from the triage scan group. Used to detect duplicates."},"description":{"type":"string","description":"The bug body in English/Markdown: what fails, the sample input, the error, how many times it recurred, and the first/last-seen times. Include enough context to reproduce."},"recurrence_note":{"type":"string","description":"Optional short note to add if a card for this pattern already exists (e.g. 'Recurred 3 more times on 2026-07-19'). A sensible default is used if omitted."}},"required":["title","signature","description"]}`,
+		},
+		{
+			name:        "triage_improve_prompt",
+			description: "Save an improved instruction prompt for one of the assistant's skills whose runs keep failing in the triage scan. The new prompt fully replaces that skill's current prompt and takes effect immediately, so include everything it needs (keep what works; make a focused fix for the recurring failure, and preserve tool names and required output markers exactly). Persists across restarts and can be reverted from the Skills page. Never target the 'auto_triage' or 'self_tuning' skills.",
+			capability:  intent.CapabilityAutoTriage,
+			action:      intent.ActionAutoTriageImprovePrompt,
+			parameters:  `{"type":"object","properties":{"skill":{"type":"string","description":"The stable key of the skill to update (e.g. 'web_search', 'trello_card'), exactly as shown in the scan's current_skill_prompts."},"prompt":{"type":"string","description":"The complete new instruction prompt for the skill. Replaces the whole prompt — do not send only a diff. Preserve tool names and any required output markers exactly."},"reason":{"type":"string","description":"A one-line note on what you changed and why (for the audit log)."}},"required":["skill","prompt"]}`,
 		},
 	},
 }

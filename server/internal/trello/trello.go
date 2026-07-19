@@ -18,8 +18,9 @@ import (
 	"time"
 )
 
-// base is the Trello REST API root.
-const base = "https://api.trello.com/1"
+// base is the Trello REST API root. It is a var (not a const) only so tests can
+// point the client at a local stub server; production never changes it.
+var base = "https://api.trello.com/1"
 
 // Label is a Trello card label (name may be empty for colour-only labels).
 type Label struct {
@@ -44,12 +45,34 @@ type List struct {
 	Name string `json:"name"`
 }
 
+// Checklist is a Trello checklist attached to a card (e.g. "Acceptance Criteria").
+type Checklist struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // CreateCardInput describes a card to create.
 type CreateCardInput struct {
 	ListID   string   // required — the list the card lands on
 	Name     string   // required — card title
 	Desc     string   // markdown body
 	LabelIDs []string // optional — labels to attach
+}
+
+// UpdateCardInput describes an edit to an existing card. Every field is a
+// pointer so a nil field means "leave it unchanged" — only the fields the caller
+// sets are sent to Trello. A non-nil LabelIDs replaces the card's whole label
+// set (an empty slice clears all labels).
+type UpdateCardInput struct {
+	Name     *string   // new title
+	Desc     *string   // new markdown body
+	IDList   *string   // move the card to this list
+	LabelIDs *[]string // replace the card's labels (empty slice clears them)
+}
+
+// IsEmpty reports whether the input would change nothing.
+func (in UpdateCardInput) IsEmpty() bool {
+	return in.Name == nil && in.Desc == nil && in.IDList == nil && in.LabelIDs == nil
 }
 
 // Client calls the Trello REST API. It is safe for concurrent use.
@@ -130,6 +153,59 @@ func (c *Client) AddCheckItem(ctx context.Context, apiKey, token, checklistID, t
 	return c.post(ctx, apiKey, token, "/checklists/"+checklistID+"/checkItems", q, nil)
 }
 
+// AddComment posts a comment to a card. Used to annotate an existing card
+// instead of creating a duplicate (e.g. a recurring failure that already has an
+// open bug).
+func (c *Client) AddComment(ctx context.Context, apiKey, token, cardID, text string) error {
+	q := url.Values{"text": {text}}
+	return c.post(ctx, apiKey, token, "/cards/"+cardID+"/actions/comments", q, nil)
+}
+
+// UpdateCard edits an existing card (title, description, list, and/or labels) and
+// returns the updated card. Only the fields set on in are sent to Trello; if in
+// changes nothing it is a no-op and the current card is returned unchanged.
+func (c *Client) UpdateCard(ctx context.Context, apiKey, token, cardID string, in UpdateCardInput) (*Card, error) {
+	if in.IsEmpty() {
+		return c.GetCard(ctx, apiKey, token, cardID)
+	}
+	q := url.Values{}
+	if in.Name != nil {
+		q.Set("name", *in.Name)
+	}
+	if in.Desc != nil {
+		q.Set("desc", *in.Desc)
+	}
+	if in.IDList != nil {
+		q.Set("idList", *in.IDList)
+	}
+	if in.LabelIDs != nil {
+		// An empty value clears the card's labels; a comma-joined list replaces them.
+		q.Set("idLabels", strings.Join(*in.LabelIDs, ","))
+	}
+	var card Card
+	if err := c.put(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
+		return nil, err
+	}
+	return &card, nil
+}
+
+// CardChecklists returns the checklists attached to a card (id and name only),
+// so the caller can find and replace a named checklist such as "Acceptance
+// Criteria".
+func (c *Client) CardChecklists(ctx context.Context, apiKey, token, cardID string) ([]Checklist, error) {
+	q := url.Values{"fields": {"name"}}
+	var cls []Checklist
+	if err := c.get(ctx, apiKey, token, "/cards/"+cardID+"/checklists", q, &cls); err != nil {
+		return nil, err
+	}
+	return cls, nil
+}
+
+// DeleteChecklist removes a checklist from its card.
+func (c *Client) DeleteChecklist(ctx context.Context, apiKey, token, checklistID string) error {
+	return c.delete(ctx, apiKey, token, "/checklists/"+checklistID, nil, nil)
+}
+
 // get performs an authenticated GET and decodes the JSON body into out.
 func (c *Client) get(ctx context.Context, apiKey, token, path string, q url.Values, out any) error {
 	return c.do(ctx, http.MethodGet, apiKey, token, path, q, out)
@@ -139,6 +215,18 @@ func (c *Client) get(ctx context.Context, apiKey, token, path string, q url.Valu
 // API accepts) and decodes the JSON body into out (out may be nil to discard).
 func (c *Client) post(ctx context.Context, apiKey, token, path string, q url.Values, out any) error {
 	return c.do(ctx, http.MethodPost, apiKey, token, path, q, out)
+}
+
+// put performs an authenticated PUT (params in the query string) and decodes the
+// JSON body into out (out may be nil to discard). Trello edits cards via PUT.
+func (c *Client) put(ctx context.Context, apiKey, token, path string, q url.Values, out any) error {
+	return c.do(ctx, http.MethodPut, apiKey, token, path, q, out)
+}
+
+// delete performs an authenticated DELETE and decodes the JSON body into out
+// (out may be nil to discard).
+func (c *Client) delete(ctx context.Context, apiKey, token, path string, q url.Values, out any) error {
+	return c.do(ctx, http.MethodDelete, apiKey, token, path, q, out)
 }
 
 func (c *Client) do(ctx context.Context, method, apiKey, token, path string, q url.Values, out any) error {

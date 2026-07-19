@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // WhatsApp understands its own lightweight markup, not Markdown:
@@ -93,7 +94,164 @@ func toWhatsAppMarkup(s string) string {
 	return s
 }
 
+// FormatGrammarReply rewrites an English-Tutor agent reply for WhatsApp.
+//
+// The English Tutor skill instructs the model to begin an English reply with the
+// grammatically corrected version of the user's message, wrapped between the
+// markers [[grammar]] and [[/grammar]] (see the seeded "english_tutor" skill).
+// Sent verbatim, those markers show up literally in the WhatsApp chat — the web
+// client parses and hides them, but WhatsApp does not. This replaces the marker
+// block with a compact, readable correction card and returns Markdown (which
+// SendMessage then converts to WhatsApp markup in a single pass):
+//
+//	📝 **English check**
+//	~~i has two apple~~
+//	✅ I **have** two **apples**
+//
+//	<the assistant's actual reply>
+//
+// The original message is struck through (the "before"), the corrected version
+// sits beneath it with the words that changed bolded, and a blank line separates
+// the card from the assistant's real reply. When the correction is identical to
+// the original (the skill repeats a correct message unchanged) it renders a
+// single "looks good" line instead of a redundant before/after.
+//
+// original is the user's inbound message; reply is the agent's full reply text
+// (with the [[grammar]] block). A reply that carries no grammar block — a
+// non-English turn, or the skill disabled — is returned unchanged, so ordinary
+// replies are untouched.
+func FormatGrammarReply(original, reply string) string {
+	m := grammarBlock.FindStringSubmatch(reply)
+	if m == nil {
+		return reply
+	}
+	corrected := strings.TrimSpace(m[1])
+	// Drop the marker block to recover the assistant's actual reply body.
+	body := strings.TrimSpace(grammarBlock.ReplaceAllString(reply, ""))
+	if corrected == "" {
+		return body
+	}
+
+	card := renderCorrectionCard(strings.TrimSpace(original), corrected)
+	if body == "" {
+		return card
+	}
+	return card + "\n\n" + body
+}
+
+// renderCorrectionCard builds the Markdown correction card shown above the reply.
+func renderCorrectionCard(original, corrected string) string {
+	if original != "" && sameText(original, corrected) {
+		return "📝 **English check**\n✅ " + corrected + " — looks good! 👍"
+	}
+	var b strings.Builder
+	b.WriteString("📝 **English check**")
+	if original != "" {
+		b.WriteString("\n~~" + original + "~~")
+	}
+	b.WriteString("\n✅ " + highlightChanges(original, corrected))
+	return b.String()
+}
+
+// highlightChanges returns the corrected sentence with the words that differ
+// from the original wrapped in Markdown bold (**word**). It runs a word-level
+// longest-common-subsequence diff: corrected words that aren't part of the
+// common subsequence with the original are the ones the tutor changed or added,
+// so they get emphasized. Matching is case-insensitive and ignores surrounding
+// punctuation, while the corrected words are emitted verbatim. Consecutive
+// changed words are merged into a single bold run for cleaner rendering. With no
+// original to diff against, the corrected text is returned unchanged.
+func highlightChanges(original, corrected string) string {
+	corr := strings.Fields(corrected)
+	if original == "" || len(corr) == 0 {
+		return corrected
+	}
+	changed := changedMask(normalizeTokens(strings.Fields(original)), normalizeTokens(corr))
+
+	var b strings.Builder
+	bold := false
+	for i, tok := range corr {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		if changed[i] && !bold {
+			b.WriteString("**")
+			bold = true
+		}
+		b.WriteString(tok)
+		if bold && (i == len(corr)-1 || !changed[i+1]) {
+			b.WriteString("**")
+			bold = false
+		}
+	}
+	return b.String()
+}
+
+// changedMask returns a per-token flag over corr: true where the corrected token
+// is not matched by the longest common subsequence with orig (i.e. it was added
+// or changed). orig and corr are the normalized token sequences.
+func changedMask(orig, corr []string) []bool {
+	n, m := len(orig), len(corr)
+	// dp[i][j] = LCS length of orig[i:] and corr[j:].
+	dp := make([][]int, n+1)
+	for i := range dp {
+		dp[i] = make([]int, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if orig[i] == corr[j] {
+				dp[i][j] = dp[i+1][j+1] + 1
+			} else if dp[i+1][j] >= dp[i][j+1] {
+				dp[i][j] = dp[i+1][j]
+			} else {
+				dp[i][j] = dp[i][j+1]
+			}
+		}
+	}
+	changed := make([]bool, m)
+	i, j := 0, 0
+	for i < n && j < m {
+		switch {
+		case orig[i] == corr[j]:
+			i++
+			j++
+		case dp[i+1][j] >= dp[i][j+1]:
+			i++
+		default:
+			changed[j] = true
+			j++
+		}
+	}
+	for ; j < m; j++ {
+		changed[j] = true
+	}
+	return changed
+}
+
+// normalizeTokens lowercases each token and strips surrounding punctuation so
+// the diff compares words, not their trailing commas or capitalization.
+func normalizeTokens(toks []string) []string {
+	out := make([]string, len(toks))
+	for i, t := range toks {
+		out[i] = strings.ToLower(strings.TrimFunc(t, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		}))
+	}
+	return out
+}
+
+// sameText reports whether two strings are equal ignoring case and runs of
+// whitespace — used to detect that the tutor returned the message unchanged.
+func sameText(a, b string) bool {
+	return strings.EqualFold(strings.Join(strings.Fields(a), " "), strings.Join(strings.Fields(b), " "))
+}
+
 var (
+	// grammarBlock matches the English Tutor skill's correction wrapper,
+	// [[grammar]]corrected sentence[[/grammar]], case-insensitively and across
+	// newlines. Mirrors the web client's splitGrammar regex (client Message.tsx).
+	grammarBlock = regexp.MustCompile(`(?is)\[\[grammar\]\](.*?)\[\[/grammar\]\]`)
+
 	fencedCode      = regexp.MustCompile("(?s)```[^\n]*\n?(.*?)```")
 	inlineCode      = regexp.MustCompile("`[^`\n]+`")
 	codePlaceholder = regexp.MustCompile("\x00\\d+\x00")

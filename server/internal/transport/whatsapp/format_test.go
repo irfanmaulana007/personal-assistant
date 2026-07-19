@@ -58,3 +58,69 @@ func TestToWhatsAppMarkupBulletedList(t *testing.T) {
 		t.Errorf("list\n got: %q\nwant: %q", got, want)
 	}
 }
+
+func TestFormatGrammarReply(t *testing.T) {
+	tests := []struct {
+		name     string
+		original string
+		reply    string
+		want     string
+	}{
+		{
+			name:     "no grammar block returned unchanged",
+			original: "halo",
+			reply:    "Halo! Ada yang bisa dibantu?",
+			want:     "Halo! Ada yang bisa dibantu?",
+		},
+		{
+			name:     "correction with changed words bolded",
+			original: "i has two apple",
+			reply:    "[[grammar]]I have two apples[[/grammar]]Sure, I noted that.",
+			want:     "📝 **English check**\n~~i has two apple~~\n✅ I **have** two **apples**\n\nSure, I noted that.",
+		},
+		{
+			name:     "consecutive changes merge into one bold run",
+			original: "i go store",
+			reply:    "[[grammar]]I went to the store[[/grammar]]Got it.",
+			want:     "📝 **English check**\n~~i go store~~\n✅ I **went to the** store\n\nGot it.",
+		},
+		{
+			name:     "already correct shows looks-good line",
+			original: "I am happy today",
+			reply:    "[[grammar]]I am happy today[[/grammar]]Glad to hear it!",
+			want:     "📝 **English check**\n✅ I am happy today — looks good! 👍\n\nGlad to hear it!",
+		},
+		{
+			name:     "grammar block with no reply body renders card only",
+			original: "i is fine",
+			reply:    "[[grammar]]I am fine[[/grammar]]",
+			want:     "📝 **English check**\n~~i is fine~~\n✅ I **am** fine",
+		},
+		{
+			name:     "empty grammar block falls back to body",
+			original: "x",
+			reply:    "[[grammar]][[/grammar]]hello",
+			want:     "hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FormatGrammarReply(tt.original, tt.reply); got != tt.want {
+				t.Errorf("FormatGrammarReply(%q, %q)\n got: %q\nwant: %q", tt.original, tt.reply, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFormatGrammarReplyThroughMarkup proves the card renders as valid WhatsApp
+// markup once SendMessage runs it through toWhatsAppMarkup — the double stars
+// become WhatsApp bold and the strikethrough collapses to a single tilde,
+// instead of leaking literal Markdown into the chat.
+func TestFormatGrammarReplyThroughMarkup(t *testing.T) {
+	md := FormatGrammarReply("i has two apple", "[[grammar]]I have two apples[[/grammar]]Sure, I noted that.")
+	want := "📝 *English check*\n~i has two apple~\n✅ I *have* two *apples*\n\nSure, I noted that."
+	if got := toWhatsAppMarkup(md); got != want {
+		t.Errorf("markup\n got: %q\nwant: %q", got, want)
+	}
+}
