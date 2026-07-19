@@ -447,13 +447,19 @@ export async function testSettings(): Promise<LlmTestResult> {
 
 // Multi-value filters (platform, score) are sent as a single comma-separated
 // query param; an empty array omits the param entirely ("all").
+//
+// projectId overrides the active-project scope for this one request (via the
+// X-Project-Id header, which request() leaves alone when already set). A
+// superadmin uses this to read any project's usage without switching projects.
 export async function getUsage(
   from: string,
   to: string,
   platforms: ChannelValue[] = [],
+  projectId?: number,
 ): Promise<UsageStats> {
   const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
-  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
+  const options = projectId ? { headers: { 'X-Project-Id': String(projectId) } } : {};
+  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`, options);
 }
 
 export async function getLogs(
