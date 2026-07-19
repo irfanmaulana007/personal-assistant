@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getIntegrations,
   setComposioKey,
@@ -163,10 +164,55 @@ export function Integrations() {
               ))}
             </div>
           )}
+          <TrelloCard configured={data.trello_configured} />
           <WhatsAppCard />
         </>
       ) : null}
     </div>
+  );
+}
+
+// Compact Trello entry shown in the Integrations list. It reflects whether the
+// Trello credentials are configured and links into the Trello integration
+// detail page, where the API key + token are set.
+function TrelloCard({ configured }: { configured: boolean }) {
+  const status = configured
+    ? {
+        label: 'Connected',
+        cls: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
+      }
+    : {
+        label: 'Not connected',
+        cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+      };
+
+  return (
+    <Link
+      to="/integrations/trello"
+      className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+    >
+      <div className="flex items-center gap-3">
+        <ToolkitIcon slug="trello" name="Trello" />
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">Trello</div>
+          <span
+            className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}
+          >
+            {status.label}
+          </span>
+        </div>
+      </div>
+      <span className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400">
+        Manage
+        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+          <path
+            fillRule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </span>
+    </Link>
   );
 }
 

@@ -26,6 +26,7 @@ import { Account } from './components/Account';
 import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 import { IntegrationsWhatsApp } from './components/IntegrationsWhatsApp';
+import { IntegrationsTrello } from './components/IntegrationsTrello';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
 import { ProjectsOverview } from './components/dashboard/ProjectsOverview';
@@ -109,6 +110,14 @@ function App() {
               element={
                 <ProjectAdminRoute>
                   <IntegrationsWhatsApp isAdmin={isAdmin} />
+                </ProjectAdminRoute>
+              }
+            />
+            <Route
+              path="integrations/trello"
+              element={
+                <ProjectAdminRoute>
+                  <IntegrationsTrello />
                 </ProjectAdminRoute>
               }
             />
