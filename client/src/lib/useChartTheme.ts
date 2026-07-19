@@ -25,6 +25,9 @@ export interface ChartTheme {
   activeDotStroke: string;
   indigo: string;
   emerald: string;
+  // Ordered palette for categorical series (e.g. one line per project). Assign
+  // by index and wrap with `% length`.
+  categorical: string[];
 }
 
 const LIGHT: ChartTheme = {
@@ -37,6 +40,18 @@ const LIGHT: ChartTheme = {
   activeDotStroke: '#ffffff',
   indigo: '#4f46e5', // indigo-600
   emerald: '#059669', // emerald-600
+  categorical: [
+    '#4f46e5', // indigo-600
+    '#059669', // emerald-600
+    '#d97706', // amber-600
+    '#db2777', // pink-600
+    '#0284c7', // sky-600
+    '#7c3aed', // violet-600
+    '#0d9488', // teal-600
+    '#dc2626', // red-600
+    '#ca8a04', // yellow-600
+    '#65a30d', // lime-600
+  ],
 };
 
 const DARK: ChartTheme = {
@@ -49,6 +64,18 @@ const DARK: ChartTheme = {
   activeDotStroke: '#1f2937', // match card surface (gray-800)
   indigo: '#818cf8', // indigo-400
   emerald: '#34d399', // emerald-400
+  categorical: [
+    '#818cf8', // indigo-400
+    '#34d399', // emerald-400
+    '#fbbf24', // amber-400
+    '#f472b6', // pink-400
+    '#38bdf8', // sky-400
+    '#a78bfa', // violet-400
+    '#2dd4bf', // teal-400
+    '#f87171', // red-400
+    '#facc15', // yellow-400
+    '#a3e635', // lime-400
+  ],
 };
 
 export function useChartTheme(): ChartTheme {

@@ -683,21 +683,6 @@ export async function deleteWhatsAppMapping(id: number): Promise<{ ok: boolean }
   return request(`/api/whatsapp/mappings/${id}`, { method: 'DELETE' });
 }
 
-// --- Superadmin cross-project overview ---
-
-export async function getAdminOverview(
-  from?: string,
-  to?: string,
-  projectId?: number,
-): Promise<import('../types').AdminOverview> {
-  const p = new URLSearchParams();
-  if (from) p.set('from', from);
-  if (to) p.set('to', to);
-  if (projectId) p.set('projectId', String(projectId));
-  const qs = p.toString();
-  return request(`/api/admin/overview${qs ? `?${qs}` : ''}`);
-}
-
 // --- Per-project skills & features (path-scoped: manage a specific project) ---
 
 export async function getProjectSkills(id: number): Promise<import('../types').ProjectSkill[]> {

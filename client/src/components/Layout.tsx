@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink, Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
+import { type ReactNode } from 'react';
+import { NavLink, Navigate, Outlet, useParams } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
@@ -30,13 +30,6 @@ interface NavLeaf {
   // if it owns skills, at least one of its skills) is enabled for the project.
   feature?: string;
 }
-interface NavGroupItem {
-  label: string;
-  icon: ReactNode;
-  gate?: NavGate;
-  children: { to: string; label: string; end?: boolean; gate?: NavGate }[];
-}
-type NavEntry = NavLeaf | NavGroupItem;
 
 const chatIcon = (
   <path
@@ -95,7 +88,7 @@ const projectsIcon = (
 // only; Projects is every member's picker into their project shells. Settings is
 // pinned to the bottom (see globalSettingsItem), mirroring the project shell.
 const globalNavItems: NavLeaf[] = [
-  { to: '/overview', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
+  { to: '/dashboard', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
   { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
   { to: '/projects', label: 'Projects', gate: 'everyone', icon: projectsIcon },
 ];
@@ -110,10 +103,11 @@ const globalSettingsItem: NavLeaf = {
 
 // Project-scoped nav. Paths are relative to the project root (leading '/') and
 // get the active project's /:slug prefix applied before rendering.
-const navItems: NavEntry[] = [
+const navItems: NavLeaf[] = [
   { to: '/chat', label: 'Chat', icon: chatIcon, gate: 'everyone' },
   {
-    label: 'Analytics',
+    to: '/dashboard',
+    label: 'Dashboard',
     gate: 'projectAdmin',
     icon: (
       <path
@@ -123,13 +117,6 @@ const navItems: NavEntry[] = [
         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
       />
     ),
-    children: [
-      { to: '/dashboard', label: 'Overview', end: true },
-      { to: '/dashboard/usage', label: 'Usage' },
-      { to: '/dashboard/activity', label: 'Activity' },
-      { to: '/dashboard/performance', label: 'Performance' },
-      { to: '/dashboard/users', label: 'Users' },
-    ],
   },
   {
     to: '/reminders',
@@ -227,55 +214,6 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-function NavGroup({ item }: { item: NavGroupItem }) {
-  const location = useLocation();
-  const anyActive = item.children.some((c) =>
-    c.end ? location.pathname === c.to : location.pathname.startsWith(c.to),
-  );
-  const [open, setOpen] = useState(anyActive);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`w-full ${leafClass(anyActive)}`}
-      >
-        <Icon>{item.icon}</Icon>
-        <span className="flex-1 text-left">{item.label}</span>
-        <svg
-          className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="mt-0.5 space-y-0.5 pl-4">
-          {item.children.map((c) => (
-            <NavLink
-              key={c.to}
-              to={c.to}
-              end={c.end}
-              className={({ isActive }) =>
-                `block rounded-lg px-3 py-1.5 text-sm transition ${
-                  isActive
-                    ? 'font-medium text-white'
-                    : 'font-normal text-slate-400 hover:text-slate-100'
-                }`
-              }
-            >
-              {c.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
   const { canManageActive, navFeatureVisible, projects, loading } = useProjects();
   const { slug } = useParams();
@@ -302,19 +240,10 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
   const items = navItems
     .filter((item) => {
       if (!canSee(item.gate)) return false;
-      if ('feature' in item && item.feature) return navFeatureVisible(item.feature);
+      if (item.feature) return navFeatureVisible(item.feature);
       return true;
     })
-    .map((item) =>
-      'children' in item
-        ? {
-            ...item,
-            children: item.children
-              .filter((c) => canSee(c.gate))
-              .map((c) => ({ ...c, to: withSlug(c.to) })),
-          }
-        : { ...item, to: withSlug(item.to) },
-    );
+    .map((item) => ({ ...item, to: withSlug(item.to) }));
 
   const globalItems = globalNavItems.filter((item) => canSee(item.gate));
 
@@ -354,7 +283,7 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
             {isAdmin && (
               <div className="px-3 pt-3">
                 <NavLink
-                  to="/overview"
+                  to="/dashboard"
                   className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
                 >
                   <svg
@@ -370,7 +299,7 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
                       d="M11 17l-5-5m0 0l5-5m-5 5h12"
                     />
                   </svg>
-                  Overview
+                  All projects
                 </NavLink>
               </div>
             )}
@@ -380,20 +309,16 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
             </div>
 
             <nav className="flex-1 space-y-0.5 px-3 py-2">
-              {items.map((item) =>
-                'children' in item ? (
-                  <NavGroup key={item.label} item={item} />
-                ) : (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) => leafClass(isActive)}
-                  >
-                    <Icon>{item.icon}</Icon>
-                    {item.label}
-                  </NavLink>
-                ),
-              )}
+              {items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{item.icon}</Icon>
+                  {item.label}
+                </NavLink>
+              ))}
             </nav>
 
             <div className="px-3 pb-2">
