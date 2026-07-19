@@ -10,7 +10,8 @@ import { CreateProjectModal } from './CreateProjectModal';
 // under the new project.
 export function ProjectSwitcher({ isSuperadmin }: { isSuperadmin: boolean }) {
   const navigate = useNavigate();
-  const { projects, activeProject, setActiveProject, loading, canManageActive } = useProjects();
+  const { projects, activeProject, setActiveProject, projectPath, loading, canManageActive } =
+    useProjects();
   const [creating, setCreating] = useState(false);
 
   const label = loading ? 'Loading…' : activeProject?.name || 'No project';
@@ -101,7 +102,7 @@ export function ProjectSwitcher({ isSuperadmin }: { isSuperadmin: boolean }) {
               {canManageActive && activeProject && (
                 <Popover.Close asChild>
                   <button
-                    onClick={() => navigate('/settings/project')}
+                    onClick={() => navigate(projectPath('settings/project'))}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700/60"
                   >
                     <svg

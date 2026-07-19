@@ -4,6 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { getAdminOverview } from '../../api/client';
 import { formatTokens } from '../../lib/format';
 import { usePreferences } from '../../contexts/preferences';
+import { useProjects } from '../../contexts/project';
 import { useChartTheme } from '../../lib/useChartTheme';
 import { StatTile } from './parts';
 import { SkeletonStatTile, SkeletonCard, Skeleton } from '../ui/Skeleton';
@@ -15,6 +16,7 @@ import type { AdminOverview, ProjectOverviewRow } from '../../types';
 // (last 30 days) is decided by the server when no from/to is passed.
 export function ProjectsOverview() {
   const { formatMoney } = usePreferences();
+  const { projects } = useProjects();
   const navigate = useNavigate();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,10 +130,10 @@ export function ProjectsOverview() {
                     </thead>
                     <tbody>
                       {rows.map((p) => {
-                        const open = () =>
-                          navigate(`/dashboard/projects/${p.project_id}`, {
-                            state: { name: p.name },
-                          });
+                        const slug = projects.find((pr) => pr.id === p.project_id)?.slug;
+                        const open = () => {
+                          if (slug) navigate(`/${slug}/dashboard`);
+                        };
                         return (
                           <tr
                             key={p.project_id}

@@ -17,6 +17,7 @@ import (
 type projectResp struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
+	Slug        string `json:"slug"`
 	OwnerUserID int64  `json:"owner_user_id"`
 	Role        string `json:"role"`
 	MemberCount int    `json:"member_count"`
@@ -114,7 +115,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		for _, p := range projects {
 			members, _ := s.store.ListProjectMembers(ctx, p.ID)
 			out = append(out, projectResp{
-				ID: p.ID, Name: p.Name, OwnerUserID: p.OwnerUserID,
+				ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID,
 				Role: store.GlobalRoleSuperadmin, MemberCount: len(members),
 				CreatedAt: p.CreatedAt.Format(time.RFC3339),
 			})
@@ -127,7 +128,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, p := range summaries {
 			out = append(out, projectResp{
-				ID: p.ID, Name: p.Name, OwnerUserID: p.OwnerUserID, Role: p.Role,
+				ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: p.Role,
 				MemberCount: p.MemberCount, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 			})
 		}
@@ -185,7 +186,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	s.recordAudit(ctx, p.ID, claims, "project_create", name, map[string]any{"admin_user_id": adminID})
 	members, _ := s.store.ListProjectMembers(ctx, p.ID)
 	writeJSON(w, http.StatusOK, projectResp{
-		ID: p.ID, Name: p.Name, OwnerUserID: p.OwnerUserID, Role: store.GlobalRoleSuperadmin,
+		ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: store.GlobalRoleSuperadmin,
 		MemberCount: len(members), CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	})
 }
@@ -202,7 +203,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	}
 	members, _ := s.store.ListProjectMembers(r.Context(), pid)
 	writeJSON(w, http.StatusOK, projectResp{
-		ID: p.ID, Name: p.Name, OwnerUserID: p.OwnerUserID, Role: role,
+		ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: role,
 		MemberCount: len(members), CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	})
 }

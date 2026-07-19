@@ -37,6 +37,7 @@ export interface User {
 export interface Project {
   id: number;
   name: string;
+  slug: string; // immutable, URL-safe; used as the /:slug route prefix
   owner_user_id: number;
   role: ProjectRole | 'superadmin'; // caller's effective role in this project
   member_count: number;

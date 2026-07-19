@@ -5,9 +5,13 @@ export interface ProjectValue {
   projects: Project[];
   activeProject: Project | null;
   loading: boolean;
-  // Switch the active project. Persists the choice and reloads so every
-  // project-scoped view refetches under the new X-Project-Id.
+  // Switch the active project. Persists the choice, navigates to the project's
+  // /:slug URL and reloads so every project-scoped view refetches under the new
+  // X-Project-Id.
   setActiveProject: (id: number) => void;
+  // Build a path inside the active project's shell, e.g. projectPath('chat') →
+  // '/acme/chat'. Returns '/' when there is no active project.
+  projectPath: (sub?: string) => string;
   reload: () => void;
   // Whether the caller can manage the active project (project admin or superadmin).
   canManageActive: boolean;

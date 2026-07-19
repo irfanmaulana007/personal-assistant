@@ -1,8 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useProjects } from '../contexts/project';
 
+type Scope = 'system' | 'project';
+
 interface Section {
-  to: string;
+  // Path relative to the settings base (e.g. 'project/members'; '' = the base).
+  path: string;
   label: string;
   end?: boolean;
   admin?: boolean;
@@ -10,47 +13,58 @@ interface Section {
 
 interface SectionGroup {
   label: string;
+  scope: Scope;
   // When set, the whole group is only shown to managers of the active project
   // (project admin or global superadmin).
   projectAdmin?: boolean;
   sections: Section[];
 }
 
-// Settings are grouped: the active project's management lives up top (visible
-// only to that project's admins), then the user's own preferences and the
-// system/platform settings below. WhatsApp now lives under Integrations.
+// Settings live in two shells:
+//   * the project shell (/:slug/settings) shows Project management + the user's
+//     own preferences;
+//   * the global shell (/settings) shows platform/System settings only.
 const groups: SectionGroup[] = [
   {
     label: 'Project',
+    scope: 'project',
     projectAdmin: true,
     sections: [
-      { to: '/settings/project', label: 'Overview', end: true },
-      { to: '/settings/project/members', label: 'Members' },
-      { to: '/settings/project/skills', label: 'Skills' },
-      { to: '/settings/project/features', label: 'Features' },
+      { path: 'project', label: 'Overview', end: true },
+      { path: 'project/members', label: 'Members' },
+      { path: 'project/skills', label: 'Skills' },
+      { path: 'project/features', label: 'Features' },
       // The LLM provider + skill API keys are per-project, so they live under
       // Project management (visible to project admins), not the System group.
-      { to: '/settings/model', label: 'Model' },
-      { to: '/settings/project/audit', label: 'Audit' },
+      { path: 'model', label: 'Model' },
+      { path: 'project/audit', label: 'Audit' },
     ],
   },
   {
     label: 'User',
+    scope: 'project',
     sections: [
-      { to: '/settings', label: 'Agent', end: true },
-      { to: '/settings/display', label: 'Display' },
+      { path: '', label: 'Agent', end: true },
+      { path: 'display', label: 'Display' },
     ],
   },
   {
     label: 'System',
-    sections: [{ to: '/settings/pricing', label: 'Pricing', admin: true }],
+    scope: 'system',
+    sections: [{ path: 'pricing', label: 'Pricing', admin: true }],
   },
 ];
 
-export function Settings({ isAdmin }: { isAdmin: boolean }) {
-  const { canManageActive } = useProjects();
+export function Settings({ scope, isAdmin }: { scope: Scope; isAdmin: boolean }) {
+  const { canManageActive, activeProject } = useProjects();
+
+  // Section links are absolute. The project shell is prefixed by the active
+  // project's slug; the system shell lives at the top level.
+  const base = scope === 'project' ? `/${activeProject?.slug ?? ''}/settings` : '/settings';
+  const to = (path: string) => (path ? `${base}/${path}` : base);
 
   const visibleGroups = groups
+    .filter((g) => g.scope === scope)
     .filter((g) => !g.projectAdmin || canManageActive)
     .map((g) => ({ ...g, sections: g.sections.filter((s) => isAdmin || !s.admin) }))
     .filter((g) => g.sections.length > 0);
@@ -61,7 +75,9 @@ export function Settings({ isAdmin }: { isAdmin: boolean }) {
         Settings
       </h1>
       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-        Manage your project and how your assistant works and looks.
+        {scope === 'project'
+          ? 'Manage your project and how your assistant works and looks.'
+          : 'Platform-wide settings that apply across every project.'}
       </p>
 
       <div className="mt-6 flex flex-col gap-6 md:flex-row">
@@ -74,9 +90,9 @@ export function Settings({ isAdmin }: { isAdmin: boolean }) {
                 </div>
                 <ul className="flex flex-wrap gap-1 md:flex-col md:flex-nowrap">
                   {g.sections.map((s) => (
-                    <li key={s.to}>
+                    <li key={s.path || 'index'}>
                       <NavLink
-                        to={s.to}
+                        to={to(s.path)}
                         end={s.end}
                         className={({ isActive }) =>
                           `block rounded-lg px-3 py-2 text-sm transition ${

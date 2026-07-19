@@ -14,6 +14,7 @@ import type {
 import { WhatsAppCard } from './WhatsAppCard';
 import { Skeleton, SkeletonCard } from './ui/Skeleton';
 import { useIsDark } from '../lib/useChartTheme';
+import { useProjects } from '../contexts/project';
 
 const inputClass =
   'rounded-xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/30';
@@ -176,6 +177,7 @@ export function Integrations() {
 // Trello credentials are configured and links into the Trello integration
 // detail page, where the API key + token are set.
 function TrelloCard({ configured }: { configured: boolean }) {
+  const { projectPath } = useProjects();
   const status = configured
     ? {
         label: 'Connected',
@@ -188,7 +190,7 @@ function TrelloCard({ configured }: { configured: boolean }) {
 
   return (
     <Link
-      to="/integrations/trello"
+      to={projectPath('integrations/trello')}
       className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
     >
       <div className="flex items-center gap-3">
