@@ -177,6 +177,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/preferences", superadmin(s.handleUpdatePreferences))
 	mux.Handle("PUT /api/reminders/config", superadmin(s.handleSetRemindersConfig))
 	mux.Handle("POST /api/skills/{id}/reset-prompt", superadmin(s.handleResetSkillPrompt))
+	// Platform-wide skills catalog (all skills, classified + project-mapped) and
+	// the core flag: superadmin manages the whole catalog on the global /skills page.
+	mux.Handle("GET /api/admin/skills", superadmin(s.handleAdminListSkills))
+	mux.Handle("PUT /api/skills/{id}/core", superadmin(s.handleSetSkillCore))
+	mux.Handle("PUT /api/admin/skills/{id}/prompt", superadmin(s.handleAdminSetSkillPrompt))
+	mux.Handle("POST /api/admin/skills/{id}/revert-tuned", superadmin(s.handleAdminRevertTuned))
 	mux.Handle("PUT /api/routines/{key}", superadmin(s.handleUpdateRoutine))
 	mux.Handle("POST /api/routines/{key}/run", superadmin(s.handleRunRoutine))
 	mux.Handle("GET /api/pricing", superadmin(s.handleListPricing))

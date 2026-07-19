@@ -7,10 +7,8 @@ import {
   clearTunedPrompt,
   customizeSkill,
   deleteProjectSkill,
-  listFeatures,
-  setFeatureEnabled,
 } from '../api/client';
-import type { Skill, ProjectFeature } from '../types';
+import type { Skill } from '../types';
 import { Toggle } from './ui/Toggle';
 import { Modal } from './ui/Modal';
 import { Skeleton, SkeletonListRow } from './ui/Skeleton';
@@ -165,14 +163,18 @@ function SkillPromptModal({
   );
 }
 
+// Skills is the project-admin surface for the skills available to a project,
+// rendered inside project settings. It lists every skill available here (core,
+// global, and this project's forks), lets an admin enable/disable each one, and
+// lets them fork a global skill to give it a project-specific prompt. The
+// platform-wide catalog (core/global classification, project mapping) lives on
+// the superadmin /skills page instead.
 export function Skills({ isAdmin }: { isAdmin: boolean }) {
   const { canManageActive } = useProjects();
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [features, setFeatures] = useState<ProjectFeature[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [featureBusyId, setFeatureBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
   const [customizingId, setCustomizingId] = useState<number | null>(null);
@@ -180,11 +182,9 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([listSkills(), listFeatures().catch(() => [] as ProjectFeature[])])
-      .then(([s, f]) => {
-        if (!active) return;
-        setSkills(s);
-        setFeatures(f);
+    listSkills()
+      .then((s) => {
+        if (active) setSkills(s);
       })
       .catch((e) => {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load skills');
@@ -196,21 +196,6 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
       active = false;
     };
   }, []);
-
-  // Toggling a feature cascades to its skills' effective state, so refresh both.
-  const toggleFeature = async (f: ProjectFeature) => {
-    setFeatureBusyId(f.id);
-    setError('');
-    try {
-      const updated = await setFeatureEnabled(f.id, !f.enabled);
-      setFeatures(updated);
-      setSkills(await listSkills());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update feature');
-    } finally {
-      setFeatureBusyId(null);
-    }
-  };
 
   const toggle = async (sk: Skill) => {
     setBusyId(sk.id);
@@ -288,11 +273,8 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
   const editing = editingId != null ? skills.find((s) => s.id === editingId) : undefined;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
-      <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-        Skills
-      </h1>
-      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+    <div>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         Turn skills on to give the assistant new abilities in this project.
         {!canManageActive && ' Only a project admin can change these.'}
         {canManageActive &&
@@ -300,10 +282,10 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && ' As a superadmin you can also edit a global skill’s prompt for every project.'}
       </p>
 
-      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
-        <div className="mt-6 space-y-6">
+        <div className="space-y-6">
           {[3, 2].map((count, g) => (
             <div key={g}>
               <Skeleton className="mb-2 h-2.5 w-24" />
@@ -316,42 +298,7 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </div>
       ) : (
-        <div className="mt-6 space-y-6">
-          {features.length > 0 && (
-            <div>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Features
-              </h2>
-              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
-                {features.map((f) => (
-                  <div key={f.id} className="flex items-start gap-4 p-4">
-                    <div className="min-w-0 flex-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-                        {f.name}
-                      </span>
-                      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                        {f.description}
-                      </p>
-                      {f.skill_keys.length > 0 && (
-                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Skills: {f.skill_keys.join(', ')}
-                        </p>
-                      )}
-                    </div>
-                    <Toggle
-                      on={f.enabled}
-                      busy={featureBusyId === f.id}
-                      disabled={!canManageActive}
-                      onClick={() => toggleFeature(f)}
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                Disabling a feature turns off all of its skills for this project.
-              </p>
-            </div>
-          )}
+        <div className="space-y-6">
           {groups.map((g) => (
             <div key={g.category}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -365,6 +312,14 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
                           {sk.name}
                         </span>
+                        {sk.is_core && (
+                          <span
+                            title="A core skill — available to every project."
+                            className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30"
+                          >
+                            Core
+                          </span>
+                        )}
                         {sk.scope === 'project' && (
                           <span
                             title="This skill has a prompt customized for this project."

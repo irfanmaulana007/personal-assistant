@@ -5,7 +5,7 @@ import { useProjects } from './contexts/project';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
-import { Skills } from './components/Skills';
+import { AdminSkills } from './components/AdminSkills';
 import { Reminders } from './components/Reminders';
 import { BucketList } from './components/BucketList';
 import { Projects } from './components/Projects';
@@ -70,7 +70,6 @@ const LEGACY_PROJECT_PREFIXES = new Set([
   'chat',
   'reminders',
   'bucket-list',
-  'skills',
   'profile',
   'integrations',
   'logs',
@@ -158,6 +157,14 @@ function App() {
               }
             />
             <Route path="projects" element={<Projects isAdmin={isAdmin} />} />
+            <Route
+              path="skills"
+              element={
+                <SuperadminRoute isAdmin={isAdmin}>
+                  <AdminSkills />
+                </SuperadminRoute>
+              }
+            />
             <Route path="settings" element={<Settings scope="system" isAdmin={isAdmin} />}>
               <Route index element={<Navigate to="pricing" replace />} />
               <Route
@@ -180,14 +187,9 @@ function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
             <Route path="bucket-list" element={<BucketList />} />
-            <Route
-              path="skills"
-              element={
-                <ProjectAdminRoute>
-                  <Skills isAdmin={isAdmin} />
-                </ProjectAdminRoute>
-              }
-            />
+            {/* The project skills surface now lives under project settings; keep
+                old /:slug/skills bookmarks working by redirecting there. */}
+            <Route path="skills" element={<Navigate to="settings/project/skills" replace />} />
             <Route path="profile" element={<Profile />} />
 
             <Route

@@ -311,7 +311,7 @@ const projectSkillScope = `
 func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.tuned_prompt, s.category, s.default_enabled, s.sort_order,
-		        s.prompt_updated_at, s.prompt_updated_by, s.project_id, `+projectSkillEffective+` AS effective`+
+		        s.prompt_updated_at, s.prompt_updated_by, s.project_id, s.is_core, `+projectSkillEffective+` AS effective`+
 			projectSkillJoins+projectSkillScope+`
 		 ORDER BY s.sort_order ASC, s.id ASC`, projectID)
 	if err != nil {
@@ -322,7 +322,7 @@ func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) 
 	var out []UserSkill
 	for rows.Next() {
 		var us UserSkill
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.ProjectID, &us.Enabled); err != nil {
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.ProjectID, &us.IsCore, &us.Enabled); err != nil {
 			return nil, fmt.Errorf("scan project skill: %w", err)
 		}
 		out = append(out, us)

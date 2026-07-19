@@ -9,23 +9,15 @@ import {
   updateProjectMember,
   removeProjectMember,
   listProjectAudit,
-  getProjectSkills,
-  setProjectSkill,
   getProjectFeatures,
   setProjectFeature,
 } from '../../api/client';
 import { useProjects } from '../../contexts/project';
-import type {
-  Project,
-  ProjectMember,
-  ProjectRole,
-  ProjectSkill,
-  ProjectFeature,
-  AuditEvent,
-} from '../../types';
+import type { Project, ProjectMember, ProjectRole, ProjectFeature, AuditEvent } from '../../types';
 import { Skeleton, SkeletonCard, SkeletonListRow } from '../ui/Skeleton';
 import { Modal } from '../ui/Modal';
 import { Toggle } from '../ui/Toggle';
+import { Skills } from '../Skills';
 
 const inputClass =
   'rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
@@ -99,10 +91,12 @@ export function ProjectMembersSettings() {
 }
 
 export function ProjectSkillsSettings() {
-  const { project, loading, canManage } = useActiveProject();
+  const { project, loading, isSuperadmin } = useActiveProject();
   if (loading) return <LoadingCard />;
   if (!project) return <NoProject />;
-  return <SkillsTab projectId={project.id} canManage={canManage} />;
+  // The full project-admin skills surface: enable/disable the skills available
+  // to this project and fork a global skill to customize its prompt here.
+  return <Skills isAdmin={isSuperadmin} />;
 }
 
 export function ProjectFeaturesSettings() {
@@ -723,118 +717,6 @@ function AddMemberForm({
         Add member
       </button>
     </form>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Skills — set the project's skills from the global catalog.
-// -------------------------------------------------------------------------
-
-function SkillsTab({ projectId, canManage }: { projectId: number; canManage: boolean }) {
-  const [skills, setSkills] = useState<ProjectSkill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [busyId, setBusyId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    getProjectSkills(projectId)
-      .then((s) => {
-        if (active) {
-          setSkills(s);
-          setError('');
-        }
-      })
-      .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : 'Failed to load skills');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [projectId]);
-
-  const toggle = async (sk: ProjectSkill) => {
-    setBusyId(sk.id);
-    setError('');
-    try {
-      setSkills(await setProjectSkill(projectId, sk.id, !sk.enabled));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update skill');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  // Group by category, preserving order.
-  const groups: { category: string; skills: ProjectSkill[] }[] = [];
-  for (const sk of skills) {
-    const cat = sk.category || 'Other';
-    let g = groups.find((x) => x.category === cat);
-    if (!g) {
-      g = { category: cat, skills: [] };
-      groups.push(g);
-    }
-    g.skills.push(sk);
-  }
-
-  return (
-    <div>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        Enable the global skills this project can use.
-      </p>
-
-      {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-      {loading ? (
-        <div className="space-y-6">
-          {[3, 2].map((count, g) => (
-            <div key={g}>
-              <Skeleton className="mb-2 h-2.5 w-24" />
-              <div className="space-y-2">
-                {Array.from({ length: count }).map((_, i) => (
-                  <SkeletonListRow key={i} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : skills.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">No skills available.</p>
-      ) : (
-        <div className="space-y-6">
-          {groups.map((g) => (
-            <div key={g.category}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                {g.category}
-              </h2>
-              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
-                {g.skills.map((sk) => (
-                  <div key={sk.id} className="flex items-start gap-4 p-4">
-                    <div className="min-w-0 flex-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-                        {sk.name}
-                      </span>
-                      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                        {sk.description}
-                      </p>
-                    </div>
-                    <Toggle
-                      on={sk.enabled}
-                      busy={busyId === sk.id}
-                      disabled={!canManage}
-                      onClick={() => toggle(sk)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
