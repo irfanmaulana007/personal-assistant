@@ -14,9 +14,10 @@ import (
 // idempotent via ON CONFLICT (key) DO UPDATE. NewPostgres wires the call.
 func (s *PostgresStore) seedSkills(ctx context.Context) error {
 	// Remove skills that were retired from the product (and their per-user toggles).
+	// Only the global (code-seeded) row is pruned — project forks are user data.
 	for _, key := range prunedSkillKeys {
 		var id int64
-		err := s.pool.QueryRow(ctx, `SELECT id FROM skills WHERE key = $1`, key).Scan(&id)
+		err := s.pool.QueryRow(ctx, `SELECT id FROM skills WHERE key = $1 AND project_id IS NULL`, key).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
@@ -32,9 +33,9 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 	}
 	for _, sk := range skillSeed {
 		if _, err := s.pool.Exec(ctx,
-			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)
-			 ON CONFLICT (key) DO UPDATE SET
+			`INSERT INTO skills (key, name, description, prompt, category, default_enabled, sort_order, project_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)
+			 ON CONFLICT (key) WHERE project_id IS NULL DO UPDATE SET
 			   name = EXCLUDED.name,
 			   description = EXCLUDED.description,
 			   -- Preserve an admin-customized prompt; only re-seed the default
@@ -53,10 +54,14 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 
 // --- Skills ---
 
+// ListSkills returns the global (code-seeded) skill catalog only — project
+// forks are excluded. It backs the boot seed, the self-tuner/auto-triage
+// (which key skills by their stable global key), and the superadmin skill
+// scope.
 func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by
-		 FROM skills ORDER BY sort_order ASC, id ASC`)
+		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by, project_id
+		 FROM skills WHERE project_id IS NULL ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list skills: %w", err)
 	}
@@ -65,7 +70,7 @@ func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 	var out []Skill
 	for rows.Next() {
 		var sk Skill
-		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy); err != nil {
+		if err := rows.Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy, &sk.ProjectID); err != nil {
 			return nil, fmt.Errorf("scan skill: %w", err)
 		}
 		out = append(out, sk)
@@ -76,8 +81,8 @@ func (s *PostgresStore) ListSkills(ctx context.Context) ([]Skill, error) {
 func (s *PostgresStore) GetSkill(ctx context.Context, id int64) (*Skill, error) {
 	var sk Skill
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by FROM skills WHERE id = $1`, id,
-	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy)
+		`SELECT id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by, project_id FROM skills WHERE id = $1`, id,
+	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy, &sk.ProjectID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -92,10 +97,11 @@ func (s *PostgresStore) GetSkill(ctx context.Context, id int64) (*Skill, error) 
 func (s *PostgresStore) ListUserSkills(ctx context.Context, userID int64) ([]UserSkill, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.tuned_prompt, s.category, s.default_enabled, s.sort_order,
-		        s.prompt_updated_at, s.prompt_updated_by,
+		        s.prompt_updated_at, s.prompt_updated_by, s.project_id,
 		        COALESCE(us.enabled, s.default_enabled) AS effective
 		 FROM skills s
 		 LEFT JOIN user_skills us ON us.skill_id = s.id AND us.user_id = $1
+		 WHERE s.project_id IS NULL
 		 ORDER BY s.sort_order ASC, s.id ASC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list user skills: %w", err)
@@ -105,7 +111,7 @@ func (s *PostgresStore) ListUserSkills(ctx context.Context, userID int64) ([]Use
 	var out []UserSkill
 	for rows.Next() {
 		var us UserSkill
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.Enabled); err != nil {
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.ProjectID, &us.Enabled); err != nil {
 			return nil, fmt.Errorf("scan user skill: %w", err)
 		}
 		out = append(out, us)
@@ -144,7 +150,9 @@ func (s *PostgresStore) SetSkillEnabled(ctx context.Context, userID, skillID int
 // with an empty string). It never touches `prompt`, so the shipped default is
 // preserved as the reset target.
 func (s *PostgresStore) UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE skills SET tuned_prompt = $2 WHERE key = $1`, key, tuned)
+	// The self-tuner keys skills by their stable global key; scope to the global
+	// row so a project fork sharing the key is never touched.
+	tag, err := s.pool.Exec(ctx, `UPDATE skills SET tuned_prompt = $2 WHERE key = $1 AND project_id IS NULL`, key, tuned)
 	if err != nil {
 		return fmt.Errorf("update skill tuned prompt: %w", err)
 	}
@@ -173,4 +181,42 @@ func (s *PostgresStore) EnabledSkillKeys(ctx context.Context, userID int64) ([]s
 		keys = append(keys, k)
 	}
 	return keys, rows.Err()
+}
+
+// CreateProjectSkill inserts a project-owned fork of a skill. The prompt is
+// stamped as an admin customization (prompt_updated_at = now, prompt_updated_by
+// = updatedBy) so it is treated as owned by the project. tuned_prompt is left
+// empty — the self-tuner only touches global skills.
+func (s *PostgresStore) CreateProjectSkill(ctx context.Context, projectID int64, base Skill, updatedBy string) (*Skill, error) {
+	var sk Skill
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO skills (project_id, key, name, description, prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), $9)
+		 RETURNING id, key, name, description, prompt, tuned_prompt, category, default_enabled, sort_order, prompt_updated_at, prompt_updated_by, project_id`,
+		projectID, base.Key, base.Name, base.Description, base.Prompt, base.Category, base.DefaultEnabled, base.SortOrder, updatedBy,
+	).Scan(&sk.ID, &sk.Key, &sk.Name, &sk.Description, &sk.Prompt, &sk.TunedPrompt, &sk.Category, &sk.DefaultEnabled, &sk.SortOrder, &sk.PromptUpdatedAt, &sk.PromptUpdatedBy, &sk.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("create project skill: %w", err)
+	}
+	return &sk, nil
+}
+
+// DeleteProjectSkill removes a project's fork (and its per-project enable row),
+// reverting that project to the shared global skill. It only deletes a skill
+// that belongs to the given project, so a global skill can never be removed
+// through this path.
+func (s *PostgresStore) DeleteProjectSkill(ctx context.Context, projectID, skillID int64) error {
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM project_skills WHERE project_id = $1 AND skill_id = $2`, projectID, skillID); err != nil {
+		return fmt.Errorf("delete project skill toggle: %w", err)
+	}
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM skills WHERE id = $1 AND project_id = $2`, skillID, projectID)
+	if err != nil {
+		return fmt.Errorf("delete project skill: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("project skill %d not found in project %d", skillID, projectID)
+	}
+	return nil
 }
