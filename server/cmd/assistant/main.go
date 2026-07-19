@@ -17,6 +17,7 @@ import (
 	calendarsvc "github.com/irfanmaulana007/personal-assistant/server/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/activity"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/autotriage"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/bucketlist"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/calendar"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/capability/contacts"
@@ -163,6 +164,7 @@ func main() {
 	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
 	handlers = append(handlers, trellocap.New(trello.New(), settingsSvc, log))
 	handlers = append(handlers, selftune.New(db, log))
+	handlers = append(handlers, autotriage.New(db, trello.New(), settingsSvc, log))
 
 	router := capability.NewRouter(log, handlers...)
 

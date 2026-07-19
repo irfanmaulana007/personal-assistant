@@ -153,6 +153,14 @@ func (c *Client) AddCheckItem(ctx context.Context, apiKey, token, checklistID, t
 	return c.post(ctx, apiKey, token, "/checklists/"+checklistID+"/checkItems", q, nil)
 }
 
+// AddComment posts a comment to a card. Used to annotate an existing card
+// instead of creating a duplicate (e.g. a recurring failure that already has an
+// open bug).
+func (c *Client) AddComment(ctx context.Context, apiKey, token, cardID, text string) error {
+	q := url.Values{"text": {text}}
+	return c.post(ctx, apiKey, token, "/cards/"+cardID+"/actions/comments", q, nil)
+}
+
 // UpdateCard edits an existing card (title, description, list, and/or labels) and
 // returns the updated card. Only the fields set on in are sent to Trello; if in
 // changes nothing it is a no-op and the current card is returned unchanged.

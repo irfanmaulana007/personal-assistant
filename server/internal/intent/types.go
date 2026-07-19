@@ -19,6 +19,7 @@ const (
 	CapabilityImageGen   Capability = "image_gen"
 	CapabilityTrello     Capability = "trello"
 	CapabilitySelfTune   Capability = "self_tune"
+	CapabilityAutoTriage Capability = "auto_triage"
 	CapabilityHelp       Capability = "help"
 	CapabilityUnknown    Capability = "unknown"
 )
@@ -129,6 +130,14 @@ const (
 const (
 	ActionSelfTuneReview Action = "self_tune.review"
 	ActionSelfTuneApply  Action = "self_tune.apply"
+)
+
+// Auto-triage actions (scan recent failures for recurring patterns, file bug
+// cards on the Issue board with duplicate detection, and refine skill prompts)
+const (
+	ActionAutoTriageScan          Action = "auto_triage.scan"
+	ActionAutoTriageFileBug       Action = "auto_triage.file_bug"
+	ActionAutoTriageImprovePrompt Action = "auto_triage.improve_prompt"
 )
 
 const (
