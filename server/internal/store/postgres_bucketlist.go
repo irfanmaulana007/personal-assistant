@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -17,9 +18,9 @@ func (s *PostgresStore) CreateBucketItem(ctx context.Context, userID int64, titl
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO bucket_list_items (user_id, title, description, note, category, resolution_year, done, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, false, $7) RETURNING id`,
-		userID, title, description, note, category, resolutionYear, now,
+		`INSERT INTO bucket_list_items (user_id, project_id, title, description, note, category, resolution_year, done, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8) RETURNING id`,
+		userID, authctx.ProjectID(ctx), title, description, note, category, resolutionYear, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert bucket item: %w", err)
@@ -27,11 +28,12 @@ func (s *PostgresStore) CreateBucketItem(ctx context.Context, userID int64, titl
 	return &BucketItem{ID: id, Title: title, Description: description, Note: note, Category: category, ResolutionYear: resolutionYear, Done: false, CreatedAt: now}, nil
 }
 
-// ListBucketItems returns the user's items, unfinished first, newest within a group.
+// ListBucketItems returns the user's items in the active project, unfinished
+// first, newest within a group.
 func (s *PostgresStore) ListBucketItems(ctx context.Context, userID int64) ([]BucketItem, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+bucketItemCols+` FROM bucket_list_items WHERE user_id = $1
-		 ORDER BY done ASC, created_at DESC, id DESC`, userID)
+		`SELECT `+bucketItemCols+` FROM bucket_list_items WHERE user_id = $1 AND ($2 = 0 OR project_id = $2)
+		 ORDER BY done ASC, created_at DESC, id DESC`, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list bucket items: %w", err)
 	}
@@ -41,7 +43,8 @@ func (s *PostgresStore) ListBucketItems(ctx context.Context, userID int64) ([]Bu
 
 func (s *PostgresStore) GetBucketItem(ctx context.Context, userID, id int64) (*BucketItem, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT `+bucketItemCols+` FROM bucket_list_items WHERE id = $1 AND user_id = $2`, id, userID)
+		`SELECT `+bucketItemCols+` FROM bucket_list_items WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`,
+		id, userID, authctx.ProjectID(ctx))
 	g, err := pgScanBucketItem(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -58,8 +61,8 @@ func (s *PostgresStore) UpdateBucketItem(ctx context.Context, userID, id int64, 
 	note = s.enText(ctx, note)
 	category = NormalizeCategory(category)
 	_, err := s.pool.Exec(ctx,
-		`UPDATE bucket_list_items SET title = $1, description = $2, note = $3, category = $4 WHERE id = $5 AND user_id = $6`,
-		title, description, note, category, id, userID)
+		`UPDATE bucket_list_items SET title = $1, description = $2, note = $3, category = $4 WHERE id = $5 AND user_id = $6 AND ($7 = 0 OR project_id = $7)`,
+		title, description, note, category, id, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return fmt.Errorf("update bucket item: %w", err)
 	}
@@ -79,8 +82,8 @@ func (s *PostgresStore) SetBucketItemDone(ctx context.Context, userID, id int64,
 		}
 	}
 	_, err := s.pool.Exec(ctx,
-		`UPDATE bucket_list_items SET done = $1, done_at = $2 WHERE id = $3 AND user_id = $4`,
-		done, at, id, userID)
+		`UPDATE bucket_list_items SET done = $1, done_at = $2 WHERE id = $3 AND user_id = $4 AND ($5 = 0 OR project_id = $5)`,
+		done, at, id, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return fmt.Errorf("set bucket item done: %w", err)
 	}
@@ -91,8 +94,8 @@ func (s *PostgresStore) SetBucketItemDone(ctx context.Context, userID, id int64,
 // clears the flag when year is nil.
 func (s *PostgresStore) SetBucketItemResolution(ctx context.Context, userID, id int64, year *int) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE bucket_list_items SET resolution_year = $1 WHERE id = $2 AND user_id = $3`,
-		year, id, userID)
+		`UPDATE bucket_list_items SET resolution_year = $1 WHERE id = $2 AND user_id = $3 AND ($4 = 0 OR project_id = $4)`,
+		year, id, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return fmt.Errorf("set bucket item resolution: %w", err)
 	}
@@ -101,7 +104,8 @@ func (s *PostgresStore) SetBucketItemResolution(ctx context.Context, userID, id 
 
 func (s *PostgresStore) DeleteBucketItem(ctx context.Context, userID, id int64) error {
 	_, err := s.pool.Exec(ctx,
-		`DELETE FROM bucket_list_items WHERE id = $1 AND user_id = $2`, id, userID)
+		`DELETE FROM bucket_list_items WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`,
+		id, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return fmt.Errorf("delete bucket item: %w", err)
 	}

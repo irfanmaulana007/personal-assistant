@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -21,9 +22,9 @@ func (s *PostgresStore) CreateReminder(ctx context.Context, userID int64, in Rem
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO reminders (user_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, remind_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
-		userID, in.Title, in.Title, in.RepeatMode,
+		`INSERT INTO reminders (user_id, project_id, title, message, repeat_mode, times, weekdays, day_of_month, once_date, event_at, offsets, enabled, remind_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+		userID, authctx.ProjectID(ctx), in.Title, in.Title, in.RepeatMode,
 		joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.EventAt, joinInts(in.Offsets), in.Enabled,
 		now, now,
 	).Scan(&id)
@@ -41,8 +42,8 @@ func (s *PostgresStore) CreateLegacyReminder(ctx context.Context, userID int64, 
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO reminders (user_id, title, message, repeat_mode, remind_at, created_at) VALUES ($1, $2, $3, 'once', $4, $5) RETURNING id`,
-		userID, message, message, remindAt.UTC(), now,
+		`INSERT INTO reminders (user_id, project_id, title, message, repeat_mode, remind_at, created_at) VALUES ($1, $2, $3, $4, 'once', $5, $6) RETURNING id`,
+		userID, authctx.ProjectID(ctx), message, message, remindAt.UTC(), now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert reminder: %w", err)
@@ -52,17 +53,17 @@ func (s *PostgresStore) CreateLegacyReminder(ctx context.Context, userID int64, 
 
 func (s *PostgresStore) GetReminder(ctx context.Context, userID, id int64) (*Reminder, error) {
 	return pgScanReminder(s.pool.QueryRow(ctx,
-		`SELECT `+pgReminderCols+` FROM reminders WHERE id = $1 AND user_id = $2 AND cancelled = false`, id, userID))
+		`SELECT `+pgReminderCols+` FROM reminders WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3) AND cancelled = false`, id, userID, authctx.ProjectID(ctx)))
 }
 
 func (s *PostgresStore) ListReminders(ctx context.Context, userID int64, activeOnly bool) ([]Reminder, error) {
-	query := `SELECT ` + pgReminderCols + ` FROM reminders WHERE user_id = $1 AND cancelled = false`
+	query := `SELECT ` + pgReminderCols + ` FROM reminders WHERE user_id = $1 AND ($2 = 0 OR project_id = $2) AND cancelled = false`
 	if activeOnly {
 		query += ` AND enabled = true`
 	}
 	query += ` ORDER BY created_at DESC`
 
-	rows, err := s.pool.Query(ctx, query, userID)
+	rows, err := s.pool.Query(ctx, query, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list reminders: %w", err)
 	}
@@ -84,9 +85,9 @@ func (s *PostgresStore) UpdateReminder(ctx context.Context, userID, id int64, in
 	in.Title = s.enTitle(ctx, in.Title)
 	_, err := s.pool.Exec(ctx,
 		`UPDATE reminders SET title = $1, message = $2, repeat_mode = $3, times = $4, weekdays = $5, day_of_month = $6, once_date = $7, event_at = $8, offsets = $9, enabled = $10
-		 WHERE id = $11 AND user_id = $12`,
+		 WHERE id = $11 AND user_id = $12 AND ($13 = 0 OR project_id = $13)`,
 		in.Title, in.Title, in.RepeatMode, joinTimes(in.Times), joinInts(in.Weekdays), in.DayOfMonth, in.OnceDate, in.EventAt, joinInts(in.Offsets), in.Enabled,
-		id, userID,
+		id, userID, authctx.ProjectID(ctx),
 	)
 	return err
 }
@@ -94,7 +95,7 @@ func (s *PostgresStore) UpdateReminder(ctx context.Context, userID, id int64, in
 // DeleteReminder soft-deletes (cancelled = true) so the calendar reconciler can
 // remove any mirrored events before the row is finally removed.
 func (s *PostgresStore) DeleteReminder(ctx context.Context, userID, id int64) error {
-	_, err := s.pool.Exec(ctx, `UPDATE reminders SET cancelled = true, enabled = false WHERE id = $1 AND user_id = $2`, id, userID)
+	_, err := s.pool.Exec(ctx, `UPDATE reminders SET cancelled = true, enabled = false WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`, id, userID, authctx.ProjectID(ctx))
 	return err
 }
 
@@ -132,7 +133,7 @@ func (s *PostgresStore) ClearReminderCalendar(ctx context.Context, id int64) err
 }
 
 func (s *PostgresStore) SetReminderEnabled(ctx context.Context, userID, id int64, enabled bool) error {
-	_, err := s.pool.Exec(ctx, `UPDATE reminders SET enabled = $1 WHERE id = $2 AND user_id = $3`, enabled, id, userID)
+	_, err := s.pool.Exec(ctx, `UPDATE reminders SET enabled = $1 WHERE id = $2 AND user_id = $3 AND ($4 = 0 OR project_id = $4)`, enabled, id, userID, authctx.ProjectID(ctx))
 	return err
 }
 
@@ -150,9 +151,9 @@ func (s *PostgresStore) GetDueReminders(ctx context.Context, userID int64) ([]Re
 	rows, err := s.pool.Query(ctx,
 		`SELECT `+pgReminderCols+`
 		 FROM reminders
-		 WHERE user_id = $1 AND times = '' AND remind_at <= $2 AND notified = false AND cancelled = false
+		 WHERE user_id = $1 AND ($3 = 0 OR project_id = $3) AND times = '' AND remind_at <= $2 AND notified = false AND cancelled = false
 		 ORDER BY remind_at ASC`,
-		userID, time.Now().UTC(),
+		userID, time.Now().UTC(), authctx.ProjectID(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get due reminders: %w", err)
@@ -167,7 +168,7 @@ func (s *PostgresStore) MarkReminderNotified(ctx context.Context, id int64) erro
 }
 
 func (s *PostgresStore) CancelReminder(ctx context.Context, userID, id int64) error {
-	_, err := s.pool.Exec(ctx, `UPDATE reminders SET cancelled = true WHERE id = $1 AND user_id = $2`, id, userID)
+	_, err := s.pool.Exec(ctx, `UPDATE reminders SET cancelled = true WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`, id, userID, authctx.ProjectID(ctx))
 	return err
 }
 

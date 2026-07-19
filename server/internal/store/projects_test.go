@@ -5,6 +5,8 @@ package store
 import (
 	"context"
 	"testing"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 )
 
 func findFeatureID(t *testing.T, s *PostgresStore, key string) int64 {
@@ -111,6 +113,60 @@ func TestProjectsAndMembersRoundTrip(t *testing.T) {
 	}
 	if got, _ := s.GetProject(ctx, p.ID); got != nil {
 		t.Fatalf("project should be deleted, got %+v", got)
+	}
+}
+
+// TestCrossProjectDataIsolation verifies that domain rows written under one
+// active project are invisible under another, while a project-less context
+// (project id 0, e.g. the scheduler) still sees everything for the owner.
+func TestCrossProjectDataIsolation(t *testing.T) {
+	s := newTestPostgres(t)
+	base := context.Background()
+	u, _ := s.CreateUser(base, "iso@example.com", "h", GlobalRoleMember)
+	pA, _ := s.CreateProject(base, "A", u.ID)
+	pB, _ := s.CreateProject(base, "B", u.ID)
+	ctxA := authctx.WithProjectID(base, pA.ID)
+	ctxB := authctx.WithProjectID(base, pB.ID)
+
+	// Bucket item written in project A.
+	item, err := s.CreateBucketItem(ctxA, u.ID, "A-only", "", "", CategoryOther, nil)
+	if err != nil {
+		t.Fatalf("create bucket item: %v", err)
+	}
+	if got, _ := s.ListBucketItems(ctxA, u.ID); len(got) != 1 {
+		t.Fatalf("project A should see its item, got %d", len(got))
+	}
+	if got, _ := s.ListBucketItems(ctxB, u.ID); len(got) != 0 {
+		t.Fatalf("project B must NOT see project A's item, got %d", len(got))
+	}
+	if got, _ := s.GetBucketItem(ctxB, u.ID, item.ID); got != nil {
+		t.Fatal("GetBucketItem from project B must return nil for A's item")
+	}
+	// A project-less context (scheduler/tests) sees all of the owner's rows.
+	if got, _ := s.ListBucketItems(base, u.ID); len(got) != 1 {
+		t.Fatalf("project-less context should see the item, got %d", len(got))
+	}
+
+	// Notes exhibit the same isolation.
+	if _, err := s.CreateNote(ctxA, u.ID, "secret", "in A", ""); err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+	if got, _ := s.ListNotes(ctxB, u.ID, ""); len(got) != 0 {
+		t.Fatalf("project B must not see project A's note, got %d", len(got))
+	}
+	if got, _ := s.ListNotes(ctxA, u.ID, ""); len(got) != 1 {
+		t.Fatalf("project A should see its note, got %d", len(got))
+	}
+
+	// Reminders too: created in B, invisible in A.
+	if _, err := s.CreateReminder(ctxB, u.ID, ReminderInput{Title: "B standup", RepeatMode: "daily", Times: []string{"09:00"}, Enabled: true}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+	if got, _ := s.ListReminders(ctxA, u.ID, false); len(got) != 0 {
+		t.Fatalf("project A must not see project B's reminder, got %d", len(got))
+	}
+	if got, _ := s.ListReminders(ctxB, u.ID, false); len(got) != 1 {
+		t.Fatalf("project B should see its reminder, got %d", len(got))
 	}
 }
 

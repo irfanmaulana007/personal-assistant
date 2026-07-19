@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -13,9 +14,9 @@ func (s *PostgresStore) CreateNote(ctx context.Context, userID int64, title, con
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO notes (user_id, title, content, tags, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		userID, title, content, tags, now, now,
+		`INSERT INTO notes (user_id, project_id, title, content, tags, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		userID, authctx.ProjectID(ctx), title, content, tags, now, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert note: %w", err)
@@ -33,7 +34,7 @@ func (s *PostgresStore) CreateNote(ctx context.Context, userID int64, title, con
 func (s *PostgresStore) GetNote(ctx context.Context, userID, id int64) (*Note, error) {
 	var n Note
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE id = $1 AND user_id = $2`, id, userID,
+		`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`, id, userID, authctx.ProjectID(ctx),
 	).Scan(&n.ID, &n.Title, &n.Content, &n.Tags, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get note: %w", err)
@@ -43,14 +44,14 @@ func (s *PostgresStore) GetNote(ctx context.Context, userID, id int64) (*Note, e
 
 func (s *PostgresStore) UpdateNote(ctx context.Context, userID, id int64, title, content, tags string) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = $4 WHERE id = $5 AND user_id = $6`,
-		title, content, tags, time.Now().UTC(), id, userID,
+		`UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = $4 WHERE id = $5 AND user_id = $6 AND ($7 = 0 OR project_id = $7)`,
+		title, content, tags, time.Now().UTC(), id, userID, authctx.ProjectID(ctx),
 	)
 	return err
 }
 
 func (s *PostgresStore) DeleteNote(ctx context.Context, userID, id int64) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM notes WHERE id = $1 AND user_id = $2`, id, userID)
+	_, err := s.pool.Exec(ctx, `DELETE FROM notes WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`, id, userID, authctx.ProjectID(ctx))
 	return err
 }
 
@@ -63,13 +64,13 @@ func (s *PostgresStore) ListNotes(ctx context.Context, userID int64, tag string)
 	if tag != "" {
 		rows, err = s.pool.Query(ctx,
 			`SELECT id, title, content, tags, created_at, updated_at FROM notes
-			 WHERE user_id = $1 AND ',' || tags || ',' LIKE '%,' || $2 || ',%'
-			 ORDER BY updated_at DESC`, userID, tag,
+			 WHERE user_id = $1 AND ',' || tags || ',' LIKE '%,' || $2 || ',%' AND ($3 = 0 OR project_id = $3)
+			 ORDER BY updated_at DESC`, userID, tag, authctx.ProjectID(ctx),
 		)
 	} else {
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE user_id = $1 ORDER BY updated_at DESC`,
-			userID,
+			`SELECT id, title, content, tags, created_at, updated_at FROM notes WHERE user_id = $1 AND ($2 = 0 OR project_id = $2) ORDER BY updated_at DESC`,
+			userID, authctx.ProjectID(ctx),
 		)
 	}
 	if err != nil {
@@ -89,8 +90,8 @@ func (s *PostgresStore) SearchNotes(ctx context.Context, userID int64, query str
 	}
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, title, content, tags, created_at, updated_at FROM notes
-		 WHERE search @@ websearch_to_tsquery('simple', $1) AND user_id = $2
-		 ORDER BY ts_rank(search, websearch_to_tsquery('simple', $1)) DESC`, query, userID,
+		 WHERE search @@ websearch_to_tsquery('simple', $1) AND user_id = $2 AND ($3 = 0 OR project_id = $3)
+		 ORDER BY ts_rank(search, websearch_to_tsquery('simple', $1)) DESC`, query, userID, authctx.ProjectID(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search notes: %w", err)

@@ -6,21 +6,22 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
 // CreateTrip starts a new trip and makes it the user's active trip (any
 // previously active trips are deactivated).
 func (s *PostgresStore) CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error) {
-	if _, err := s.pool.Exec(ctx, `UPDATE trips SET active = false WHERE user_id = $1`, userID); err != nil {
+	if _, err := s.pool.Exec(ctx, `UPDATE trips SET active = false WHERE user_id = $1 AND ($2 = 0 OR project_id = $2)`, userID, authctx.ProjectID(ctx)); err != nil {
 		return nil, fmt.Errorf("deactivate trips: %w", err)
 	}
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO trips (user_id, name, destination, budget, currency, active, started_at)
-		 VALUES ($1, $2, $3, $4, $5, true, $6) RETURNING id`,
-		userID, name, destination, budget, currency, now,
+		`INSERT INTO trips (user_id, project_id, name, destination, budget, currency, active, started_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, true, $7) RETURNING id`,
+		userID, authctx.ProjectID(ctx), name, destination, budget, currency, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert trip: %w", err)
@@ -47,21 +48,21 @@ func (s *PostgresStore) pgScanTrip(row pgx.Row) (*Trip, error) {
 func (s *PostgresStore) GetTrip(ctx context.Context, userID, id int64) (*Trip, error) {
 	return s.pgScanTrip(s.pool.QueryRow(ctx,
 		`SELECT id, name, destination, budget, currency, active, started_at FROM trips
-		 WHERE user_id = $1 AND id = $2`, userID, id))
+		 WHERE user_id = $1 AND id = $2 AND ($3 = 0 OR project_id = $3)`, userID, id, authctx.ProjectID(ctx)))
 }
 
 // ActiveTrip returns the user's current active trip, or nil if none.
 func (s *PostgresStore) ActiveTrip(ctx context.Context, userID int64) (*Trip, error) {
 	return s.pgScanTrip(s.pool.QueryRow(ctx,
 		`SELECT id, name, destination, budget, currency, active, started_at FROM trips
-		 WHERE user_id = $1 AND active = true ORDER BY started_at DESC LIMIT 1`, userID))
+		 WHERE user_id = $1 AND active = true AND ($2 = 0 OR project_id = $2) ORDER BY started_at DESC LIMIT 1`, userID, authctx.ProjectID(ctx)))
 }
 
 // FindTrip returns the user's most recent trip matching name (case-insensitive), or nil.
 func (s *PostgresStore) FindTrip(ctx context.Context, userID int64, name string) (*Trip, error) {
 	return s.pgScanTrip(s.pool.QueryRow(ctx,
 		`SELECT id, name, destination, budget, currency, active, started_at FROM trips
-		 WHERE user_id = $1 AND name ILIKE $2 ORDER BY started_at DESC LIMIT 1`, userID, "%"+name+"%"))
+		 WHERE user_id = $1 AND name ILIKE $2 AND ($3 = 0 OR project_id = $3) ORDER BY started_at DESC LIMIT 1`, userID, "%"+name+"%", authctx.ProjectID(ctx)))
 }
 
 func (s *PostgresStore) AddExpense(ctx context.Context, userID, tripID int64, amount float64, currency, category, note string, spentAt time.Time) (*TripExpense, error) {
@@ -70,9 +71,9 @@ func (s *PostgresStore) AddExpense(ctx context.Context, userID, tripID int64, am
 	}
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO trip_expenses (user_id, trip_id, amount, currency, category, note, spent_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		userID, tripID, amount, currency, category, note, spentAt.UTC(),
+		`INSERT INTO trip_expenses (user_id, project_id, trip_id, amount, currency, category, note, spent_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		userID, authctx.ProjectID(ctx), tripID, amount, currency, category, note, spentAt.UTC(),
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert expense: %w", err)
@@ -86,7 +87,7 @@ func (s *PostgresStore) GetTripExpense(ctx context.Context, userID, id int64) (*
 	var e TripExpense
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, trip_id, amount, currency, category, note, spent_at FROM trip_expenses
-		 WHERE user_id = $1 AND id = $2`, userID, id,
+		 WHERE user_id = $1 AND id = $2 AND ($3 = 0 OR project_id = $3)`, userID, id, authctx.ProjectID(ctx),
 	).Scan(&e.ID, &e.TripID, &e.Amount, &e.Currency, &e.Category, &e.Note, &e.SpentAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -100,7 +101,7 @@ func (s *PostgresStore) GetTripExpense(ctx context.Context, userID, id int64) (*
 func (s *PostgresStore) ListTripExpenses(ctx context.Context, userID, tripID int64) ([]TripExpense, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, trip_id, amount, currency, category, note, spent_at FROM trip_expenses
-		 WHERE user_id = $1 AND trip_id = $2 ORDER BY spent_at DESC`, userID, tripID)
+		 WHERE user_id = $1 AND trip_id = $2 AND ($3 = 0 OR project_id = $3) ORDER BY spent_at DESC`, userID, tripID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list expenses: %w", err)
 	}

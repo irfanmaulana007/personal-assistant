@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -13,9 +14,9 @@ func (s *PostgresStore) CreateContact(ctx context.Context, userID int64, name, p
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO contacts (user_id, name, phone, email, note, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		userID, name, phone, email, note, now,
+		`INSERT INTO contacts (user_id, project_id, name, phone, email, note, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		userID, authctx.ProjectID(ctx), name, phone, email, note, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert contact: %w", err)
@@ -28,8 +29,8 @@ func (s *PostgresStore) CreateContact(ctx context.Context, userID int64, name, p
 func (s *PostgresStore) GetContact(ctx context.Context, userID, id int64) (*Contact, error) {
 	var c Contact
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, phone, email, note, created_at FROM contacts WHERE id = $1 AND user_id = $2`,
-		id, userID,
+		`SELECT id, name, phone, email, note, created_at FROM contacts WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`,
+		id, userID, authctx.ProjectID(ctx),
 	).Scan(&c.ID, &c.Name, &c.Phone, &c.Email, &c.Note, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -52,13 +53,13 @@ func (s *PostgresStore) SearchContacts(ctx context.Context, userID int64, query 
 	if query == "" {
 		rows, err = s.pool.Query(ctx,
 			`SELECT id, name, phone, email, note, created_at FROM contacts
-			 WHERE user_id = $1 ORDER BY name ASC`, userID)
+			 WHERE user_id = $1 AND ($2 = 0 OR project_id = $2) ORDER BY name ASC`, userID, authctx.ProjectID(ctx))
 	} else {
 		like := "%" + query + "%"
 		rows, err = s.pool.Query(ctx,
 			`SELECT id, name, phone, email, note, created_at FROM contacts
-			 WHERE user_id = $1 AND (name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2 OR note ILIKE $2)
-			 ORDER BY name ASC`, userID, like)
+			 WHERE user_id = $1 AND (name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2 OR note ILIKE $2) AND ($3 = 0 OR project_id = $3)
+			 ORDER BY name ASC`, userID, like, authctx.ProjectID(ctx))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("search contacts: %w", err)
