@@ -72,6 +72,9 @@ change in both before considering it done.
   `staging` branch (`gh pr create --base staging …`) and merge it there. Do
   **not** open PRs against `main` or commit to `main` directly. `main` is the
   released branch and is only ever updated by promoting `staging` to it.
+- **Always open PRs as ready for review, never as a draft.** Do not pass
+  `--draft` to `gh pr create`; every PR should be immediately reviewable. If a
+  PR is somehow opened as a draft, mark it ready with `gh pr ready <n>`.
 - **The one exception is a release.** `main` is advanced solely by running the
   `/release` command (see `.claude/commands/release.md`), which bumps the app
   version, opens the `staging → main` PR, merges it, and tags the version. Only
