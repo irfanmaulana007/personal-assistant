@@ -34,7 +34,8 @@ func (s *PostgresStore) seedFeatures(ctx context.Context) error {
 		for _, sk := range skeys {
 			if _, err := s.pool.Exec(ctx,
 				`INSERT INTO feature_skills (feature_id, skill_id)
-				 SELECT f.id, s.id FROM features f, skills s WHERE f.key = $1 AND s.key = $2
+				 SELECT f.id, s.id FROM features f, skills s
+				 WHERE f.key = $1 AND s.key = $2 AND s.project_id IS NULL
 				 ON CONFLICT DO NOTHING`,
 				fkey, sk,
 			); err != nil {
@@ -146,7 +147,10 @@ func (s *PostgresStore) DeleteProject(ctx context.Context, id int64) error {
 			return fmt.Errorf("delete %s: %w", t, err)
 		}
 	}
-	for _, t := range []string{"project_skills", "project_features", "project_members", "whatsapp_mappings"} {
+	// `skills` here only ever matches this project's forks — global rows carry a
+	// NULL project_id, so the shared catalog is untouched. project_skills is
+	// cleared first so no toggle row dangles past its skill.
+	for _, t := range []string{"project_skills", "skills", "project_features", "project_members", "whatsapp_mappings"} {
 		if _, err := tx.Exec(ctx, fmt.Sprintf(`DELETE FROM %s WHERE project_id = $1`, t), id); err != nil {
 			return fmt.Errorf("delete %s: %w", t, err)
 		}
@@ -237,18 +241,31 @@ func (s *PostgresStore) CountProjectAdmins(ctx context.Context, projectID int64)
 // AND the feature gate (a skill under a disabled feature is off).
 const projectSkillEffective = `(COALESCE(ps.enabled, s.default_enabled) AND COALESCE(pf.enabled, f.default_enabled, true))`
 
+// projectSkillJoins resolves a project's effective skill set. `gt` is the global
+// "twin": for a global skill it is the row itself; for a project fork it is the
+// global skill sharing its key (NULL for a fork with no global twin). The
+// feature gate is keyed off the twin so a fork inherits its global skill's
+// feature. project_skills carries the per-project enable flag for both scopes.
 const projectSkillJoins = `
 	 FROM skills s
+	 LEFT JOIN skills gt ON gt.project_id IS NULL AND gt.key = s.key
 	 LEFT JOIN project_skills ps ON ps.skill_id = s.id AND ps.project_id = $1
-	 LEFT JOIN feature_skills fs ON fs.skill_id = s.id
+	 LEFT JOIN feature_skills fs ON fs.skill_id = gt.id
 	 LEFT JOIN features f ON f.id = fs.feature_id
 	 LEFT JOIN project_features pf ON pf.feature_id = f.id AND pf.project_id = $1`
+
+// projectSkillScope restricts a listing to the project's own forks plus every
+// global skill not shadowed by a fork of the same key in that project.
+const projectSkillScope = `
+	 WHERE (s.project_id IS NULL OR s.project_id = $1)
+	   AND NOT (s.project_id IS NULL AND EXISTS (
+	         SELECT 1 FROM skills o WHERE o.project_id = $1 AND o.key = s.key))`
 
 func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.tuned_prompt, s.category, s.default_enabled, s.sort_order,
-		        s.prompt_updated_at, s.prompt_updated_by, `+projectSkillEffective+` AS effective`+
-			projectSkillJoins+`
+		        s.prompt_updated_at, s.prompt_updated_by, s.project_id, `+projectSkillEffective+` AS effective`+
+			projectSkillJoins+projectSkillScope+`
 		 ORDER BY s.sort_order ASC, s.id ASC`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project skills: %w", err)
@@ -258,7 +275,7 @@ func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) 
 	var out []UserSkill
 	for rows.Next() {
 		var us UserSkill
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.Enabled); err != nil {
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.ProjectID, &us.Enabled); err != nil {
 			return nil, fmt.Errorf("scan project skill: %w", err)
 		}
 		out = append(out, us)
@@ -277,8 +294,8 @@ func (s *PostgresStore) SetProjectSkillEnabled(ctx context.Context, projectID, s
 
 func (s *PostgresStore) EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT s.key`+projectSkillJoins+`
-		 WHERE `+projectSkillEffective+` = true`, projectID)
+		`SELECT s.key`+projectSkillJoins+projectSkillScope+`
+		   AND `+projectSkillEffective+` = true`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("enabled project skill keys: %w", err)
 	}

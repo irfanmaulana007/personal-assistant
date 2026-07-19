@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { getAdminOverview } from '../../api/client';
 import { formatTokens } from '../../lib/format';
@@ -14,6 +15,7 @@ import type { AdminOverview, ProjectOverviewRow } from '../../types';
 // (last 30 days) is decided by the server when no from/to is passed.
 export function ProjectsOverview() {
   const { formatMoney } = usePreferences();
+  const navigate = useNavigate();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,34 +120,56 @@ export function ProjectsOverview() {
                       <th className="pb-2 text-right font-medium">Requests</th>
                       <th className="pb-2 text-right font-medium">Tokens</th>
                       <th className="pb-2 text-right font-medium">Est. cost</th>
+                      <th className="pb-2 font-medium" aria-label="Open dashboard" />
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((p) => (
-                      <tr
-                        key={p.project_id}
-                        className="border-b border-gray-50 last:border-0 dark:border-gray-800"
-                      >
-                        <td className="py-3 font-medium text-gray-800 dark:text-gray-100">
-                          {p.name}
-                        </td>
-                        <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                          {p.member_count.toLocaleString()}
-                        </td>
-                        <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                          {p.enabled_skills.toLocaleString()}
-                        </td>
-                        <td className="py-3 text-right tabular-nums text-gray-800 dark:text-gray-100">
-                          {p.requests.toLocaleString()}
-                        </td>
-                        <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                          {formatTokens(p.total_tokens)}
-                        </td>
-                        <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                          {formatMoney(p.estimated_cost_usd)}
-                        </td>
-                      </tr>
-                    ))}
+                    {rows.map((p) => {
+                      const open = () =>
+                        navigate(`/dashboard/projects/${p.project_id}`, {
+                          state: { name: p.name },
+                        });
+                      return (
+                        <tr
+                          key={p.project_id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={open}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              open();
+                            }
+                          }}
+                          title={`Open ${p.name} dashboard`}
+                          className="group cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none dark:border-gray-800 dark:hover:bg-gray-700/40 dark:focus:bg-gray-700/40"
+                        >
+                          <td className="py-3 font-medium text-gray-800 dark:text-gray-100">
+                            {p.name}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                            {p.member_count.toLocaleString()}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                            {p.enabled_skills.toLocaleString()}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-gray-800 dark:text-gray-100">
+                            {p.requests.toLocaleString()}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                            {formatTokens(p.total_tokens)}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                            {formatMoney(p.estimated_cost_usd)}
+                          </td>
+                          <td className="py-3 pl-3 text-right">
+                            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-400 transition group-hover:text-indigo-700 dark:text-gray-500 dark:group-hover:text-indigo-400">
+                              View <span aria-hidden>→</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

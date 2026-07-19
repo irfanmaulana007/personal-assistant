@@ -310,6 +310,70 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	s.handleListMembers(w, r)
 }
 
+// handleCreateMember creates a brand-new user account and adds them to the
+// project in one step. This lets a project admin onboard someone who has no
+// account yet (handleAddMember only attaches an existing user). The created
+// user always gets the global "member" role — a project admin cannot mint a
+// global superadmin — while appointing them a *project* admin stays superadmin
+// only, matching handleAddMember.
+func (s *Server) handleCreateMember(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	role := strings.ToLower(strings.TrimSpace(req.Role))
+	if role == "" {
+		role = store.ProjectRoleMember
+	}
+	if role != store.ProjectRoleAdmin && role != store.ProjectRoleMember {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+		return
+	}
+	if role == store.ProjectRoleAdmin && !s.isSuperadmin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only a superadmin can appoint a project admin"})
+		return
+	}
+	if msg := validateCredentials(credentials{Email: req.Email, Password: req.Password}); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	existing, err := s.store.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "a user with that email already exists"})
+		return
+	}
+	user, err := s.createUser(r, email, req.Password, store.GlobalRoleMember)
+	if err != nil {
+		s.log.Error("create member user", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		return
+	}
+	// Unlike handleCreateUser, we do NOT provision a personal project here: the
+	// user is created from within a project and is added to it right below, so
+	// they're never stranded with zero projects. Creating an extra personal
+	// project would be a surprise side effect of onboarding someone to a project.
+	if err := s.store.AddProjectMember(r.Context(), pid, user.ID, role); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to add member"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "member_create", user.Email, map[string]any{"role": role})
+	s.handleListMembers(w, r)
+}
+
 // handleUpdateMember changes a member's project role. Promoting to or demoting
 // from admin requires superadmin; the last admin cannot be demoted.
 func (s *Server) handleUpdateMember(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +524,131 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAudit(ctx, pid, claims, "feature_toggle", f.Key, map[string]any{"enabled": req.Enabled})
 	s.handleListFeatures(w, r)
+}
+
+// --- Per-project skills (path-scoped: manage a specific project's skills) ---
+
+type projectSkillResp struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	Enabled     bool   `json:"enabled"`
+}
+
+func (s *Server) handleProjectSkills(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, false)
+	if !ok {
+		return
+	}
+	list, err := s.store.ListProjectSkills(r.Context(), pid)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load skills"})
+		return
+	}
+	out := make([]projectSkillResp, 0, len(list))
+	for _, u := range list {
+		out = append(out, projectSkillResp{
+			ID: u.ID, Key: u.Key, Name: u.Name, Description: u.Description,
+			Category: u.Category, Enabled: u.Enabled,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetProjectSkill enables/disables a skill for a specific project (by
+// path). Requires project admin (or superadmin) on that project.
+func (s *Server) handleSetProjectSkill(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	skillID, err := strconv.ParseInt(r.PathValue("skillId"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill id"})
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	sk, err := s.store.GetSkill(r.Context(), skillID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if sk == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+		return
+	}
+	if err := s.store.SetProjectSkillEnabled(r.Context(), pid, skillID, req.Enabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "skill_toggle", sk.Key, map[string]any{"enabled": req.Enabled})
+	s.handleProjectSkills(w, r)
+}
+
+// --- Per-project features (path-scoped) ---
+
+func (s *Server) handleProjectFeatures(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, false)
+	if !ok {
+		return
+	}
+	feats, err := s.store.ListProjectFeatures(r.Context(), pid)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load features"})
+		return
+	}
+	out := make([]projectFeatureResp, 0, len(feats))
+	for _, f := range feats {
+		out = append(out, projectFeatureResp{
+			ID: f.ID, Key: f.Key, Name: f.Name, Description: f.Description,
+			Enabled: f.Enabled, SkillKeys: f.SkillKeys,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetProjectFeature enables/disables a feature for a specific project (by
+// path); disabling cascades to its skills. Requires project admin / superadmin.
+func (s *Server) handleSetProjectFeature(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	featureID, err := strconv.ParseInt(r.PathValue("featureId"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid feature id"})
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	f, err := s.store.GetFeature(r.Context(), featureID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if f == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "feature not found"})
+		return
+	}
+	if err := s.store.SetProjectFeatureEnabled(r.Context(), pid, featureID, req.Enabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update feature"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "feature_toggle", f.Key, map[string]any{"enabled": req.Enabled})
+	s.handleProjectFeatures(w, r)
 }
 
 // --- Audit ---

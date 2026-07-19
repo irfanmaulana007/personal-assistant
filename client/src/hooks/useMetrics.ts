@@ -2,7 +2,14 @@ import { useState, useEffect } from 'react';
 import { getUsage } from '../api/client';
 import type { UsageStats, ChannelValue } from '../types';
 
-export function useMetrics(from: string, to: string, platforms: ChannelValue[]) {
+// projectId scopes the fetch to a specific project (superadmin per-project
+// dashboard). When omitted, the server uses the caller's active project.
+export function useMetrics(
+  from: string,
+  to: string,
+  platforms: ChannelValue[],
+  projectId?: number,
+) {
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,7 +20,7 @@ export function useMetrics(from: string, to: string, platforms: ChannelValue[]) 
 
   useEffect(() => {
     let active = true;
-    getUsage(from, to, platforms)
+    getUsage(from, to, platforms, projectId)
       .then((s) => {
         if (active) {
           setStats(s);
@@ -30,7 +37,7 @@ export function useMetrics(from: string, to: string, platforms: ChannelValue[]) 
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, platformKey]);
+  }, [from, to, platformKey, projectId]);
 
   return { stats, loading, error };
 }

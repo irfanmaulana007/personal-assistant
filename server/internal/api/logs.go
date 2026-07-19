@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -206,9 +207,14 @@ func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 		cursor = v
 	}
 
+	// Scope to the active project (project admins only see their project's logs;
+	// a superadmin viewing a project sees that project's logs).
+	projectID := authctx.ProjectID(r.Context())
+
 	// Fetch one extra row to know whether a further page exists.
 	traces, err := s.store.ListTraces(r.Context(), store.TraceFilter{
 		Platforms:   validPlatforms(r.URL.Query().Get("platform")),
+		ProjectID:   projectID,
 		From:        from,
 		To:          to.AddDate(0, 0, 1),
 		Limit:       limit + 1,
@@ -247,6 +253,14 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
+	}
+	// A project admin may only open a trace from their active project; a
+	// superadmin may open any.
+	if !s.isSuperadmin(r) {
+		if pid := authctx.ProjectID(r.Context()); pid != 0 && t.ProjectID != pid {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, s.traceToResp(r.Context(), t, true))
 }
