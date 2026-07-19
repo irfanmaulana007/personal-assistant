@@ -511,6 +511,18 @@ type UserModelUsage struct {
 	Errors           int
 }
 
+// ProjectModelUsage is per-project, per-model usage — used to compute per-project
+// cost for the superadmin cross-project overview (pricing applied in the API
+// layer, like UserModelUsage).
+type ProjectModelUsage struct {
+	ProjectID        int64
+	Model            string
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 // UsageUser is a per-user usage row for the dashboard's Users section (name and
 // cost are filled in by the API layer).
 type UsageUser struct {
@@ -628,7 +640,7 @@ type DataStore interface {
 	// Projects (the tenancy boundary)
 	CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error)
 	GetProject(ctx context.Context, id int64) (*Project, error)
-	ListProjects(ctx context.Context) ([]Project, error)                          // all projects (superadmin)
+	ListProjects(ctx context.Context) ([]Project, error)                             // all projects (superadmin)
 	ListProjectsForUser(ctx context.Context, userID int64) ([]ProjectSummary, error) // projects the user belongs to
 	UpdateProjectName(ctx context.Context, id int64, name string) error
 	DeleteProject(ctx context.Context, id int64) error // hard-deletes the project and every row scoped to it
@@ -805,6 +817,10 @@ type LogStore interface {
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error)
 	UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error)
 	UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error)
+	// UsageByProject aggregates trace usage per (project, model) over [from, to),
+	// for the superadmin cross-project overview. Traces are tagged with their
+	// project_id at write time.
+	UsageByProject(ctx context.Context, from, to time.Time) ([]ProjectModelUsage, error)
 
 	// Lifecycle
 	Close() error
