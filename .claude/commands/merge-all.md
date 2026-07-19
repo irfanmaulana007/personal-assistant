@@ -6,6 +6,27 @@ Merge every open pull request in this repository, one at a time, making sure eac
 merge is clean before moving to the next. Resolve any conflicts on the PR's own
 branch, then merge. Repeat until there are no open PRs left.
 
+When a merged PR came from `/trello-feat` or `/trello-fix`, **move its Trello
+card to the `Test` list** once it lands in `staging` — merging to `staging` is
+the signal that the work is ready to test. This is the middle of the card
+lifecycle: `In Progress` (work started) → **`Test` (merged to `staging`, this
+command)** → `Done` (released to `main`, via `/release`).
+
+## Fixed Trello targets
+
+Trello-sourced PRs carry their card link — a `**Trello card:** <url>` line in the
+PR body and a `Trello: <url>` trailer on the commit. When one merges, move its
+card to the `Test` list of **its own board**:
+
+- Board **Task Management** (`6a54dd8eecaab3bd510528ba`) → `Test`
+  `6a5c1f75a5a7d68de5e833d7`
+- Board **Issue** (`6a54edaae21957ab935c81f6`) → `Test`
+  `6a5c1f63aa5376b11ff62dda`
+
+Use the globally-configured `trello` MCP server (`get_card`, `move_card`,
+`add_comment`, …). If those tools aren't loaded, don't fail the merge — just note
+which card should move to `Test` and continue.
+
 **No human review is required. Force-merge every open PR** — this repo's PRs are
 self-authored, so do not wait for approvals or treat a missing review as a
 blocker. Merge drafts too: mark a draft ready with `gh pr ready <number>` right
@@ -82,15 +103,35 @@ conflict or a genuinely failing required check (not a missing review).
       report it rather than force-merging. A missing or absent review is NOT a
       reason to stop — force-merge regardless of review state.
 
-3. **After each successful merge**, return to `main` locally and pull so the next
-   conflict resolution is based on the latest code:
+3. **After each successful merge, move its Trello card to `Test`** (if it has
+   one). The `/trello-feat` and `/trello-fix` PRs carry a Trello card link; other
+   PRs won't.
+
+   a. Read the card link from the just-merged PR:
+
+      ```
+      gh pr view <number> --json body,commits \
+        | grep -oiE 'https://trello\.com/c/[A-Za-z0-9]+' | head -n1
+      ```
+
+      If there is no match, this PR is not Trello-sourced — skip this step for it.
+
+   b. Extract the card's shortLink (the segment after `/c/`) and `get_card` it to
+      read its `idBoard`, then `move_card` it into the `Test` list of that board
+      (see "## Fixed Trello targets"). Optionally `add_comment`, e.g. `Merged to
+      staging in PR <url>`. If the `trello` MCP tools aren't available, note which
+      card should move to `Test` and continue — a Trello hiccup must never block
+      or reverse a merge.
+
+4. **Then return to `main` locally and pull** so the next conflict resolution is
+   based on the latest code:
 
    ```
    git checkout main
    git pull origin main
    ```
 
-4. **Repeat** from step 1 until `gh pr list --state open` returns nothing.
+5. **Repeat** from step 1 until `gh pr list --state open` returns nothing.
 
 ## Rules
 
@@ -105,5 +146,10 @@ conflict or a genuinely failing required check (not a missing review).
 - When resolving conflicts, build and test before pushing. If the build or tests
   fail after a resolution you cannot fix confidently, stop and report the PR and
   the failure instead of merging.
+- After a Trello-sourced PR merges, move its card to `Test` — but this is
+  best-effort: if the card can't be found or the `trello` tools are unavailable,
+  note it and keep going. Never let a Trello step block, reverse, or delay a
+  merge.
 - Report a running summary: which PRs merged cleanly, which needed conflict
-  resolution, and any that were skipped and why.
+  resolution, which Trello cards moved to `Test`, and any that were skipped and
+  why.
