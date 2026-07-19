@@ -146,7 +146,7 @@ function UsersCard({
 
       <AddUserForm
         busy={busy}
-        onAdd={(email, password, role) => run(() => createUser(email, password, role))}
+        onAdd={(email, password) => run(() => createUser(email, password, 'superadmin'))}
       />
     </div>
   );
@@ -157,19 +157,17 @@ function AddUserForm({
   onAdd,
 }: {
   busy: boolean;
-  onAdd: (email: string, password: string, role: Role) => void;
+  onAdd: (email: string, password: string) => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>('member');
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() && password.length >= 8) {
-      onAdd(email.trim(), password, role);
+      onAdd(email.trim(), password);
       setEmail('');
       setPassword('');
-      setRole('member');
     }
   };
 
@@ -193,16 +191,12 @@ function AddUserForm({
         autoComplete="new-password"
         className={`${inputClass} w-44`}
       />
-      <select value={role} onChange={(e) => setRole(e.target.value as Role)} className={inputClass}>
-        <option value="member">member</option>
-        <option value="superadmin">superadmin</option>
-      </select>
       <button
         type="submit"
         disabled={busy || !email.trim() || password.length < 8}
         className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Add user
+        Add superadmin
       </button>
     </form>
   );
