@@ -19,7 +19,10 @@ A personal AI assistant accessible via WhatsApp (and later other platforms) that
 
 ## Non-Goals
 
-- Multi-user / multi-tenant support
+- ~~Multi-user / multi-tenant support~~ — **superseded.** The app now supports
+  multiple projects per user with Role-Based Access Control (superadmin / project
+  admin / project member) and per-project data isolation. See
+  [prd-multi-project-rbac.md](./prd-multi-project-rbac.md).
 - Public-facing service or SaaS product
 - Real-time voice or video processing
 - Replacing full-featured apps (Gmail, Google Calendar) — this is a quick-action layer

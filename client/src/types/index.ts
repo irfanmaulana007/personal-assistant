@@ -7,7 +7,13 @@ export interface ChatMessage {
   images?: string[]; // data: URLs, for images the assistant generated
 }
 
-export type Role = 'admin' | 'member';
+// Global role on the user account. 'superadmin' is unrestricted (all projects +
+// platform settings); 'member' is an ordinary user. Project-scoped roles
+// ('admin' | 'member') live on ProjectMember, not here.
+export type Role = 'superadmin' | 'member';
+
+// A user's role within a specific project.
+export type ProjectRole = 'admin' | 'member';
 
 export interface User {
   id: number;
@@ -15,6 +21,77 @@ export interface User {
   name: string;
   role: Role;
   created_at: string;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  owner_user_id: number;
+  role: ProjectRole | 'superadmin'; // caller's effective role in this project
+  member_count: number;
+  created_at: string;
+}
+
+export interface ProjectMember {
+  user_id: number;
+  email: string;
+  name: string;
+  role: ProjectRole;
+  created_at: string;
+}
+
+export interface ProjectFeature {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  skill_keys: string[];
+}
+
+export interface AuditEvent {
+  id: number;
+  action: string;
+  target: string;
+  actor_email: string;
+  metadata: string;
+  created_at: string;
+}
+
+export type WhatsAppMappingKind = 'group' | 'personal';
+
+export interface WhatsAppMapping {
+  id: number;
+  jid: string;
+  kind: WhatsAppMappingKind;
+  project_id: number;
+  role: 'superadmin' | 'admin' | 'member';
+  user_id: number;
+  label: string;
+  created_at: string;
+}
+
+export interface ProjectOverviewRow {
+  project_id: number;
+  name: string;
+  member_count: number;
+  enabled_skills: number;
+  requests: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface AdminOverview {
+  from: string;
+  to: string;
+  projects: ProjectOverviewRow[];
+  summary: {
+    requests: number;
+    total_tokens: number;
+    estimated_cost_usd: number;
+    errors: number;
+    active_users: number;
+  };
 }
 
 export interface AuthResponse {

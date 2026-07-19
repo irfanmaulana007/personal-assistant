@@ -333,10 +333,14 @@ func (h *Handler) fileBug(ctx context.Context, apiKey, token string, e map[strin
 		return fmt.Sprintf("Couldn't file the bug card: %v", err), nil
 	}
 
-	// Read-after-write: confirm the card actually exists before reporting success.
-	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+	// Read-after-write: confirm the card actually persisted on the Bug list and
+	// isn't archived before reporting success — not merely that its id resolves.
+	if got, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
 		h.log.Warn("trello verify triage bug failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to file the bug card but couldn't verify it saved on Trello: %v", err), nil
+	} else if got.Closed || got.IDList != listBug {
+		h.log.Warn("trello verify triage bug mismatch", "card", card.ID, "closed", got.Closed, "list", got.IDList)
+		return "I tried to file the bug card but couldn't verify it saved on Trello: the card didn't land on the Bug list.", nil
 	}
 	h.log.Info("auto-triage filed bug", "title", title, "signature", sig, "card", card.ID)
 	return fmt.Sprintf("Filed bug %q on the Issue → Bug list.\n%s\nTell the user in their language.", title, card.ShortURL), nil

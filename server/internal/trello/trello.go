@@ -30,12 +30,16 @@ type Label struct {
 }
 
 // Card is the slice of a Trello card the assistant needs to list or report back.
+// Closed reports whether the card is archived — a create that "succeeds" but
+// leaves an archived (invisible) card must not be reported as done, so
+// read-after-write verification checks it.
 type Card struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
 	Desc     string  `json:"desc"`
 	IDList   string  `json:"idList"`
 	ShortURL string  `json:"shortUrl"`
+	Closed   bool    `json:"closed"`
 	Labels   []Label `json:"labels"`
 }
 
@@ -107,9 +111,11 @@ func (c *Client) BoardCards(ctx context.Context, apiKey, token, boardID string) 
 }
 
 // GetCard fetches a single card by id. Used to confirm a just-created card
-// actually persisted (read-after-write verification).
+// actually persisted (read-after-write verification) — it fetches idList and
+// closed so callers can check the card landed where it was filed and isn't
+// archived, not merely that the id resolves.
 func (c *Client) GetCard(ctx context.Context, apiKey, token, cardID string) (*Card, error) {
-	q := url.Values{"fields": {"name,desc,idList,shortUrl,labels"}}
+	q := url.Values{"fields": {"name,desc,idList,shortUrl,labels,closed"}}
 	var card Card
 	if err := c.get(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
 		return nil, err

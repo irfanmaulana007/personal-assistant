@@ -99,7 +99,7 @@ function ProfileHeader({ user }: { user: User }) {
           </h2>
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-              user.role === 'admin'
+              user.role === 'superadmin'
                 ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
             }`}

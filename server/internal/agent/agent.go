@@ -155,7 +155,7 @@ type Result struct {
 	Model                 string
 	Tools                 []ToolInvocation // tools invoked during the run, in order
 	Steps                 []LLMCall        // each LLM round-trip, in order
-	Skills                []string         // skill keys active for this run
+	Skills                []string         // skill keys actually exercised (from invoked tools), not every enabled skill
 	Images                []media.Image    // images produced by tools (e.g. Image Generator)
 	ImageModel            string           // image model used this run, "" if none
 	ImagePromptTokens     int
@@ -310,7 +310,7 @@ func (a *Agent) run(ctx context.Context, userMessage string, history []Message, 
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return a.buildResult(strings.TrimSpace(msg.Content), total, cfg.Model, used, steps, enabledKeys, imageCollector), nil
+			return a.buildResult(strings.TrimSpace(msg.Content), total, cfg.Model, used, steps, imageCollector), nil
 		}
 
 		for _, tc := range msg.ToolCalls {
@@ -356,16 +356,29 @@ func (a *Agent) run(ctx context.Context, userMessage string, history []Message, 
 	if reply == "" {
 		reply = "I wasn't able to finish that request. Could you rephrase or break it into smaller steps?"
 	}
-	return a.buildResult(reply, total, cfg.Model, used, steps, enabledKeys, imageCollector), nil
+	return a.buildResult(reply, total, cfg.Model, used, steps, imageCollector), nil
 }
 
 // buildResult assembles the run outcome, folding the per-tool image usage into
 // the run-level Image* aggregate so callers can price image generation apart
 // from the LLM without re-summing the tool list.
-func (a *Agent) buildResult(reply string, total llm.Usage, model string, used []ToolInvocation, steps []LLMCall, skills []string, collector *media.Collector) *Result {
+//
+// Skills records only the skills the run actually exercised — derived from the
+// tools it invoked (SkillsForTools), not every skill the user has enabled.
+// Attributing all enabled skills to every run made the skill-aware LLM judge
+// misroute: any run by a user with the Translator skill on was graded with the
+// translation rubric (penalising it for "not translating"), even a pure Trello
+// or bucket-list turn. Genuine `/t` translations are recorded with
+// Skills=["translator"] by translate.GroupService, a separate path, so they are
+// unaffected by this derivation.
+func (a *Agent) buildResult(reply string, total llm.Usage, model string, used []ToolInvocation, steps []LLMCall, collector *media.Collector) *Result {
+	toolNames := make([]string, 0, len(used))
+	for _, t := range used {
+		toolNames = append(toolNames, t.Name)
+	}
 	r := &Result{
 		Reply: reply, Usage: total, Model: model, Tools: used, Steps: steps,
-		Skills: skills, Images: collector.Images(),
+		Skills: SkillsForTools(toolNames), Images: collector.Images(),
 	}
 	for _, t := range used {
 		if t.Model == "" || t.TotalTokens == 0 {

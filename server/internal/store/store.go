@@ -45,10 +45,93 @@ func (s Skill) EffectivePrompt() string {
 	return s.Prompt
 }
 
-// UserSkill is a skill together with its effective enabled state for a user.
+// UserSkill is a skill together with its effective enabled state for a user (or,
+// via the project-scoped methods, for a project).
 type UserSkill struct {
 	Skill
 	Enabled bool
+}
+
+// Role constants. Global roles live on users.role; project roles live on
+// project_members.role. "admin"/"member" are project-scoped; "superadmin" is the
+// global god-role.
+const (
+	GlobalRoleSuperadmin = "superadmin"
+	GlobalRoleMember     = "member"
+	ProjectRoleAdmin     = "admin"
+	ProjectRoleMember    = "member"
+)
+
+// Project is a workspace that scopes domain data, skills, features, and
+// membership. Every user-owned record belongs to exactly one project.
+type Project struct {
+	ID          int64
+	Name        string
+	OwnerUserID int64
+	CreatedAt   time.Time
+}
+
+// ProjectSummary is a project plus the caller's role in it and its member count,
+// for the projects dashboard / switcher.
+type ProjectSummary struct {
+	Project
+	Role        string // caller's project role ("admin"|"member"), or "superadmin"
+	MemberCount int
+}
+
+// ProjectMemberDetail joins a membership with the member's identity, for the
+// members list UI.
+type ProjectMemberDetail struct {
+	UserID    int64
+	Email     string
+	Name      string
+	Role      string
+	CreatedAt time.Time
+}
+
+// Feature is a nav/menu module. A feature owns zero or more skills; disabling a
+// feature for a project disables all of its skills there.
+type Feature struct {
+	ID             int64
+	Key            string
+	Name           string
+	Description    string
+	SortOrder      int
+	DefaultEnabled bool
+}
+
+// ProjectFeature is a feature with its effective enabled state for a project and
+// the keys of the skills attached to it.
+type ProjectFeature struct {
+	Feature
+	Enabled   bool
+	SkillKeys []string
+}
+
+// WhatsAppMapping maps a WhatsApp identity (a group JID or a personal
+// phone/JID) to the project and role the agent acts as for messages from it.
+type WhatsAppMapping struct {
+	ID        int64
+	JID       string
+	Kind      string // "group" | "personal"
+	ProjectID int64
+	Role      string // agent's role for this chat ("superadmin" allowed for personal only)
+	UserID    int64  // user identity attributed to this chat (personal), 0 if none
+	Label     string
+	CreatedAt time.Time
+}
+
+// AuditEvent is a project-level action record (create, invite, skill toggle, …),
+// stored append-only in the log store.
+type AuditEvent struct {
+	ID          int64
+	ProjectID   int64
+	ActorUserID int64
+	ActorEmail  string
+	Action      string
+	Target      string
+	Metadata    string
+	CreatedAt   time.Time
 }
 
 // Reminder represents a scheduled reminder. Newer reminders use the recurring
@@ -304,9 +387,10 @@ type LLMCall struct {
 // Trace is a full record of one agent run — the source of truth for both the
 // dashboard aggregates and the logs viewer.
 type Trace struct {
-	ID       int64
-	UserID   int64
-	Platform string
+	ID        int64
+	UserID    int64
+	ProjectID int64 // active project the run executed in (0 = none / background)
+	Platform  string
 	// Source is what triggered the run: "chat" for an interactive message
 	// (web/WhatsApp), or a routine key ("start_of_day" / "end_of_day") for a
 	// scheduled run. Empty is normalised to "chat" on write.
@@ -428,6 +512,18 @@ type UserModelUsage struct {
 	Errors           int
 }
 
+// ProjectModelUsage is per-project, per-model usage — used to compute per-project
+// cost for the superadmin cross-project overview (pricing applied in the API
+// layer, like UserModelUsage).
+type ProjectModelUsage struct {
+	ProjectID        int64
+	Model            string
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 // UsageUser is a per-user usage row for the dashboard's Users section (name and
 // cost are filled in by the API layer).
 type UsageUser struct {
@@ -542,6 +638,40 @@ type DataStore interface {
 	// end-of-day self-tuner and the "revert to default" affordance.
 	UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error
 
+	// Projects (the tenancy boundary)
+	CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error)
+	GetProject(ctx context.Context, id int64) (*Project, error)
+	ListProjects(ctx context.Context) ([]Project, error)                             // all projects (superadmin)
+	ListProjectsForUser(ctx context.Context, userID int64) ([]ProjectSummary, error) // projects the user belongs to
+	UpdateProjectName(ctx context.Context, id int64, name string) error
+	DeleteProject(ctx context.Context, id int64) error // hard-deletes the project and every row scoped to it
+
+	// Project membership & roles
+	ListProjectMembers(ctx context.Context, projectID int64) ([]ProjectMemberDetail, error)
+	GetProjectRole(ctx context.Context, projectID, userID int64) (string, error) // "" if not a member
+	AddProjectMember(ctx context.Context, projectID, userID int64, role string) error
+	UpdateProjectMemberRole(ctx context.Context, projectID, userID int64, role string) error
+	RemoveProjectMember(ctx context.Context, projectID, userID int64) error
+	CountProjectAdmins(ctx context.Context, projectID int64) (int, error)
+
+	// Per-project skills (effective state folds in the feature-cascade gate)
+	ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error)
+	SetProjectSkillEnabled(ctx context.Context, projectID, skillID int64, enabled bool) error
+	EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error)
+
+	// Features (catalog + per-project enable/disable; feature off ⇒ its skills off)
+	ListFeatures(ctx context.Context) ([]Feature, error)
+	GetFeature(ctx context.Context, id int64) (*Feature, error)
+	ListProjectFeatures(ctx context.Context, projectID int64) ([]ProjectFeature, error)
+	SetProjectFeatureEnabled(ctx context.Context, projectID, featureID int64, enabled bool) error
+
+	// WhatsApp identity → project/role mappings (superadmin-managed)
+	ListWhatsAppMappings(ctx context.Context) ([]WhatsAppMapping, error)
+	GetWhatsAppMapping(ctx context.Context, jid string) (*WhatsAppMapping, error)
+	CreateWhatsAppMapping(ctx context.Context, m WhatsAppMapping) (*WhatsAppMapping, error)
+	UpdateWhatsAppMapping(ctx context.Context, id int64, m WhatsAppMapping) error
+	DeleteWhatsAppMapping(ctx context.Context, id int64) error
+
 	// Reminders (scoped to a user; scheduler passes the owner's id)
 	CreateReminder(ctx context.Context, userID int64, in ReminderInput) (*Reminder, error)
 	GetReminder(ctx context.Context, userID, id int64) (*Reminder, error)
@@ -653,6 +783,10 @@ type LogStore interface {
 	LogMessage(ctx context.Context, log *MessageLog) error
 	GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error)
 
+	// Audit log (project-level actions: create, invite, skill/feature toggle, …)
+	RecordAudit(ctx context.Context, e *AuditEvent) error
+	ListAuditEvents(ctx context.Context, projectID int64, limit int) ([]AuditEvent, error)
+
 	// Traces & usage (source of truth for dashboard + logs)
 	CreateTrace(ctx context.Context, t *Trace) (int64, error)
 	ListTraces(ctx context.Context, f TraceFilter) ([]Trace, error)
@@ -684,6 +818,10 @@ type LogStore interface {
 	UsageStatsBetween(ctx context.Context, from, to time.Time, platforms []string) (*UsageStats, error)
 	UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error)
 	UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error)
+	// UsageByProject aggregates trace usage per (project, model) over [from, to),
+	// for the superadmin cross-project overview. Traces are tagged with their
+	// project_id at write time.
+	UsageByProject(ctx context.Context, from, to time.Time) ([]ProjectModelUsage, error)
 
 	// Lifecycle
 	Close() error

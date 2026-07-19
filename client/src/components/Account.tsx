@@ -121,7 +121,7 @@ function UsersCard({
                     onChange={(e) => run(() => updateUser(u.id, { role: e.target.value as Role }))}
                     className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 px-2 py-1 text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-400"
                   >
-                    <option value="admin">admin</option>
+                    <option value="superadmin">superadmin</option>
                     <option value="member">member</option>
                   </select>
                 </td>
@@ -195,7 +195,7 @@ function AddUserForm({
       />
       <select value={role} onChange={(e) => setRole(e.target.value as Role)} className={inputClass}>
         <option value="member">member</option>
-        <option value="admin">admin</option>
+        <option value="superadmin">superadmin</option>
       </select>
       <button
         type="submit"

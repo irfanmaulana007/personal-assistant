@@ -5,10 +5,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
+// validRole reports whether role is an assignable global role. Global roles are
+// superadmin (unrestricted) and member; project-scoped admin/member live in
+// project_members, not here.
 func validRole(role string) bool {
-	return role == "admin" || role == "member"
+	return role == store.GlobalRoleSuperadmin || role == store.GlobalRoleMember
 }
 
 // handleListUsers returns all users (admin only).
@@ -40,10 +45,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Role == "" {
-		req.Role = "member"
+		req.Role = store.GlobalRoleMember
 	}
 	if !validRole(req.Role) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be superadmin or member"})
 		return
 	}
 	if msg := validateCredentials(credentials{Email: req.Email, Password: req.Password}); msg != "" {
@@ -67,6 +72,11 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("create user", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
 		return
+	}
+	// Give every new user their own personal project (admin of it) so they are
+	// never stranded with zero projects.
+	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
+		s.log.Error("provision personal project", "error", err)
 	}
 	writeJSON(w, http.StatusCreated, toUserResp(user))
 }
@@ -98,16 +108,16 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	if req.Role != nil {
 		if !validRole(*req.Role) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be superadmin or member"})
 			return
 		}
-		// Prevent removing the last admin.
-		if target.Role == "admin" && *req.Role != "admin" {
-			if ok, err := s.isLastAdmin(r, target.ID); err != nil {
+		// Prevent removing the last superadmin.
+		if target.Role == store.GlobalRoleSuperadmin && *req.Role != store.GlobalRoleSuperadmin {
+			if ok, err := s.isLastSuperadmin(r, target.ID); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 				return
 			} else if ok {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot demote the last admin"})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot demote the last superadmin"})
 				return
 			}
 		}
@@ -156,12 +166,12 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 		return
 	}
-	if target.Role == "admin" {
-		if ok, err := s.isLastAdmin(r, target.ID); err != nil {
+	if target.Role == store.GlobalRoleSuperadmin {
+		if ok, err := s.isLastSuperadmin(r, target.ID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 			return
 		} else if ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot delete the last admin"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot delete the last superadmin"})
 			return
 		}
 	}
@@ -173,15 +183,15 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// isLastAdmin reports whether the given admin user is the only admin.
-func (s *Server) isLastAdmin(r *http.Request, id int64) (bool, error) {
+// isLastSuperadmin reports whether the given superadmin user is the only one.
+func (s *Server) isLastSuperadmin(r *http.Request, id int64) (bool, error) {
 	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
 		return false, err
 	}
 	admins := 0
 	for _, u := range users {
-		if u.Role == "admin" {
+		if u.Role == store.GlobalRoleSuperadmin {
 			admins++
 		}
 	}

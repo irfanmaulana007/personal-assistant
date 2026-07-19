@@ -5,11 +5,14 @@ import {
   setSkillPrompt,
   resetSkillPrompt,
   clearTunedPrompt,
+  listFeatures,
+  setFeatureEnabled,
 } from '../api/client';
-import type { Skill } from '../types';
+import type { Skill, ProjectFeature } from '../types';
 import { Toggle } from './ui/Toggle';
 import { Modal } from './ui/Modal';
 import { Skeleton, SkeletonListRow } from './ui/Skeleton';
+import { useProjects } from '../contexts/project';
 
 const textareaClass =
   'w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-xs leading-relaxed text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
@@ -153,18 +156,23 @@ function SkillPromptModal({
 }
 
 export function Skills({ isAdmin }: { isAdmin: boolean }) {
+  const { canManageActive } = useProjects();
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [features, setFeatures] = useState<ProjectFeature[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [featureBusyId, setFeatureBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
-    listSkills()
-      .then((s) => {
-        if (active) setSkills(s);
+    Promise.all([listSkills(), listFeatures().catch(() => [] as ProjectFeature[])])
+      .then(([s, f]) => {
+        if (!active) return;
+        setSkills(s);
+        setFeatures(f);
       })
       .catch((e) => {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load skills');
@@ -176,6 +184,21 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
       active = false;
     };
   }, []);
+
+  // Toggling a feature cascades to its skills' effective state, so refresh both.
+  const toggleFeature = async (f: ProjectFeature) => {
+    setFeatureBusyId(f.id);
+    setError('');
+    try {
+      const updated = await setFeatureEnabled(f.id, !f.enabled);
+      setFeatures(updated);
+      setSkills(await listSkills());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update feature');
+    } finally {
+      setFeatureBusyId(null);
+    }
+  };
 
   const toggle = async (sk: Skill) => {
     setBusyId(sk.id);
@@ -223,8 +246,9 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
         Skills
       </h1>
       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-        Turn skills on to give the assistant new abilities. Changes apply to your account.
-        {isAdmin && ' As an admin you can also edit each skill’s prompt for everyone.'}
+        Turn skills on to give the assistant new abilities in this project.
+        {!canManageActive && ' Only a project admin can change these.'}
+        {isAdmin && ' As a superadmin you can also edit each skill’s prompt for everyone.'}
       </p>
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -244,6 +268,41 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
         </div>
       ) : (
         <div className="mt-6 space-y-6">
+          {features.length > 0 && (
+            <div>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                Features
+              </h2>
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
+                {features.map((f) => (
+                  <div key={f.id} className="flex items-start gap-4 p-4">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                        {f.name}
+                      </span>
+                      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                        {f.description}
+                      </p>
+                      {f.skill_keys.length > 0 && (
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                          Skills: {f.skill_keys.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <Toggle
+                      on={f.enabled}
+                      busy={featureBusyId === f.id}
+                      disabled={!canManageActive}
+                      onClick={() => toggleFeature(f)}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                Disabling a feature turns off all of its skills for this project.
+              </p>
+            </div>
+          )}
           {groups.map((g) => (
             <div key={g.category}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -310,7 +369,12 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                         </div>
                       )}
                     </div>
-                    <Toggle on={sk.enabled} busy={busyId === sk.id} onClick={() => toggle(sk)} />
+                    <Toggle
+                      on={sk.enabled}
+                      busy={busyId === sk.id}
+                      disabled={!canManageActive}
+                      onClick={() => toggle(sk)}
+                    />
                   </div>
                 ))}
               </div>
