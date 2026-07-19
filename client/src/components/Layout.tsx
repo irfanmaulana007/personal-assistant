@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
-import { usePreferences } from '../contexts/preferences';
 import type { User } from '../types';
 
 interface LayoutProps {
@@ -229,27 +228,12 @@ function NavGroup({ item }: { item: NavGroupItem }) {
 }
 
 export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
-  const { assistantName } = usePreferences();
   const items = navItems.filter((item) => isAdmin || !item.adminOnly);
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
-        <div className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15">
-            <svg
-              className="h-5 w-5 text-indigo-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              {chatIcon}
-            </svg>
-          </div>
-          <h1 className="truncate text-base font-semibold text-white">{assistantName}</h1>
-        </div>
-
-        <div className="px-3 pb-1">
+        <div className="px-3 pb-1 pt-4">
           <ProjectSwitcher isSuperadmin={isAdmin} />
         </div>
 
