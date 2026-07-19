@@ -38,8 +38,9 @@ type MongoStore struct {
 	db     *mongo.Database
 }
 
-// NewMongo connects to MongoDB, verifies the connection, and ensures the
-// collections' indexes exist (idempotent).
+// NewMongo connects to MongoDB, verifies the connection, ensures the
+// collections' indexes exist, and runs any pending data migrations (all
+// idempotent).
 func NewMongo(ctx context.Context, uri, dbName string) (*MongoStore, error) {
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
@@ -54,6 +55,10 @@ func NewMongo(ctx context.Context, uri, dbName string) (*MongoStore, error) {
 	if err := m.ensureIndexes(ctx); err != nil {
 		_ = client.Disconnect(ctx)
 		return nil, fmt.Errorf("ensure indexes: %w", err)
+	}
+	if err := m.runMigrations(ctx); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 	return m, nil
 }
