@@ -103,10 +103,9 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create admin"})
 		return
 	}
-	// The first account is the platform superadmin; give them a personal project.
-	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
-		s.log.Error("provision personal project", "error", err)
-	}
+	// The first account is the platform superadmin, who manages every project and
+	// is deliberately not attached to any single one — so no personal project is
+	// provisioned. They create and pick projects from the global superadmin surfaces.
 	s.issueToken(w, user)
 }
 

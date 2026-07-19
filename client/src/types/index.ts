@@ -15,17 +15,29 @@ export type Role = 'superadmin' | 'member';
 // A user's role within a specific project.
 export type ProjectRole = 'admin' | 'member';
 
+// A project a user belongs to, with their role in it. Shown on the Account page.
+export interface UserProject {
+  project_id: number;
+  name: string;
+  role: ProjectRole;
+}
+
 export interface User {
   id: number;
   email: string;
   name: string;
   role: Role;
   created_at: string;
+  // Projects the user is a member of, with their per-project role. Present on
+  // the account-management list; superadmins carry an empty list (they manage
+  // every project). Optional because auth/me responses omit it.
+  projects?: UserProject[];
 }
 
 export interface Project {
   id: number;
   name: string;
+  slug: string; // immutable, URL-safe; used as the /:slug route prefix
   owner_user_id: number;
   role: ProjectRole | 'superadmin'; // caller's effective role in this project
   member_count: number;
@@ -49,6 +61,15 @@ export interface ProjectFeature {
   skill_keys: string[];
 }
 
+export interface ProjectSkill {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+}
+
 export interface AuditEvent {
   id: number;
   action: string;
@@ -69,29 +90,6 @@ export interface WhatsAppMapping {
   user_id: number;
   label: string;
   created_at: string;
-}
-
-export interface ProjectOverviewRow {
-  project_id: number;
-  name: string;
-  member_count: number;
-  enabled_skills: number;
-  requests: number;
-  total_tokens: number;
-  estimated_cost_usd: number;
-}
-
-export interface AdminOverview {
-  from: string;
-  to: string;
-  projects: ProjectOverviewRow[];
-  summary: {
-    requests: number;
-    total_tokens: number;
-    estimated_cost_usd: number;
-    errors: number;
-    active_users: number;
-  };
 }
 
 export interface AuthResponse {
@@ -266,9 +264,48 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  is_core: boolean; // a core skill: auto-available to every project
   auto_tuned: boolean; // the end-of-day self-tuner has overridden this skill's prompt
-  // Prompt management fields. Present only for admins (the API omits them for
-  // members). `prompt_updated_at` is null when the prompt is still the default.
+  // 'global' = a shared, code-seeded skill; 'project' = a fork this project owns
+  // and customized (it shadows the global skill of the same key here).
+  scope: 'global' | 'project';
+  // Prompt management fields. Present only for the caller allowed to edit this
+  // skill's prompt — a superadmin for a global skill, a project admin for a
+  // project fork. `prompt_updated_at` is null when the prompt is still default.
+  prompt?: string;
+  default_prompt?: string;
+  prompt_updated_at?: string | null;
+  prompt_updated_by?: string;
+}
+
+// A project a skill maps to, in the superadmin catalog.
+export interface SkillProjectRef {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+// How the superadmin skills catalog buckets a skill:
+// - 'core'    — a core skill (superadmin-flagged), auto-available to every project
+// - 'global'  — a shared skill used across projects
+// - 'project' — a skill scoped to a single project (a fork, or a global skill
+//               only one project enables)
+export type SkillClassification = 'core' | 'global' | 'project';
+
+// AdminSkill is one skill in the platform-wide (superadmin) catalog behind
+// /skills: the skill plus its storage scope, core flag, derived classification,
+// the projects that effectively enable it, and the editable prompt fields.
+export interface AdminSkill {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  scope: 'global' | 'project';
+  is_core: boolean;
+  classification: SkillClassification;
+  auto_tuned: boolean;
+  projects: SkillProjectRef[];
   prompt?: string;
   default_prompt?: string;
   prompt_updated_at?: string | null;

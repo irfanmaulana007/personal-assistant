@@ -1,8 +1,8 @@
-import { Outlet } from 'react-router-dom';
-import { useSearchParams } from 'react-router-dom';
+import { Outlet, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useMetrics } from '../hooks/useMetrics';
 import { DateRangePicker } from './DateRangePicker';
 import { ChannelFilter } from './ChannelFilter';
+import { DashboardTabs } from './dashboard/DashboardTabs';
 import { Skeleton, SkeletonCard, SkeletonStatTile } from './ui/Skeleton';
 import { parseFilterList, serializeFilterList } from '../lib/filters';
 import { CHANNEL_VALUES } from '../types';
@@ -15,8 +15,15 @@ function defaultRange(): { from: string; to: string } {
   return { from: iso(from), to: iso(today) };
 }
 
+// Dashboard is the per-project analytics shell: header + filters, an in-body tab
+// bar, and an <Outlet> that renders the active tab (Overview / Usage / Activity
+// / Performance / Users) against the project's usage stats. It scopes to the
+// active project via the X-Project-Id header the API client sends.
 export function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const { slug } = useParams();
+
   const def = defaultRange();
   const from = searchParams.get('from') || def.from;
   const to = searchParams.get('to') || def.to;
@@ -38,7 +45,7 @@ export function Dashboard() {
             Dashboard
           </h1>
           <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-            Your LLM and image-generation usage and estimated cost.
+            Usage and estimated cost for this project.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -52,6 +59,10 @@ export function Dashboard() {
             onChange={(f, t) => patchParams({ from: f, to: t })}
           />
         </div>
+      </div>
+
+      <div className="mt-4">
+        <DashboardTabs base={`/${slug}/dashboard`} search={location.search} />
       </div>
 
       {error && <p className="mt-6 text-sm text-red-600 dark:text-red-400">{error}</p>}

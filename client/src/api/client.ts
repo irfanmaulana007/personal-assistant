@@ -13,6 +13,7 @@ import type {
   BucketItem,
   BucketItemPayload,
   Skill,
+  AdminSkill,
   Role,
   ChatResponse,
   HistoryEntry,
@@ -285,7 +286,9 @@ export async function setSkillPrompt(id: number, prompt: string): Promise<Skill[
   });
 }
 
-// Admin only. Resets a skill's prompt back to the shipped default.
+// Resets a skill's prompt back to the shipped default. For a global skill this
+// is superadmin-only and hands the prompt back to the boot seed; for a project
+// fork it restores the base default while keeping the fork.
 export async function resetSkillPrompt(id: number): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/prompt`, {
     method: 'PUT',
@@ -293,10 +296,60 @@ export async function resetSkillPrompt(id: number): Promise<Skill[]> {
   });
 }
 
+// Project admin only. Forks a global skill into the active project so it can be
+// given a project-specific prompt; returns the refreshed list.
+export async function customizeSkill(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/customize`, { method: 'POST' });
+}
+
+// Project admin only. Removes the active project's fork of a skill, reverting it
+// to the shared global skill; returns the refreshed list.
+export async function deleteProjectSkill(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}`, { method: 'DELETE' });
+}
+
 // clearTunedPrompt clears a skill's auto-tuned prompt override (set by the
 // end-of-day self-tuner), reverting it to the shipped default. Admin-only.
 export async function clearTunedPrompt(id: number): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/reset-prompt`, { method: 'POST' });
+}
+
+// --- Platform-wide skills catalog (superadmin /skills page) ---
+
+// Superadmin only. Every skill with its classification and project mapping.
+export async function listAdminSkills(): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>('/api/admin/skills');
+}
+
+// Superadmin only. Marks/unmarks a global skill as core; returns the refreshed
+// catalog. Project forks cannot be core.
+export async function setSkillCore(id: number, isCore: boolean): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/skills/${id}/core`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_core: isCore }),
+  });
+}
+
+// Superadmin only. Edits a global skill's prompt from the catalog; returns the
+// refreshed catalog.
+export async function setAdminSkillPrompt(id: number, prompt: string): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+// Superadmin only. Restores a global skill's prompt to the shipped default.
+export async function resetAdminSkillPrompt(id: number): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ reset: true }),
+  });
+}
+
+// Superadmin only. Clears a global skill's auto-tuned prompt override.
+export async function revertAdminSkillTuned(id: number): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/revert-tuned`, { method: 'POST' });
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
@@ -447,13 +500,19 @@ export async function testSettings(): Promise<LlmTestResult> {
 
 // Multi-value filters (platform, score) are sent as a single comma-separated
 // query param; an empty array omits the param entirely ("all").
+//
+// projectId overrides the active-project scope for this one request (via the
+// X-Project-Id header, which request() leaves alone when already set). A
+// superadmin uses this to read any project's usage without switching projects.
 export async function getUsage(
   from: string,
   to: string,
   platforms: ChannelValue[] = [],
+  projectId?: number,
 ): Promise<UsageStats> {
   const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
-  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
+  const options = projectId ? { headers: { 'X-Project-Id': String(projectId) } } : {};
+  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`, options);
 }
 
 export async function getLogs(
@@ -588,6 +647,21 @@ export async function addProjectMember(
   });
 }
 
+// createProjectMember creates a brand-new user account and adds them to the
+// project in a single request (for onboarding someone who has no account yet).
+// Returns the refreshed member list, like addProjectMember.
+export async function createProjectMember(
+  id: number,
+  email: string,
+  password: string,
+  role: 'admin' | 'member',
+): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members/create`, {
+    method: 'POST',
+    body: JSON.stringify({ email, password, role }),
+  });
+}
+
 export async function updateProjectMember(
   id: number,
   userId: number,
@@ -648,17 +722,34 @@ export async function deleteWhatsAppMapping(id: number): Promise<{ ok: boolean }
   return request(`/api/whatsapp/mappings/${id}`, { method: 'DELETE' });
 }
 
-// --- Superadmin cross-project overview ---
+// --- Per-project skills & features (path-scoped: manage a specific project) ---
 
-export async function getAdminOverview(
-  from?: string,
-  to?: string,
-  projectId?: number,
-): Promise<import('../types').AdminOverview> {
-  const p = new URLSearchParams();
-  if (from) p.set('from', from);
-  if (to) p.set('to', to);
-  if (projectId) p.set('projectId', String(projectId));
-  const qs = p.toString();
-  return request(`/api/admin/overview${qs ? `?${qs}` : ''}`);
+export async function getProjectSkills(id: number): Promise<import('../types').ProjectSkill[]> {
+  return request(`/api/projects/${id}/skills`);
+}
+
+export async function setProjectSkill(
+  id: number,
+  skillId: number,
+  enabled: boolean,
+): Promise<import('../types').ProjectSkill[]> {
+  return request(`/api/projects/${id}/skills/${skillId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function getProjectFeatures(id: number): Promise<import('../types').ProjectFeature[]> {
+  return request(`/api/projects/${id}/features`);
+}
+
+export async function setProjectFeature(
+  id: number,
+  featureId: number,
+  enabled: boolean,
+): Promise<import('../types').ProjectFeature[]> {
+  return request(`/api/projects/${id}/features/${featureId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
 }

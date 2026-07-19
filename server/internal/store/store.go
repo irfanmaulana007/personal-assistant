@@ -33,7 +33,36 @@ type Skill struct {
 	// the seed stops clobbering the prompt.
 	PromptUpdatedAt *time.Time
 	PromptUpdatedBy string
+	// ProjectID scopes the skill. nil ⇒ a global (code-seeded) skill shared by
+	// every project. Set ⇒ a project-owned skill: a fork a project admin created
+	// from a global skill and customized, which shadows the global skill of the
+	// same key for that project.
+	ProjectID *int64
+	// IsCore marks a global skill as "core": auto-available to every project and
+	// always classified as core (never demoted to project-specific), though still
+	// toggleable per project. Superadmin-managed. Always false for project forks.
+	IsCore bool
 }
+
+// SkillProjectRef identifies a project that a skill maps to, for the superadmin
+// skills catalog (which projects effectively enable a given skill).
+type SkillProjectRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// SkillWithMapping is a skill plus the projects that effectively enable it, used
+// by the platform-wide (superadmin) skills catalog to derive each skill's
+// classification (core / global / project-specific) from its project mapping.
+type SkillWithMapping struct {
+	Skill
+	Projects []SkillProjectRef
+}
+
+// IsProjectOwned reports whether the skill is a project-owned fork (as opposed
+// to a shared, code-seeded global skill).
+func (s Skill) IsProjectOwned() bool { return s.ProjectID != nil }
 
 // EffectivePrompt is the prompt actually injected into the system prompt: the
 // auto-tuned override when the self-tuner has set one, otherwise the shipped
@@ -67,6 +96,7 @@ const (
 type Project struct {
 	ID          int64
 	Name        string
+	Slug        string // immutable, URL-safe; generated from Name at creation
 	OwnerUserID int64
 	CreatedAt   time.Time
 }
@@ -438,6 +468,7 @@ type TraceScore struct {
 // ordered by id descending, so the next page is everything with id < Cursor.
 type TraceFilter struct {
 	Platforms []string // nil/empty = all; otherwise match any listed platform
+	ProjectID int64    // 0 = all projects; otherwise restrict to this project
 	From      time.Time
 	To        time.Time
 	Limit     int
@@ -637,6 +668,11 @@ type DataStore interface {
 	// auto-tuned prompt override, keyed by the skill's stable `key`. Used by the
 	// end-of-day self-tuner and the "revert to default" affordance.
 	UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error
+	// ListSkillsWithProjectMapping returns every skill with the projects that
+	// effectively enable it, backing the superadmin skills catalog. SetSkillCore
+	// marks/unmarks a global skill as core (project forks cannot be core).
+	ListSkillsWithProjectMapping(ctx context.Context) ([]SkillWithMapping, error)
+	SetSkillCore(ctx context.Context, skillID int64, isCore bool) error
 
 	// Projects (the tenancy boundary)
 	CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error)
@@ -654,10 +690,17 @@ type DataStore interface {
 	RemoveProjectMember(ctx context.Context, projectID, userID int64) error
 	CountProjectAdmins(ctx context.Context, projectID int64) (int, error)
 
-	// Per-project skills (effective state folds in the feature-cascade gate)
+	// Per-project skills (effective state folds in the feature-cascade gate).
+	// The listing includes the project's own forks and every global skill not
+	// shadowed by a fork of the same key.
 	ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error)
 	SetProjectSkillEnabled(ctx context.Context, projectID, skillID int64, enabled bool) error
 	EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error)
+	// CreateProjectSkill forks a skill into a project (project-owned copy the
+	// admin then customizes); DeleteProjectSkill removes a project's fork,
+	// reverting that project to the shared global skill.
+	CreateProjectSkill(ctx context.Context, projectID int64, base Skill, updatedBy string) (*Skill, error)
+	DeleteProjectSkill(ctx context.Context, projectID, skillID int64) error
 
 	// Features (catalog + per-project enable/disable; feature off ⇒ its skills off)
 	ListFeatures(ctx context.Context) ([]Feature, error)

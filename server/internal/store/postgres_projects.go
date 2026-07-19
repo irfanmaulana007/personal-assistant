@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -34,7 +36,8 @@ func (s *PostgresStore) seedFeatures(ctx context.Context) error {
 		for _, sk := range skeys {
 			if _, err := s.pool.Exec(ctx,
 				`INSERT INTO feature_skills (feature_id, skill_id)
-				 SELECT f.id, s.id FROM features f, skills s WHERE f.key = $1 AND s.key = $2
+				 SELECT f.id, s.id FROM features f, skills s
+				 WHERE f.key = $1 AND s.key = $2 AND s.project_id IS NULL
 				 ON CONFLICT DO NOTHING`,
 				fkey, sk,
 			); err != nil {
@@ -47,13 +50,58 @@ func (s *PostgresStore) seedFeatures(ctx context.Context) error {
 
 // --- Projects ---
 
+var slugStripRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// slugify converts a project name into a URL-safe slug: lowercase, with runs of
+// non-alphanumeric characters collapsed to single dashes and trimmed. Falls back
+// to "project" when the name has no alphanumeric characters.
+func slugify(name string) string {
+	s := slugStripRe.ReplaceAllString(strings.ToLower(name), "-")
+	s = strings.Trim(s, "-")
+	if s == "" {
+		return "project"
+	}
+	return s
+}
+
+// reservedSlugs are top-level route words the client owns (the global shell). A
+// project may not take one, or its /:slug shell would be shadowed by that route.
+var reservedSlugs = map[string]bool{
+	"overview": true, "account": true, "projects": true, "settings": true,
+	"login": true, "api": true,
+}
+
+// uniqueProjectSlug returns base if it is free and unreserved, otherwise base-2,
+// base-3, … until it finds a slug no project holds and no route reserves.
+func (s *PostgresStore) uniqueProjectSlug(ctx context.Context, base string) (string, error) {
+	slug := base
+	for i := 2; ; i++ {
+		if !reservedSlugs[slug] {
+			var exists bool
+			if err := s.pool.QueryRow(ctx,
+				`SELECT EXISTS(SELECT 1 FROM projects WHERE slug = $1)`, slug,
+			).Scan(&exists); err != nil {
+				return "", fmt.Errorf("check project slug: %w", err)
+			}
+			if !exists {
+				return slug, nil
+			}
+		}
+		slug = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
 func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error) {
+	slug, err := s.uniqueProjectSlug(ctx, slugify(name))
+	if err != nil {
+		return nil, err
+	}
 	var p Project
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO projects (name, owner_user_id) VALUES ($1, $2)
-		 RETURNING id, name, owner_user_id, created_at`,
-		name, ownerUserID,
-	).Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt)
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO projects (name, slug, owner_user_id) VALUES ($1, $2, $3)
+		 RETURNING id, name, slug, owner_user_id, created_at`,
+		name, slug, ownerUserID,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
 	}
@@ -63,8 +111,8 @@ func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUse
 func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, error) {
 	var p Project
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, owner_user_id, created_at FROM projects WHERE id = $1`, id,
-	).Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt)
+		`SELECT id, name, slug, owner_user_id, created_at FROM projects WHERE id = $1`, id,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -76,7 +124,7 @@ func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, err
 
 func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, owner_user_id, created_at FROM projects ORDER BY id ASC`)
+		`SELECT id, name, slug, owner_user_id, created_at FROM projects ORDER BY id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
@@ -85,7 +133,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	var out []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
 		out = append(out, p)
@@ -95,7 +143,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 
 func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) ([]ProjectSummary, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT p.id, p.name, p.owner_user_id, p.created_at, pm.role,
+		`SELECT p.id, p.name, p.slug, p.owner_user_id, p.created_at, pm.role,
 		        (SELECT count(*) FROM project_members m WHERE m.project_id = p.id) AS member_count
 		 FROM projects p
 		 JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1
@@ -108,7 +156,7 @@ func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) (
 	var out []ProjectSummary
 	for rows.Next() {
 		var ps ProjectSummary
-		if err := rows.Scan(&ps.ID, &ps.Name, &ps.OwnerUserID, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Slug, &ps.OwnerUserID, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
 			return nil, fmt.Errorf("scan project summary: %w", err)
 		}
 		out = append(out, ps)
@@ -146,7 +194,10 @@ func (s *PostgresStore) DeleteProject(ctx context.Context, id int64) error {
 			return fmt.Errorf("delete %s: %w", t, err)
 		}
 	}
-	for _, t := range []string{"project_skills", "project_features", "project_members", "whatsapp_mappings"} {
+	// `skills` here only ever matches this project's forks — global rows carry a
+	// NULL project_id, so the shared catalog is untouched. project_skills is
+	// cleared first so no toggle row dangles past its skill.
+	for _, t := range []string{"project_skills", "skills", "project_features", "project_members", "whatsapp_mappings"} {
 		if _, err := tx.Exec(ctx, fmt.Sprintf(`DELETE FROM %s WHERE project_id = $1`, t), id); err != nil {
 			return fmt.Errorf("delete %s: %w", t, err)
 		}
@@ -237,18 +288,31 @@ func (s *PostgresStore) CountProjectAdmins(ctx context.Context, projectID int64)
 // AND the feature gate (a skill under a disabled feature is off).
 const projectSkillEffective = `(COALESCE(ps.enabled, s.default_enabled) AND COALESCE(pf.enabled, f.default_enabled, true))`
 
+// projectSkillJoins resolves a project's effective skill set. `gt` is the global
+// "twin": for a global skill it is the row itself; for a project fork it is the
+// global skill sharing its key (NULL for a fork with no global twin). The
+// feature gate is keyed off the twin so a fork inherits its global skill's
+// feature. project_skills carries the per-project enable flag for both scopes.
 const projectSkillJoins = `
 	 FROM skills s
+	 LEFT JOIN skills gt ON gt.project_id IS NULL AND gt.key = s.key
 	 LEFT JOIN project_skills ps ON ps.skill_id = s.id AND ps.project_id = $1
-	 LEFT JOIN feature_skills fs ON fs.skill_id = s.id
+	 LEFT JOIN feature_skills fs ON fs.skill_id = gt.id
 	 LEFT JOIN features f ON f.id = fs.feature_id
 	 LEFT JOIN project_features pf ON pf.feature_id = f.id AND pf.project_id = $1`
+
+// projectSkillScope restricts a listing to the project's own forks plus every
+// global skill not shadowed by a fork of the same key in that project.
+const projectSkillScope = `
+	 WHERE (s.project_id IS NULL OR s.project_id = $1)
+	   AND NOT (s.project_id IS NULL AND EXISTS (
+	         SELECT 1 FROM skills o WHERE o.project_id = $1 AND o.key = s.key))`
 
 func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT s.id, s.key, s.name, s.description, s.prompt, s.tuned_prompt, s.category, s.default_enabled, s.sort_order,
-		        s.prompt_updated_at, s.prompt_updated_by, `+projectSkillEffective+` AS effective`+
-			projectSkillJoins+`
+		        s.prompt_updated_at, s.prompt_updated_by, s.project_id, s.is_core, `+projectSkillEffective+` AS effective`+
+			projectSkillJoins+projectSkillScope+`
 		 ORDER BY s.sort_order ASC, s.id ASC`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project skills: %w", err)
@@ -258,7 +322,7 @@ func (s *PostgresStore) ListProjectSkills(ctx context.Context, projectID int64) 
 	var out []UserSkill
 	for rows.Next() {
 		var us UserSkill
-		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.Enabled); err != nil {
+		if err := rows.Scan(&us.ID, &us.Key, &us.Name, &us.Description, &us.Prompt, &us.TunedPrompt, &us.Category, &us.DefaultEnabled, &us.SortOrder, &us.PromptUpdatedAt, &us.PromptUpdatedBy, &us.ProjectID, &us.IsCore, &us.Enabled); err != nil {
 			return nil, fmt.Errorf("scan project skill: %w", err)
 		}
 		out = append(out, us)
@@ -277,8 +341,8 @@ func (s *PostgresStore) SetProjectSkillEnabled(ctx context.Context, projectID, s
 
 func (s *PostgresStore) EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT s.key`+projectSkillJoins+`
-		 WHERE `+projectSkillEffective+` = true`, projectID)
+		`SELECT s.key`+projectSkillJoins+projectSkillScope+`
+		   AND `+projectSkillEffective+` = true`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("enabled project skill keys: %w", err)
 	}

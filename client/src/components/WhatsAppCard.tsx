@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getWhatsApp, connectWhatsApp, disconnectWhatsApp } from '../api/client';
+import { useProjects } from '../contexts/project';
 import type { WhatsAppStatus } from '../types';
 
 const badge: Record<string, { label: string; cls: string }> = {
@@ -21,7 +23,68 @@ const badge: Record<string, { label: string; cls: string }> = {
   },
 };
 
+const avatar = (
+  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 dark:bg-green-500/15 text-sm font-semibold text-green-700 dark:text-green-300">
+    WA
+  </div>
+);
+
+// Compact WhatsApp entry shown in the Integrations list. It only reflects the
+// current status and links into the WhatsApp integration detail page, where
+// pairing and the WhatsApp settings live.
 export function WhatsAppCard() {
+  const { projectPath } = useProjects();
+  const [wa, setWa] = useState<WhatsAppStatus | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getWhatsApp()
+      .then((d) => {
+        if (active) setWa(d);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!wa || !wa.enabled) return null;
+
+  const status = badge[wa.status] ?? badge.disconnected;
+
+  return (
+    <Link
+      to={projectPath('integrations/whatsapp')}
+      className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+    >
+      <div className="flex items-center gap-3">
+        {avatar}
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">WhatsApp</div>
+          <span
+            className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}
+          >
+            {status.label}
+          </span>
+        </div>
+      </div>
+      <span className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400">
+        Manage
+        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+          <path
+            fillRule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </span>
+    </Link>
+  );
+}
+
+// Full connection card: pairing QR, connect / disconnect. Rendered on the
+// WhatsApp integration detail page.
+export function WhatsAppConnectionCard() {
   const [wa, setWa] = useState<WhatsAppStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -78,14 +141,12 @@ export function WhatsAppCard() {
   const status = badge[wa.status] ?? badge.disconnected;
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 dark:bg-green-500/15 text-sm font-semibold text-green-700 dark:text-green-300">
-            WA
-          </div>
+          {avatar}
           <div>
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">WhatsApp</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">Connection</div>
             <span
               className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}
             >

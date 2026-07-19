@@ -130,13 +130,24 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("DELETE /api/projects/{id}", protect(s.handleDeleteProject))
 	mux.Handle("GET /api/projects/{id}/members", protect(s.handleListMembers))
 	mux.Handle("POST /api/projects/{id}/members", protect(s.handleAddMember))
+	mux.Handle("POST /api/projects/{id}/members/create", protect(s.handleCreateMember))
 	mux.Handle("PATCH /api/projects/{id}/members/{userId}", protect(s.handleUpdateMember))
 	mux.Handle("DELETE /api/projects/{id}/members/{userId}", protect(s.handleRemoveMember))
 	mux.Handle("GET /api/projects/{id}/audit", protect(s.handleListAudit))
+	mux.Handle("GET /api/projects/{id}/skills", protect(s.handleProjectSkills))
+	mux.Handle("PUT /api/projects/{id}/skills/{skillId}", protect(s.handleSetProjectSkill))
+	mux.Handle("GET /api/projects/{id}/features", protect(s.handleProjectFeatures))
+	mux.Handle("PUT /api/projects/{id}/features/{featureId}", protect(s.handleSetProjectFeature))
 
 	// Active-project scoped: skills + features
 	mux.Handle("GET /api/skills", project(s.handleListSkills))
 	mux.Handle("PUT /api/skills/{id}", projectAdmin(s.handleSetSkill))
+	// Prompt editing is scope-gated inside the handler: a superadmin for a global
+	// skill (platform-wide), a project admin for a project fork.
+	mux.Handle("PUT /api/skills/{id}/prompt", project(s.handleSetSkillPrompt))
+	// Fork a global skill into the active project / remove that fork.
+	mux.Handle("POST /api/skills/{id}/customize", projectAdmin(s.handleCustomizeSkill))
+	mux.Handle("DELETE /api/skills/{id}", projectAdmin(s.handleDeleteSkill))
 	mux.Handle("GET /api/features", project(s.handleListFeatures))
 	mux.Handle("PUT /api/features/{id}", projectAdmin(s.handleSetFeature))
 
@@ -156,33 +167,44 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/bucket-list/{id}/resolution", project(s.handleSetBucketItemResolution))
 	mux.Handle("DELETE /api/bucket-list/{id}", project(s.handleDeleteBucketItem))
 
+	// LLM model settings are project-scoped: a project admin configures their
+	// own project's provider/model/key (a superadmin manages any via the
+	// switcher), with the global values as the fallback default.
+	mux.Handle("/api/settings", projectAdmin(s.handleSettings))
+	mux.Handle("/api/settings/test", projectAdmin(s.handleSettingsTest))
+
 	// Superadmin only (platform-wide surfaces)
-	mux.Handle("/api/settings", superadmin(s.handleSettings))
-	mux.Handle("/api/settings/test", superadmin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", superadmin(s.handleUpdatePreferences))
 	mux.Handle("PUT /api/reminders/config", superadmin(s.handleSetRemindersConfig))
 	mux.Handle("POST /api/skills/{id}/reset-prompt", superadmin(s.handleResetSkillPrompt))
-	mux.Handle("PUT /api/skills/{id}/prompt", superadmin(s.handleSetSkillPrompt))
+	// Platform-wide skills catalog (all skills, classified + project-mapped) and
+	// the core flag: superadmin manages the whole catalog on the global /skills page.
+	mux.Handle("GET /api/admin/skills", superadmin(s.handleAdminListSkills))
+	mux.Handle("PUT /api/skills/{id}/core", superadmin(s.handleSetSkillCore))
+	mux.Handle("PUT /api/admin/skills/{id}/prompt", superadmin(s.handleAdminSetSkillPrompt))
+	mux.Handle("POST /api/admin/skills/{id}/revert-tuned", superadmin(s.handleAdminRevertTuned))
 	mux.Handle("PUT /api/routines/{key}", superadmin(s.handleUpdateRoutine))
 	mux.Handle("POST /api/routines/{key}/run", superadmin(s.handleRunRoutine))
 	mux.Handle("GET /api/pricing", superadmin(s.handleListPricing))
 	mux.Handle("PUT /api/pricing", superadmin(s.handleSetPricing))
 	mux.Handle("DELETE /api/pricing/{model}", superadmin(s.handleDeletePricing))
-	mux.Handle("/api/metrics/usage", superadmin(s.handleMetricsUsage))
+	// Dashboard metrics, logs, and integrations are project-scoped: a project
+	// admin manages their own project (superadmin manages any via the switcher).
+	mux.Handle("/api/metrics/usage", projectAdmin(s.handleMetricsUsage))
 	mux.Handle("GET /api/admin/overview", superadmin(s.handleAdminOverview))
-	mux.Handle("GET /api/logs", superadmin(s.handleListLogs))
-	mux.Handle("GET /api/logs/{id}", superadmin(s.handleGetLog))
+	mux.Handle("GET /api/logs", projectAdmin(s.handleListLogs))
+	mux.Handle("GET /api/logs/{id}", projectAdmin(s.handleGetLog))
 	mux.Handle("GET /api/users", superadmin(s.handleListUsers))
 	mux.Handle("POST /api/users", superadmin(s.handleCreateUser))
 	mux.Handle("PATCH /api/users/{id}", superadmin(s.handleUpdateUser))
 	mux.Handle("DELETE /api/users/{id}", superadmin(s.handleDeleteUser))
-	mux.Handle("GET /api/integrations", superadmin(s.handleListIntegrations))
-	mux.Handle("PUT /api/integrations/key", superadmin(s.handleSetComposioKey))
-	mux.Handle("PUT /api/integrations/websearch-key", superadmin(s.handleSetWebSearchKey))
-	mux.Handle("PUT /api/integrations/openai-key", superadmin(s.handleSetOpenAIKey))
-	mux.Handle("PUT /api/integrations/trello-creds", superadmin(s.handleSetTrelloCreds))
-	mux.Handle("POST /api/integrations/{toolkit}/connect", superadmin(s.handleConnectIntegration))
-	mux.Handle("DELETE /api/integrations/{toolkit}", superadmin(s.handleDisconnectIntegration))
+	mux.Handle("GET /api/integrations", projectAdmin(s.handleListIntegrations))
+	mux.Handle("PUT /api/integrations/key", projectAdmin(s.handleSetComposioKey))
+	mux.Handle("PUT /api/integrations/websearch-key", projectAdmin(s.handleSetWebSearchKey))
+	mux.Handle("PUT /api/integrations/openai-key", projectAdmin(s.handleSetOpenAIKey))
+	mux.Handle("PUT /api/integrations/trello-creds", projectAdmin(s.handleSetTrelloCreds))
+	mux.Handle("POST /api/integrations/{toolkit}/connect", projectAdmin(s.handleConnectIntegration))
+	mux.Handle("DELETE /api/integrations/{toolkit}", projectAdmin(s.handleDisconnectIntegration))
 	mux.Handle("DELETE /api/calendar/events", superadmin(s.handleClearCalendarEvents))
 	mux.Handle("GET /api/whatsapp", superadmin(s.handleWhatsAppStatus))
 	mux.Handle("POST /api/whatsapp/connect", superadmin(s.handleWhatsAppConnect))

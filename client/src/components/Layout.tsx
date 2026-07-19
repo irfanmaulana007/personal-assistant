@@ -1,30 +1,35 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { type ReactNode } from 'react';
+import { NavLink, Navigate, Outlet, useParams } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
-import { usePreferences } from '../contexts/preferences';
+import { useProjects } from '../contexts/project';
 import type { User } from '../types';
 
 interface LayoutProps {
   onLogout: () => void;
   isAdmin: boolean;
   user: User | null;
+  // 'global'  — the platform shell (Dashboard / Account / Projects / Settings).
+  // 'project' — a single project's shell, prefixed by /:slug.
+  mode: 'global' | 'project';
 }
+
+// Who can see a nav item:
+//   'everyone'      — any authenticated user
+//   'projectAdmin'  — admin of the active project (superadmin always qualifies)
+//   'superadmin'    — global superadmin only
+type NavGate = 'everyone' | 'projectAdmin' | 'superadmin';
 
 interface NavLeaf {
   to: string;
   label: string;
   icon: ReactNode;
-  adminOnly?: boolean;
+  gate?: NavGate;
+  // When set, the item is a project feature — shown only if that feature (and,
+  // if it owns skills, at least one of its skills) is enabled for the project.
+  feature?: string;
 }
-interface NavGroupItem {
-  label: string;
-  icon: ReactNode;
-  adminOnly?: boolean;
-  children: { to: string; label: string; end?: boolean }[];
-}
-type NavEntry = NavLeaf | NavGroupItem;
 
 const chatIcon = (
   <path
@@ -52,11 +57,71 @@ const settingsIcon = (
   </>
 );
 
-const navItems: NavEntry[] = [
-  { to: '/chat', label: 'Chat', icon: chatIcon },
+const accountIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+  />
+);
+
+const overviewIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+  />
+);
+
+const projectsIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+  />
+);
+
+// Global platform surfaces (the global shell). Dashboard / Account are superadmin
+// only; Projects is every member's picker into their project shells. Settings is
+// pinned to the bottom (see globalSettingsItem), mirroring the project shell.
+const globalNavItems: NavLeaf[] = [
+  { to: '/dashboard', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
+  { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
+  { to: '/projects', label: 'Projects', gate: 'everyone', icon: projectsIcon },
   {
+    to: '/skills',
+    label: 'Skills',
+    gate: 'superadmin',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
+      />
+    ),
+  },
+];
+
+// Settings sits at the bottom of the sidebar in both shells, above the user menu.
+const globalSettingsItem: NavLeaf = {
+  to: '/settings',
+  label: 'Settings',
+  gate: 'superadmin',
+  icon: settingsIcon,
+};
+
+// Project-scoped nav. Paths are relative to the project root (leading '/') and
+// get the active project's /:slug prefix applied before rendering.
+const navItems: NavLeaf[] = [
+  { to: '/chat', label: 'Chat', icon: chatIcon, gate: 'everyone' },
+  {
+    to: '/dashboard',
     label: 'Dashboard',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -65,18 +130,11 @@ const navItems: NavEntry[] = [
         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
       />
     ),
-    children: [
-      { to: '/dashboard', label: 'Overview', end: true },
-      { to: '/dashboard/projects', label: 'Projects' },
-      { to: '/dashboard/usage', label: 'Usage' },
-      { to: '/dashboard/activity', label: 'Activity' },
-      { to: '/dashboard/performance', label: 'Performance' },
-      { to: '/dashboard/users', label: 'Users' },
-    ],
   },
   {
     to: '/reminders',
     label: 'Reminders',
+    feature: 'reminders',
     icon: (
       <path
         strokeLinecap="round"
@@ -89,6 +147,7 @@ const navItems: NavEntry[] = [
   {
     to: '/bucket-list',
     label: 'Bucket List',
+    feature: 'bucket_list',
     icon: (
       <path
         strokeLinecap="round"
@@ -99,33 +158,22 @@ const navItems: NavEntry[] = [
     ),
   },
   {
-    to: '/skills',
-    label: 'Skills',
+    to: '/workflow',
+    label: 'Workflow',
+    gate: 'superadmin',
     icon: (
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
-        d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
-      />
-    ),
-  },
-  {
-    to: '/projects',
-    label: 'Projects',
-    icon: (
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
       />
     ),
   },
   {
     to: '/integrations',
     label: 'Integrations',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -138,26 +186,13 @@ const navItems: NavEntry[] = [
   {
     to: '/logs',
     label: 'Logs',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-      />
-    ),
-  },
-  {
-    to: '/account',
-    label: 'Account',
-    adminOnly: true,
-    icon: (
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
       />
     ),
   },
@@ -179,99 +214,121 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-function NavGroup({ item }: { item: NavGroupItem }) {
-  const location = useLocation();
-  const anyActive = item.children.some((c) =>
-    c.end ? location.pathname === c.to : location.pathname.startsWith(c.to),
-  );
-  const [open, setOpen] = useState(anyActive);
+export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
+  const { canManageActive, navFeatureVisible, projects, loading } = useProjects();
+  const { slug } = useParams();
 
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`w-full ${leafClass(anyActive)}`}
-      >
-        <Icon>{item.icon}</Icon>
-        <span className="flex-1 text-left">{item.label}</span>
-        <svg
-          className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="mt-0.5 space-y-0.5 pl-4">
-          {item.children.map((c) => (
-            <NavLink
-              key={c.to}
-              to={c.to}
-              end={c.end}
-              className={({ isActive }) =>
-                `block rounded-lg px-3 py-1.5 text-sm transition ${
-                  isActive
-                    ? 'font-medium text-white'
-                    : 'font-normal text-slate-400 hover:text-slate-100'
-                }`
-              }
-            >
-              {c.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+  const canSee = (gate: NavGate | undefined): boolean => {
+    switch (gate ?? 'everyone') {
+      case 'superadmin':
+        return isAdmin; // isAdmin === global superadmin
+      case 'projectAdmin':
+        return canManageActive;
+      default:
+        return true;
+    }
+  };
 
-export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
-  const { assistantName } = usePreferences();
-  const items = navItems.filter((item) => isAdmin || !item.adminOnly);
+  // In a project shell, a slug that matches no project the caller can see is a
+  // dead URL — bounce home rather than render someone else's project chrome.
+  if (mode === 'project' && !loading && slug && !projects.some((p) => p.slug === slug)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const withSlug = (to: string) => `/${slug}${to}`;
+
+  const items = navItems
+    .filter((item) => {
+      if (!canSee(item.gate)) return false;
+      if (item.feature) return navFeatureVisible(item.feature);
+      return true;
+    })
+    .map((item) => ({ ...item, to: withSlug(item.to) }));
+
+  const globalItems = globalNavItems.filter((item) => canSee(item.gate));
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
-        <div className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15">
-            <svg
-              className="h-5 w-5 text-indigo-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              {chatIcon}
-            </svg>
-          </div>
-          <h1 className="truncate text-base font-semibold text-white">{assistantName}</h1>
-        </div>
+        {mode === 'global' ? (
+          <>
+            <nav className="flex-1 space-y-0.5 px-3 py-4">
+              {globalItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{item.icon}</Icon>
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
 
-        <div className="px-3 pb-1">
-          <ProjectSwitcher isSuperadmin={isAdmin} />
-        </div>
+            {canSee(globalSettingsItem.gate) && (
+              <div className="px-3 pb-2">
+                <NavLink
+                  to={globalSettingsItem.to}
+                  end
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{globalSettingsItem.icon}</Icon>
+                  {globalSettingsItem.label}
+                </NavLink>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {isAdmin && (
+              <div className="px-3 pt-3">
+                <NavLink
+                  to="/dashboard"
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+                >
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 17l-5-5m0 0l5-5m-5 5h12"
+                    />
+                  </svg>
+                  All projects
+                </NavLink>
+              </div>
+            )}
 
-        <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {items.map((item) =>
-            'children' in item ? (
-              <NavGroup key={item.label} item={item} />
-            ) : (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => leafClass(isActive)}>
-                <Icon>{item.icon}</Icon>
-                {item.label}
+            <div className={`px-3 pb-1 ${isAdmin ? 'pt-3' : 'pt-4'}`}>
+              <ProjectSwitcher isSuperadmin={isAdmin} />
+            </div>
+
+            <nav className="flex-1 space-y-0.5 px-3 py-2">
+              {items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{item.icon}</Icon>
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            <div className="px-3 pb-2">
+              <NavLink to={withSlug('/settings')} className={({ isActive }) => leafClass(isActive)}>
+                <Icon>{settingsIcon}</Icon>
+                Settings
               </NavLink>
-            ),
-          )}
-        </nav>
-
-        <div className="px-3 pb-2">
-          <NavLink to="/settings" className={({ isActive }) => leafClass(isActive)}>
-            <Icon>{settingsIcon}</Icon>
-            Settings
-          </NavLink>
-        </div>
+            </div>
+          </>
+        )}
 
         <div className="border-t border-white/10 p-2">
           <UserMenu user={user} onLogout={onLogout} />
