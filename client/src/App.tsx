@@ -28,10 +28,15 @@ import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
-import { Projects } from './components/Projects';
-import { ProjectDetail } from './components/ProjectDetail';
 import { ProjectsOverview } from './components/dashboard/ProjectsOverview';
 import { WhatsAppMappingsSettings } from './components/settings/WhatsAppMappingsSettings';
+import {
+  ProjectOverviewSettings,
+  ProjectMembersSettings,
+  ProjectSkillsSettings,
+  ProjectFeaturesSettings,
+  ProjectAuditSettings,
+} from './components/settings/ProjectSettings';
 
 // ProjectAdminRoute guards a route to admins of the active project (superadmin
 // always qualifies). Members are redirected to Chat. Must render inside
@@ -91,23 +96,6 @@ function App() {
             />
             <Route path="profile" element={<Profile />} />
 
-            {/* Project management: the list is superadmin-only; a project's detail
-                page is reachable by that project's admins. */}
-            <Route
-              path="projects"
-              element={
-                isAdmin ? <Projects isSuperadmin={isAdmin} /> : <Navigate to="/chat" replace />
-              }
-            />
-            <Route
-              path="projects/:id"
-              element={
-                <ProjectAdminRoute>
-                  <ProjectDetail isSuperadmin={isAdmin} />
-                </ProjectAdminRoute>
-              }
-            />
-
             {/* Project-admin surfaces, scoped to the active project. */}
             <Route
               path="integrations"
@@ -160,6 +148,47 @@ function App() {
 
             <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
               <Route index element={<AgentSettings />} />
+              {/* Active-project management, gated to that project's admins. */}
+              <Route
+                path="project"
+                element={
+                  <ProjectAdminRoute>
+                    <ProjectOverviewSettings />
+                  </ProjectAdminRoute>
+                }
+              />
+              <Route
+                path="project/members"
+                element={
+                  <ProjectAdminRoute>
+                    <ProjectMembersSettings />
+                  </ProjectAdminRoute>
+                }
+              />
+              <Route
+                path="project/skills"
+                element={
+                  <ProjectAdminRoute>
+                    <ProjectSkillsSettings />
+                  </ProjectAdminRoute>
+                }
+              />
+              <Route
+                path="project/features"
+                element={
+                  <ProjectAdminRoute>
+                    <ProjectFeaturesSettings />
+                  </ProjectAdminRoute>
+                }
+              />
+              <Route
+                path="project/audit"
+                element={
+                  <ProjectAdminRoute>
+                    <ProjectAuditSettings />
+                  </ProjectAdminRoute>
+                }
+              />
               {isAdmin && <Route path="model" element={<ModelSettings />} />}
               {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
               {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}

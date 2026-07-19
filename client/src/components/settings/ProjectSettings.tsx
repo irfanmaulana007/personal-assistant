@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
-  listProjects,
   updateProject,
   deleteProject,
   listProjectMembers,
@@ -14,8 +13,8 @@ import {
   setProjectSkill,
   getProjectFeatures,
   setProjectFeature,
-} from '../api/client';
-import { useProjects } from '../contexts/project';
+} from '../../api/client';
+import { useProjects } from '../../contexts/project';
 import type {
   Project,
   ProjectMember,
@@ -23,10 +22,10 @@ import type {
   ProjectSkill,
   ProjectFeature,
   AuditEvent,
-} from '../types';
-import { Skeleton, SkeletonCard, SkeletonListRow } from './ui/Skeleton';
-import { Modal } from './ui/Modal';
-import { Toggle } from './ui/Toggle';
+} from '../../types';
+import { Skeleton, SkeletonCard, SkeletonListRow } from '../ui/Skeleton';
+import { Modal } from '../ui/Modal';
+import { Toggle } from '../ui/Toggle';
 
 const inputClass =
   'rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
@@ -34,191 +33,90 @@ const inputClass =
 const selectClass =
   'rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-900 outline-none transition focus:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400';
 
-// Tabs available to a project manager. A non-manager only ever sees Overview.
-type TabKey = 'overview' | 'members' | 'skills' | 'features' | 'audit';
-const MANAGE_TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'members', label: 'Members' },
-  { key: 'skills', label: 'Skills' },
-  { key: 'features', label: 'Features' },
-  { key: 'audit', label: 'Audit' },
-];
+// -------------------------------------------------------------------------
+// Settings sections
+//
+// Each section manages the *active* project (chosen in the sidebar switcher).
+// The routes are gated to project managers, and a project's effective role of
+// 'superadmin' means the caller is a global superadmin. These thin wrappers
+// resolve the active project from context, then render the shared cards below.
+// -------------------------------------------------------------------------
 
-export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
-  const { id } = useParams();
-  const projectId = Number(id);
+function useActiveProject() {
+  const { activeProject, loading } = useProjects();
+  const isSuperadmin = activeProject?.role === 'superadmin';
+  const canManage = activeProject?.role === 'admin' || isSuperadmin;
+  return { project: activeProject, loading, canManage, isSuperadmin };
+}
+
+function LoadingCard() {
+  return (
+    <SkeletonCard>
+      <Skeleton className="mb-4 h-3.5 w-20" />
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between gap-4">
+            <Skeleton className="h-4 w-56 max-w-full" />
+            <Skeleton className="h-7 w-24 rounded-lg" />
+            <Skeleton className="h-6 w-16 rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </SkeletonCard>
+  );
+}
+
+function NoProject() {
+  return <p className="text-sm text-gray-500 dark:text-gray-400">No active project selected.</p>;
+}
+
+export function ProjectOverviewSettings() {
   const { reload: reloadSwitcher } = useProjects();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const reload = () => setRefreshKey((k) => k + 1);
-
-  // The caller's effective role in this project drives every RBAC gate below.
-  const role = project?.role;
-  const canManage = role === 'admin' || role === 'superadmin';
-
-  // Project admins can't see the projects list, so they go back to chat.
-  const backTo = isSuperadmin ? '/projects' : '/chat';
-  const backLabel = isSuperadmin ? 'Projects' : 'Chat';
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!Number.isFinite(projectId)) {
-        if (active) {
-          setError('Invalid project id');
-          setLoading(false);
-        }
-        return;
-      }
-      setLoading(true);
-      try {
-        const projects = await listProjects();
-        const proj = projects.find((p) => p.id === projectId) ?? null;
-        if (!active) return;
-        if (!proj) {
-          setError('Project not found');
-          setProject(null);
-          setLoading(false);
-          return;
-        }
-        setProject(proj);
-        setError('');
-      } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : 'Failed to load project');
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [projectId, refreshKey]);
-
-  // Active tab persists in ?tab=. A non-manager (or a stale link to a manage-only
-  // tab) always resolves to Overview.
-  const requested = (searchParams.get('tab') as TabKey) || 'overview';
-  const activeTab: TabKey =
-    canManage && MANAGE_TABS.some((t) => t.key === requested) ? requested : 'overview';
-
-  const selectTab = (key: TabKey) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (key === 'overview') next.delete('tab');
-        else next.set('tab', key);
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
-  const tabs = canManage ? MANAGE_TABS : MANAGE_TABS.filter((t) => t.key === 'overview');
-
+  const { project, loading, canManage } = useActiveProject();
+  if (loading) return <LoadingCard />;
+  if (!project) return <NoProject />;
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
-      <Link
-        to={backTo}
-        className="inline-flex items-center gap-1 text-sm font-medium text-indigo-700 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
-      >
-        <svg
-          className="h-4 w-4"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
-        </svg>
-        {backLabel}
-      </Link>
-
-      {loading ? (
-        <div className="mt-4">
-          <Skeleton className="h-7 w-56" />
-          <SkeletonCard className="mt-6">
-            <Skeleton className="mb-4 h-3.5 w-20" />
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between gap-4">
-                  <Skeleton className="h-4 w-56 max-w-full" />
-                  <Skeleton className="h-7 w-24 rounded-lg" />
-                  <Skeleton className="h-6 w-16 rounded-lg" />
-                </div>
-              ))}
-            </div>
-          </SkeletonCard>
-        </div>
-      ) : !project ? (
-        <p className="mt-6 text-sm text-red-600 dark:text-red-400">
-          {error || 'Project not found'}
-        </p>
-      ) : (
-        <>
-          <h1 className="mt-4 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-            {project.name}
-          </h1>
-
-          {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-          {/* Tab bar */}
-          <div className="mt-4 border-b border-gray-200 dark:border-gray-700">
-            <nav className="-mb-px flex gap-6 overflow-x-auto">
-              {tabs.map((t) => {
-                const isActive = t.key === activeTab;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => selectTab(t.key)}
-                    className={`whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition ${
-                      isActive
-                        ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
-                        : 'border-transparent text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div className="mt-6">
-            {activeTab === 'overview' && (
-              <OverviewTab
-                project={project}
-                canManage={canManage}
-                onRenamed={() => {
-                  reloadSwitcher();
-                  reload();
-                }}
-                onDeleted={() => {
-                  reloadSwitcher();
-                  navigate(isSuperadmin ? '/projects' : '/chat');
-                }}
-              />
-            )}
-            {activeTab === 'members' && canManage && (
-              <MembersTab projectId={projectId} canManage={canManage} isSuperadmin={isSuperadmin} />
-            )}
-            {activeTab === 'skills' && canManage && (
-              <SkillsTab projectId={projectId} canManage={canManage} />
-            )}
-            {activeTab === 'features' && canManage && (
-              <FeaturesTab projectId={projectId} canManage={canManage} />
-            )}
-            {activeTab === 'audit' && canManage && <AuditTab projectId={projectId} />}
-          </div>
-        </>
-      )}
-    </div>
+    <OverviewTab
+      project={project}
+      canManage={canManage}
+      onRenamed={reloadSwitcher}
+      onDeleted={() => {
+        // The active project is gone; refresh the switcher (which auto-selects
+        // another project) and drop the user back to chat.
+        reloadSwitcher();
+        navigate('/chat');
+      }}
+    />
   );
+}
+
+export function ProjectMembersSettings() {
+  const { project, loading, canManage, isSuperadmin } = useActiveProject();
+  if (loading) return <LoadingCard />;
+  if (!project) return <NoProject />;
+  return <MembersTab projectId={project.id} canManage={canManage} isSuperadmin={isSuperadmin} />;
+}
+
+export function ProjectSkillsSettings() {
+  const { project, loading, canManage } = useActiveProject();
+  if (loading) return <LoadingCard />;
+  if (!project) return <NoProject />;
+  return <SkillsTab projectId={project.id} canManage={canManage} />;
+}
+
+export function ProjectFeaturesSettings() {
+  const { project, loading, canManage } = useActiveProject();
+  if (loading) return <LoadingCard />;
+  if (!project) return <NoProject />;
+  return <FeaturesTab projectId={project.id} canManage={canManage} />;
+}
+
+export function ProjectAuditSettings() {
+  const { project, loading } = useActiveProject();
+  if (loading) return <LoadingCard />;
+  if (!project) return <NoProject />;
+  return <AuditTab projectId={project.id} />;
 }
 
 // -------------------------------------------------------------------------
