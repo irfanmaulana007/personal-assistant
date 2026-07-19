@@ -199,6 +199,9 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 	if len(f.Platforms) > 0 {
 		filter["platform"] = bson.M{"$in": f.Platforms}
 	}
+	if f.ProjectID != 0 {
+		filter["project_id"] = f.ProjectID
+	}
 	// Each selected score state contributes a sub-filter; a trace matches if it
 	// satisfies ANY of them (OR). A single state is applied inline.
 	if or := mongoScoreClauses(f.ScoreStates); len(or) == 1 {

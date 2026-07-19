@@ -6,20 +6,24 @@ import (
 	"math"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // mongoRangeMatch builds the standard analytics $match: the half-open interval
-// [from, to) on created_at, plus an optional platform filter (nil/empty = all,
-// otherwise "$in" the listed platforms). It mirrors the SQLite
-// `created_at >= ? AND created_at < ?`+optional platform filter used by every
-// usage query. A fresh map is returned each call so callers may safely add more
-// keys (e.g. latency_ms) to it.
-func mongoRangeMatch(from, to time.Time, platforms []string) bson.M {
+// [from, to) on created_at, an optional platform filter (nil/empty = all,
+// otherwise "$in" the listed platforms), and — when the request carries an
+// active project on ctx — a project_id filter so per-project dashboards only see
+// their own usage. A fresh map is returned each call so callers may safely add
+// more keys (e.g. latency_ms) to it.
+func mongoRangeMatch(ctx context.Context, from, to time.Time, platforms []string) bson.M {
 	match := bson.M{"created_at": bson.M{"$gte": from.UTC(), "$lt": to.UTC()}}
 	if len(platforms) > 0 {
 		match["platform"] = bson.M{"$in": platforms}
+	}
+	if pid := authctx.ProjectID(ctx); pid > 0 {
+		match["project_id"] = pid
 	}
 	return match
 }
@@ -31,7 +35,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 	fromUTC := from.UTC()
 	toUTC := to.UTC()
 	stats := &UsageStats{}
-	match := mongoRangeMatch(fromUTC, toUTC, platforms)
+	match := mongoRangeMatch(ctx, fromUTC, toUTC, platforms)
 
 	// Summary: COUNT(*), SUM(tokens/tool_count), error count, COUNT(DISTINCT
 	// user_id) and AVG(NULLIF(latency_ms,0)). $addToSet+len replicates the
@@ -176,7 +180,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 	// higher rate, so they are summed here rather than through the LLM token
 	// fields above: this keeps the summary and per-day token totals combined
 	// (LLM + image) while the by-model breakdown still shows the two apart.
-	imgMatch := mongoRangeMatch(fromUTC, toUTC, platforms)
+	imgMatch := mongoRangeMatch(ctx, fromUTC, toUTC, platforms)
 	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
 	imgModelPipe := mongo.Pipeline{
 		{{Key: "$match", Value: imgMatch}},
@@ -237,8 +241,9 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 	}
 
 	// By platform: deliberately ignores the platform filter (range only) so the
-	// split is always visible. Ordered by request count desc; "" -> "unknown".
-	platMatch := bson.M{"created_at": bson.M{"$gte": fromUTC, "$lt": toUTC}}
+	// split is always visible, but still respects the active-project scope.
+	// Ordered by request count desc; "" -> "unknown".
+	platMatch := mongoRangeMatch(ctx, fromUTC, toUTC, nil)
 	platPipe := mongo.Pipeline{
 		{{Key: "$match", Value: platMatch}},
 		{{Key: "$group", Value: bson.M{
@@ -266,7 +271,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 
 	// Top tools (from tool_usage), range+platform filtered, top 10 by count.
 	toolPipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(fromUTC, toUTC, platforms)}},
+		{{Key: "$match", Value: mongoRangeMatch(ctx, fromUTC, toUTC, platforms)}},
 		{{Key: "$group", Value: bson.M{"_id": "$tool", "count": bson.M{"$sum": 1}}}},
 		{{Key: "$sort", Value: bson.D{{Key: "count", Value: -1}}}},
 		{{Key: "$limit", Value: 10}},
@@ -291,7 +296,7 @@ func (m *MongoStore) UsageStatsBetween(ctx context.Context, from, to time.Time, 
 // using the SAME index math as the SQLite version: pull all non-zero latencies
 // sorted ascending, then pick index ceil(p*n)-1 with clamping. Empty -> zeros.
 func (m *MongoStore) latencyPercentiles(ctx context.Context, from, to time.Time, platforms []string) (p50, p95, p99 int, err error) {
-	match := mongoRangeMatch(from, to, platforms)
+	match := mongoRangeMatch(ctx, from, to, platforms)
 	match["latency_ms"] = bson.M{"$gt": 0}
 	pipe := mongo.Pipeline{
 		{{Key: "$match", Value: match}},
@@ -329,7 +334,7 @@ func (m *MongoStore) latencyPercentiles(ctx context.Context, from, to time.Time,
 // [0, len(out)) are ignored, exactly like the SQLite bounds check.
 func (m *MongoStore) usageByBucket(ctx context.Context, from, to time.Time, platforms []string, bucketExpr interface{}, out []int) error {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
+		{{Key: "$match", Value: mongoRangeMatch(ctx, from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{"_id": bucketExpr, "count": bson.M{"$sum": 1}}}},
 	}
 	var rows []struct {
@@ -351,7 +356,7 @@ func (m *MongoStore) usageByBucket(ctx context.Context, from, to time.Time, plat
 // MongoDB port of SQLiteStore.UsageByDayModel.
 func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, platforms []string) ([]DayModelUsage, error) {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
+		{{Key: "$match", Value: mongoRangeMatch(ctx, from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{
 				"day":   bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at", "timezone": "UTC"}},
@@ -385,7 +390,7 @@ func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, pl
 
 	// Image-generation usage (gpt-image-1) contributes its own per-day rows so
 	// the by-day cost series priced in the API layer covers LLM + image combined.
-	imgMatch := mongoRangeMatch(from, to, platforms)
+	imgMatch := mongoRangeMatch(ctx, from, to, platforms)
 	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
 	imgPipe := mongo.Pipeline{
 		{{Key: "$match", Value: imgMatch}},
@@ -426,7 +431,7 @@ func (m *MongoStore) UsageByDayModel(ctx context.Context, from, to time.Time, pl
 // SQLiteStore.UsageByUserModel.
 func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, platforms []string) ([]UserModelUsage, error) {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, platforms)}},
+		{{Key: "$match", Value: mongoRangeMatch(ctx, from, to, platforms)}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{
 				"user_id": "$user_id",
@@ -472,7 +477,7 @@ func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, p
 	// cost includes image generation. Requests/Errors stay zero: the run is
 	// already counted by its LLM row above, so counting it again would double the
 	// user's request total.
-	imgMatch := mongoRangeMatch(from, to, platforms)
+	imgMatch := mongoRangeMatch(ctx, from, to, platforms)
 	imgMatch["image_total_tokens"] = bson.M{"$gt": 0}
 	imgPipe := mongo.Pipeline{
 		{{Key: "$match", Value: imgMatch}},
@@ -515,7 +520,7 @@ func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, p
 // and are grouped there.
 func (m *MongoStore) UsageByProject(ctx context.Context, from, to time.Time) ([]ProjectModelUsage, error) {
 	pipe := mongo.Pipeline{
-		{{Key: "$match", Value: mongoRangeMatch(from, to, nil)}},
+		{{Key: "$match", Value: mongoRangeMatch(ctx, from, to, nil)}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{
 				"project_id": bson.M{"$ifNull": bson.A{"$project_id", int64(0)}},

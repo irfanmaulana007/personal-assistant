@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/crypto"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
@@ -228,112 +229,91 @@ func (s *Service) SetResponseMode(ctx context.Context, mode string) error {
 	return s.store.SetSetting(ctx, KeyResponseMode, []byte(val))
 }
 
-// ComposioKey returns the decrypted Composio API key, or "" if unset.
+// Integration keys are scoped to the active project: a project's own key is
+// used when set, otherwise the global key is the fallback. This lets each
+// project bring its own OpenAI / Tavily / Trello / Composio credentials while a
+// platform-wide default still works for projects that don't override it.
+
+// scopedSecretKey returns the project-namespaced setting key when a project is
+// active, else the plain (global) key.
+func scopedSecretKey(ctx context.Context, base string) string {
+	if pid := authctx.ProjectID(ctx); pid > 0 {
+		return fmt.Sprintf("project:%d:%s", pid, base)
+	}
+	return base
+}
+
+// getScopedSecret reads a project's secret, falling back to the global one.
+func (s *Service) getScopedSecret(ctx context.Context, base string) (string, error) {
+	if pid := authctx.ProjectID(ctx); pid > 0 {
+		v, err := s.decryptSetting(ctx, fmt.Sprintf("project:%d:%s", pid, base))
+		if err != nil {
+			return "", err
+		}
+		if v != "" {
+			return v, nil
+		}
+	}
+	return s.decryptSetting(ctx, base)
+}
+
+// ComposioKey returns the decrypted Composio API key for the active project (or
+// the global fallback), or "" if unset.
 func (s *Service) ComposioKey(ctx context.Context) (string, error) {
-	enc, err := s.store.GetSetting(ctx, KeyComposioAPIKey)
-	if err != nil {
-		return "", err
-	}
-	if len(enc) == 0 {
-		return "", nil
-	}
-	dec, err := crypto.Decrypt(s.encKey, enc)
-	if err != nil {
-		return "", fmt.Errorf("decrypt composio key: %w", err)
-	}
-	return string(dec), nil
+	return s.getScopedSecret(ctx, KeyComposioAPIKey)
 }
 
-// SetComposioKey stores the Composio API key encrypted. An empty value clears it.
+// SetComposioKey stores the Composio API key encrypted, scoped to the active
+// project. An empty value clears it.
 func (s *Service) SetComposioKey(ctx context.Context, key string) error {
-	if key == "" {
-		return s.store.SetSetting(ctx, KeyComposioAPIKey, []byte{})
-	}
-	enc, err := crypto.Encrypt(s.encKey, []byte(key))
-	if err != nil {
-		return fmt.Errorf("encrypt composio key: %w", err)
-	}
-	return s.store.SetSetting(ctx, KeyComposioAPIKey, enc)
+	return s.setEncrypted(ctx, scopedSecretKey(ctx, KeyComposioAPIKey), key)
 }
 
-// WebSearchKey returns the decrypted web-search (Tavily) API key, or "" if unset.
+// WebSearchKey returns the decrypted web-search (Tavily) API key for the active
+// project (or global fallback), or "" if unset.
 func (s *Service) WebSearchKey(ctx context.Context) (string, error) {
-	enc, err := s.store.GetSetting(ctx, KeyWebSearchAPIKey)
-	if err != nil {
-		return "", err
-	}
-	if len(enc) == 0 {
-		return "", nil
-	}
-	dec, err := crypto.Decrypt(s.encKey, enc)
-	if err != nil {
-		return "", fmt.Errorf("decrypt web search key: %w", err)
-	}
-	return string(dec), nil
+	return s.getScopedSecret(ctx, KeyWebSearchAPIKey)
 }
 
-// SetWebSearchKey stores the web-search API key encrypted. An empty value clears it.
+// SetWebSearchKey stores the web-search API key encrypted, scoped to the active
+// project. An empty value clears it.
 func (s *Service) SetWebSearchKey(ctx context.Context, key string) error {
-	if key == "" {
-		return s.store.SetSetting(ctx, KeyWebSearchAPIKey, []byte{})
-	}
-	enc, err := crypto.Encrypt(s.encKey, []byte(key))
-	if err != nil {
-		return fmt.Errorf("encrypt web search key: %w", err)
-	}
-	return s.store.SetSetting(ctx, KeyWebSearchAPIKey, enc)
+	return s.setEncrypted(ctx, scopedSecretKey(ctx, KeyWebSearchAPIKey), key)
 }
 
-// OpenAIKey returns the decrypted OpenAI API key (used for image generation),
-// or "" if unset.
+// OpenAIKey returns the decrypted OpenAI API key (image generation) for the
+// active project (or global fallback), or "" if unset.
 func (s *Service) OpenAIKey(ctx context.Context) (string, error) {
-	enc, err := s.store.GetSetting(ctx, KeyOpenAIAPIKey)
-	if err != nil {
-		return "", err
-	}
-	if len(enc) == 0 {
-		return "", nil
-	}
-	dec, err := crypto.Decrypt(s.encKey, enc)
-	if err != nil {
-		return "", fmt.Errorf("decrypt openai key: %w", err)
-	}
-	return string(dec), nil
+	return s.getScopedSecret(ctx, KeyOpenAIAPIKey)
 }
 
-// SetOpenAIKey stores the OpenAI API key encrypted. An empty value clears it.
+// SetOpenAIKey stores the OpenAI API key encrypted, scoped to the active
+// project. An empty value clears it.
 func (s *Service) SetOpenAIKey(ctx context.Context, key string) error {
-	if key == "" {
-		return s.store.SetSetting(ctx, KeyOpenAIAPIKey, []byte{})
-	}
-	enc, err := crypto.Encrypt(s.encKey, []byte(key))
-	if err != nil {
-		return fmt.Errorf("encrypt openai key: %w", err)
-	}
-	return s.store.SetSetting(ctx, KeyOpenAIAPIKey, enc)
+	return s.setEncrypted(ctx, scopedSecretKey(ctx, KeyOpenAIAPIKey), key)
 }
 
-// TrelloCreds returns the decrypted Trello API key and user token, or empty
-// strings if unset. Both are needed to authenticate a Trello request.
+// TrelloCreds returns the decrypted Trello API key and user token for the active
+// project (or global fallback). Both are needed to authenticate a Trello request.
 func (s *Service) TrelloCreds(ctx context.Context) (apiKey, token string, err error) {
-	apiKey, err = s.decryptSetting(ctx, KeyTrelloAPIKey)
+	apiKey, err = s.getScopedSecret(ctx, KeyTrelloAPIKey)
 	if err != nil {
 		return "", "", fmt.Errorf("decrypt trello key: %w", err)
 	}
-	token, err = s.decryptSetting(ctx, KeyTrelloToken)
+	token, err = s.getScopedSecret(ctx, KeyTrelloToken)
 	if err != nil {
 		return "", "", fmt.Errorf("decrypt trello token: %w", err)
 	}
 	return apiKey, token, nil
 }
 
-// SetTrelloCreds stores the Trello API key and user token encrypted. An empty
-// value for either clears that field.
+// SetTrelloCreds stores the Trello API key and user token encrypted, scoped to
+// the active project. An empty value for either clears that field.
 func (s *Service) SetTrelloCreds(ctx context.Context, apiKey, token string) error {
-	if err := s.setEncrypted(ctx, KeyTrelloAPIKey, apiKey); err != nil {
+	if err := s.setEncrypted(ctx, scopedSecretKey(ctx, KeyTrelloAPIKey), apiKey); err != nil {
 		return fmt.Errorf("store trello key: %w", err)
 	}
-	if err := s.setEncrypted(ctx, KeyTrelloToken, token); err != nil {
+	if err := s.setEncrypted(ctx, scopedSecretKey(ctx, KeyTrelloToken), token); err != nil {
 		return fmt.Errorf("store trello token: %w", err)
 	}
 	return nil
