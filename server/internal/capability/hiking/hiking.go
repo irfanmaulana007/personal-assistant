@@ -88,13 +88,20 @@ func (h *Handler) logHike(ctx context.Context, result *intent.ParseResult) (stri
 		}
 	}
 
+	days := atoi(e["days"])
+	nights := atoi(e["nights"])
+	// A multi-day trip means the user necessarily stayed overnight, so infer
+	// camped=true instead of asking. Single-day hikes (days<=1, nights==0)
+	// keep the explicitly-provided value so the camping question still applies.
+	camped := parseBool(e["camped"]) || days > 1 || nights > 0
+
 	hike := &store.Hike{
 		MountainID:  mountain.ID,
-		Camped:      parseBool(e["camped"]),
+		Camped:      camped,
 		UpTrackID:   upTrackID,
 		DownTrackID: downTrackID,
-		Days:        atoi(e["days"]),
-		Nights:      atoi(e["nights"]),
+		Days:        days,
+		Nights:      nights,
 		HikedOn:     hikedOn,
 	}
 	hikeID, err := h.store.CreateHike(ctx, userID, hike)

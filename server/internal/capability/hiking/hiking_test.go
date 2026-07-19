@@ -38,6 +38,71 @@ func TestSimilar(t *testing.T) {
 	}
 }
 
+func TestHikeAutoCamped(t *testing.T) {
+	db := storetest.New(t)
+	h := New(db, time.UTC, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	cases := []struct {
+		name     string
+		entities map[string]string
+		want     bool
+	}{
+		{
+			// Days > 1 ⇒ camped inferred true even though not provided.
+			name:     "multi_day_infers_camped",
+			entities: map[string]string{"mountain": "Rinjani", "days": "3", "nights": "2"},
+			want:     true,
+		},
+		{
+			// Nights > 0 with a single day ⇒ camped inferred true.
+			name:     "overnight_infers_camped",
+			entities: map[string]string{"mountain": "Semeru", "days": "1", "nights": "1"},
+			want:     true,
+		},
+		{
+			// Multi-day trip overrides an explicit "no" — you cannot span
+			// nights without staying overnight.
+			name:     "multi_day_overrides_explicit_no",
+			entities: map[string]string{"mountain": "Merbabu", "days": "2", "nights": "1", "camped": "no"},
+			want:     true,
+		},
+		{
+			// Single-day hike, camping unspecified ⇒ stays false (question still
+			// applies, existing behavior unchanged).
+			name:     "single_day_default_false",
+			entities: map[string]string{"mountain": "Andong", "days": "1", "nights": "0"},
+			want:     false,
+		},
+		{
+			// Single-day hike with explicit yes ⇒ honored.
+			name:     "single_day_explicit_yes",
+			entities: map[string]string{"mountain": "Prau", "days": "1", "nights": "0", "camped": "yes"},
+			want:     true,
+		},
+	}
+
+	for i, c := range cases {
+		// Each case runs as a distinct user so hikes don't collide.
+		ctx := authctx.WithUserID(context.Background(), int64(100+i))
+		if _, err := h.Handle(ctx, &intent.ParseResult{
+			Capability: intent.CapabilityHiking, Action: intent.ActionHikeLog,
+			Entities: c.entities,
+		}); err != nil {
+			t.Fatalf("%s: log: %v", c.name, err)
+		}
+		hikes, err := db.ListHikes(ctx, int64(100+i), 10)
+		if err != nil {
+			t.Fatalf("%s: list: %v", c.name, err)
+		}
+		if len(hikes) != 1 {
+			t.Fatalf("%s: expected 1 hike, got %d", c.name, len(hikes))
+		}
+		if hikes[0].Camped != c.want {
+			t.Errorf("%s: camped = %v, want %v", c.name, hikes[0].Camped, c.want)
+		}
+	}
+}
+
 func TestHikeLogDedup(t *testing.T) {
 	db := storetest.New(t)
 
