@@ -21,6 +21,43 @@ func DefaultSkillPrompt(key string) string {
 	return ""
 }
 
+// featureSeed is the code-owned catalog of features (navigation menus /
+// modules). A feature owns zero or more skills via featureSkillSeed; disabling a
+// feature for a project disables all of its skills there. Upserted on boot.
+var featureSeed = []Feature{
+	{Key: "chat", Name: "Chat", SortOrder: 1, DefaultEnabled: true, Description: "The core conversational assistant."},
+	{Key: "bucket_list", Name: "Bucket List", SortOrder: 2, DefaultEnabled: true, Description: "A categorized life checklist."},
+	{Key: "reminders", Name: "Reminders", SortOrder: 3, DefaultEnabled: true, Description: "Scheduled reminders and their calendar mirror."},
+	{Key: "notes", Name: "Notes", SortOrder: 4, DefaultEnabled: true, Description: "Saved notes and knowledge base."},
+	{Key: "contacts", Name: "Contacts", SortOrder: 5, DefaultEnabled: true, Description: "Saved contacts lookup."},
+	{Key: "travel", Name: "Travel", SortOrder: 6, DefaultEnabled: true, Description: "Trip expense tracking."},
+	{Key: "hiking", Name: "Hiking", SortOrder: 7, DefaultEnabled: true, Description: "Detailed hiking log."},
+	{Key: "health", Name: "Health", SortOrder: 8, DefaultEnabled: true, Description: "Sports/workout log and meal calorie estimates."},
+	{Key: "learning", Name: "Learning", SortOrder: 9, DefaultEnabled: true, Description: "Language-practice helpers."},
+	{Key: "knowledge", Name: "Knowledge", SortOrder: 10, DefaultEnabled: true, Description: "Open-web search."},
+	{Key: "creative", Name: "Creative", SortOrder: 11, DefaultEnabled: true, Description: "Image generation and editing."},
+	{Key: "communication", Name: "Communication", SortOrder: 12, DefaultEnabled: true, Description: "Cross-language group translation."},
+	{Key: "productivity", Name: "Productivity", SortOrder: 13, DefaultEnabled: true, Description: "Trello boards, cards, and game ideas."},
+	{Key: "automation", Name: "Automation", SortOrder: 14, DefaultEnabled: true, Description: "Self-tuning and failure triage."},
+}
+
+// featureSkillSeed maps a feature key to the skill keys attached to it. A skill
+// belongs to at most one feature; features not listed own no skills. Rebuilt on
+// boot from code, so it always reflects the current catalog.
+var featureSkillSeed = map[string][]string{
+	"bucket_list":   {"bucket_list"},
+	"contacts":      {"ask_about_contact"},
+	"travel":        {"travel_control"},
+	"hiking":        {"hiking_tracker"},
+	"health":        {"activity_summary", "food_calories"},
+	"learning":      {"english_tutor"},
+	"knowledge":     {"web_search"},
+	"creative":      {"image_generator"},
+	"communication": {"translator"},
+	"productivity":  {"trello_review", "trello_card", "game_idea"},
+	"automation":    {"self_tuning", "auto_triage"},
+}
+
 var skillSeed = []Skill{
 	{
 		Key:            "ask_about_contact",

@@ -29,6 +29,7 @@ const (
 	colTraces     = "traces"
 	colToolUsage  = "tool_usage"
 	colActivities = "activities"
+	colAudit      = "audit_log"
 	colCounters   = "counters"
 )
 
@@ -97,6 +98,9 @@ func (m *MongoStore) ensureIndexes(ctx context.Context) error {
 		},
 		colActivities: {
 			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "occurred_at", Value: 1}}},
+		},
+		colAudit: {
+			{Keys: bson.D{{Key: "project_id", Value: 1}, {Key: "created_at", Value: -1}}},
 		},
 	}
 	for coll, models := range specs {

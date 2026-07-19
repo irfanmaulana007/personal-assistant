@@ -48,6 +48,10 @@ func NewPostgres(ctx context.Context, dsn string) (*PostgresStore, error) {
 		pool.Close()
 		return nil, fmt.Errorf("seed skills: %w", err)
 	}
+	if err := s.seedFeatures(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("seed features: %w", err)
+	}
 
 	return s, nil
 }
