@@ -112,8 +112,12 @@ The single source of truth for the app version is the root `package.json`
 
 10. **Move released Trello cards to `Done`.** The `/trello-feat` and
     `/trello-fix` commands stamp each PR's commit with a `Trello: <card url>`
-    trailer and put the card link in the PR body. Any of those cards that are
-    part of this release must now be marked done on their board.
+    trailer and put the card link in the PR body. By the time a change reaches
+    this point its card is normally in the `Test` list (moved there by
+    `/merge-all` when the PR merged to `staging`). Releasing to `main` is the last
+    step of the lifecycle — any of those cards that are part of this release must
+    now be moved to `Done` on their board. `move_card` promotes the card to
+    `Done` regardless of which list it currently sits in.
 
     a. **Collect the released card links** from the commits being promoted.
        Using the previous release tag as the lower bound:
