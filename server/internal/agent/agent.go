@@ -199,6 +199,19 @@ func (a *Agent) completeText(ctx context.Context, cfg llm.Config, messages []llm
 }
 
 func (a *Agent) run(ctx context.Context, userMessage string, history []Message, image string, onDelta func(string)) (*Result, error) {
+	// Health check: a bare "ping" replies "pong" immediately, short-circuiting
+	// all LLM/tool/memory/skill processing. This is the single funnel every
+	// channel (WhatsApp, web chat, …) passes through, so the check lives here to
+	// give each of them a liveness probe for free — and because it runs before
+	// any LLM config is resolved, "pong" comes back even when the model is
+	// unconfigured or degraded, confirming the transport itself is alive.
+	if strings.EqualFold(strings.TrimSpace(userMessage), "ping") {
+		if onDelta != nil {
+			onDelta("pong")
+		}
+		return &Result{Reply: "pong"}, nil
+	}
+
 	cfg, err := a.settings.LLMConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve llm config: %w", err)
