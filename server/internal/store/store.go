@@ -38,6 +38,26 @@ type Skill struct {
 	// from a global skill and customized, which shadows the global skill of the
 	// same key for that project.
 	ProjectID *int64
+	// IsCore marks a global skill as "core": auto-available to every project and
+	// always classified as core (never demoted to project-specific), though still
+	// toggleable per project. Superadmin-managed. Always false for project forks.
+	IsCore bool
+}
+
+// SkillProjectRef identifies a project that a skill maps to, for the superadmin
+// skills catalog (which projects effectively enable a given skill).
+type SkillProjectRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// SkillWithMapping is a skill plus the projects that effectively enable it, used
+// by the platform-wide (superadmin) skills catalog to derive each skill's
+// classification (core / global / project-specific) from its project mapping.
+type SkillWithMapping struct {
+	Skill
+	Projects []SkillProjectRef
 }
 
 // IsProjectOwned reports whether the skill is a project-owned fork (as opposed
@@ -648,6 +668,11 @@ type DataStore interface {
 	// auto-tuned prompt override, keyed by the skill's stable `key`. Used by the
 	// end-of-day self-tuner and the "revert to default" affordance.
 	UpdateSkillTunedPrompt(ctx context.Context, key, tuned string) error
+	// ListSkillsWithProjectMapping returns every skill with the projects that
+	// effectively enable it, backing the superadmin skills catalog. SetSkillCore
+	// marks/unmarks a global skill as core (project forks cannot be core).
+	ListSkillsWithProjectMapping(ctx context.Context) ([]SkillWithMapping, error)
+	SetSkillCore(ctx context.Context, skillID int64, isCore bool) error
 
 	// Projects (the tenancy boundary)
 	CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error)

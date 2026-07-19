@@ -13,6 +13,7 @@ import type {
   BucketItem,
   BucketItemPayload,
   Skill,
+  AdminSkill,
   Role,
   ChatResponse,
   HistoryEntry,
@@ -311,6 +312,44 @@ export async function deleteProjectSkill(id: number): Promise<Skill[]> {
 // end-of-day self-tuner), reverting it to the shipped default. Admin-only.
 export async function clearTunedPrompt(id: number): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/reset-prompt`, { method: 'POST' });
+}
+
+// --- Platform-wide skills catalog (superadmin /skills page) ---
+
+// Superadmin only. Every skill with its classification and project mapping.
+export async function listAdminSkills(): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>('/api/admin/skills');
+}
+
+// Superadmin only. Marks/unmarks a global skill as core; returns the refreshed
+// catalog. Project forks cannot be core.
+export async function setSkillCore(id: number, isCore: boolean): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/skills/${id}/core`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_core: isCore }),
+  });
+}
+
+// Superadmin only. Edits a global skill's prompt from the catalog; returns the
+// refreshed catalog.
+export async function setAdminSkillPrompt(id: number, prompt: string): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+// Superadmin only. Restores a global skill's prompt to the shipped default.
+export async function resetAdminSkillPrompt(id: number): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/prompt`, {
+    method: 'PUT',
+    body: JSON.stringify({ reset: true }),
+  });
+}
+
+// Superadmin only. Clears a global skill's auto-tuned prompt override.
+export async function revertAdminSkillTuned(id: number): Promise<AdminSkill[]> {
+  return request<AdminSkill[]>(`/api/admin/skills/${id}/revert-tuned`, { method: 'POST' });
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {

@@ -97,6 +97,19 @@ const globalNavItems: NavLeaf[] = [
   { to: '/overview', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
   { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
   { to: '/projects', label: 'Projects', gate: 'everyone', icon: projectsIcon },
+  {
+    to: '/skills',
+    label: 'Skills',
+    gate: 'superadmin',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
+      />
+    ),
+  },
   { to: '/settings', label: 'Settings', gate: 'superadmin', icon: settingsIcon },
 ];
 
@@ -146,19 +159,6 @@ const navItems: NavEntry[] = [
         strokeLinejoin="round"
         strokeWidth={2}
         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7l2 2 4-4"
-      />
-    ),
-  },
-  {
-    to: '/skills',
-    label: 'Skills',
-    gate: 'projectAdmin',
-    icon: (
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
       />
     ),
   },

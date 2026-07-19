@@ -287,6 +287,7 @@ export interface Skill {
   description: string;
   category: string;
   enabled: boolean;
+  is_core: boolean; // a core skill: auto-available to every project
   auto_tuned: boolean; // the end-of-day self-tuner has overridden this skill's prompt
   // 'global' = a shared, code-seeded skill; 'project' = a fork this project owns
   // and customized (it shadows the global skill of the same key here).
@@ -294,6 +295,40 @@ export interface Skill {
   // Prompt management fields. Present only for the caller allowed to edit this
   // skill's prompt — a superadmin for a global skill, a project admin for a
   // project fork. `prompt_updated_at` is null when the prompt is still default.
+  prompt?: string;
+  default_prompt?: string;
+  prompt_updated_at?: string | null;
+  prompt_updated_by?: string;
+}
+
+// A project a skill maps to, in the superadmin catalog.
+export interface SkillProjectRef {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+// How the superadmin skills catalog buckets a skill:
+// - 'core'    — a core skill (superadmin-flagged), auto-available to every project
+// - 'global'  — a shared skill used across projects
+// - 'project' — a skill scoped to a single project (a fork, or a global skill
+//               only one project enables)
+export type SkillClassification = 'core' | 'global' | 'project';
+
+// AdminSkill is one skill in the platform-wide (superadmin) catalog behind
+// /skills: the skill plus its storage scope, core flag, derived classification,
+// the projects that effectively enable it, and the editable prompt fields.
+export interface AdminSkill {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  scope: 'global' | 'project';
+  is_core: boolean;
+  classification: SkillClassification;
+  auto_tuned: boolean;
+  projects: SkillProjectRef[];
   prompt?: string;
   default_prompt?: string;
   prompt_updated_at?: string | null;
