@@ -109,7 +109,10 @@ function KeyCard({
   );
 }
 
-export function ApiKeysSettings() {
+// ApiKeysSection renders the project's skill API-key cards (Web Search, OpenAI).
+// It lives inside the Model settings page as a sub-section, loading its own
+// integration data independently of the LLM-provider card above it.
+export function ApiKeysSection() {
   const [data, setData] = useState<IntegrationsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

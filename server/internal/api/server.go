@@ -167,9 +167,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/bucket-list/{id}/resolution", project(s.handleSetBucketItemResolution))
 	mux.Handle("DELETE /api/bucket-list/{id}", project(s.handleDeleteBucketItem))
 
+	// LLM model settings are project-scoped: a project admin configures their
+	// own project's provider/model/key (a superadmin manages any via the
+	// switcher), with the global values as the fallback default.
+	mux.Handle("/api/settings", projectAdmin(s.handleSettings))
+	mux.Handle("/api/settings/test", projectAdmin(s.handleSettingsTest))
+
 	// Superadmin only (platform-wide surfaces)
-	mux.Handle("/api/settings", superadmin(s.handleSettings))
-	mux.Handle("/api/settings/test", superadmin(s.handleSettingsTest))
 	mux.Handle("PUT /api/preferences", superadmin(s.handleUpdatePreferences))
 	mux.Handle("PUT /api/reminders/config", superadmin(s.handleSetRemindersConfig))
 	mux.Handle("POST /api/skills/{id}/reset-prompt", superadmin(s.handleResetSkillPrompt))
