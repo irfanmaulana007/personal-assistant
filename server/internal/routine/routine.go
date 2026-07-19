@@ -5,13 +5,17 @@
 //
 // A routine is deliberately general — it is just a prompt run once a day as the
 // owner, so it can do anything the agent can do; the shipped defaults merely set
-// up two useful jobs. There are two out of the box:
+// up a few useful jobs. There are three out of the box:
 //
 //   - start_of_day: a morning briefing that also checks the calendar and
 //     reminders and messages the owner about anything on for today or tomorrow.
 //   - end_of_day: a self-improvement pass that reviews the day's low-quality
 //     conversations and refines the prompts of the skills involved (requires the
 //     Self-Tuning skill to be enabled).
+//   - nightly_triage: a failure-triage pass that scans the day's unhandled runs,
+//     files a bug card on the Trello Issue board for each recurring pattern
+//     (skipping duplicates), and refines the prompts of the skills that keep
+//     failing (requires the Auto-Triage skill to be enabled).
 //
 // Each routine's time, prompt, and on/off state are editable and persisted in
 // settings; the code owns only the catalog and the defaults. This replaces the
@@ -93,6 +97,23 @@ Reply with ONLY the message to send me — no preamble, no explanation.`,
 2. If it reports there is nothing to review, reply with exactly NOTHING_TO_REPORT and nothing else — do not send a message.
 3. Otherwise, for each skill that clearly underperformed, work out WHY from the conversation's input, the reply, the tools called, and the judge's rationale. Then call update_skill_prompt with an improved prompt for that skill: keep what already works, make a focused fix for the observed problem, and preserve tool names and any required output markers exactly. Prioritise the worst-scoring skills first. Do not tune a skill you have no evidence is failing, and never touch the self_tuning skill.
 4. When done, write me a short WhatsApp message summarising which skills you improved and, in one line each, what you changed. If you ended up changing nothing, reply with exactly NOTHING_TO_REPORT instead.
+
+Reply with ONLY the message to send me — no preamble, no explanation.`,
+	},
+	{
+		Key:            "nightly_triage",
+		Name:           "Nightly triage",
+		Description:    "A nightly run: whatever you tell it to do. The default triages the day's failures — it scans the runs the assistant couldn't handle (errors and low-quality replies), files a bug card on the Trello Issue board for each recurring pattern (skipping duplicates), and refines the prompts of the skills that keep failing. Requires the Auto-Triage skill to be enabled.",
+		DefaultTime:    "23:00",
+		DefaultEnabled: false,
+		MaxIterations:  20,
+		DefaultPrompt: `It's late — triage the day's failures so recurring problems get tracked and fixed.
+
+1. Call triage_scan_failures (no arguments) to pull the day's runs I couldn't handle automatically — errors and low-quality replies — grouped into recurring failure patterns.
+2. If it reports there is nothing to triage, reply with exactly NOTHING_TO_REPORT and nothing else — do not send a message.
+3. Otherwise, for each recurring pattern worth acting on (prioritise the ones that recurred most), call triage_file_bug with the group's signature copied verbatim, a clear English title, and a description covering the sample input, the error, the occurrence count, and the first/last-seen times. The tool detects duplicates and will comment on an existing card instead of filing a second one. Do NOT file a bug for a one-off.
+4. When a recurring pattern is clearly caused by a specific skill's instructions, also call triage_improve_prompt to save a focused fix for that skill's prompt — keep what works, preserve tool names and required output markers exactly, and pass a one-line reason. Never tune the auto_triage or self_tuning skills.
+5. When done, write me a short WhatsApp message summarising which bugs you filed (or recurrences you noted) and any skill prompts you improved, one line each. If you ended up doing nothing, reply with exactly NOTHING_TO_REPORT instead.
 
 Reply with ONLY the message to send me — no preamble, no explanation.`,
 	},

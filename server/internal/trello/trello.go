@@ -130,6 +130,14 @@ func (c *Client) AddCheckItem(ctx context.Context, apiKey, token, checklistID, t
 	return c.post(ctx, apiKey, token, "/checklists/"+checklistID+"/checkItems", q, nil)
 }
 
+// AddComment posts a comment to a card. Used to annotate an existing card
+// instead of creating a duplicate (e.g. a recurring failure that already has an
+// open bug).
+func (c *Client) AddComment(ctx context.Context, apiKey, token, cardID, text string) error {
+	q := url.Values{"text": {text}}
+	return c.post(ctx, apiKey, token, "/cards/"+cardID+"/actions/comments", q, nil)
+}
+
 // get performs an authenticated GET and decodes the JSON body into out.
 func (c *Client) get(ctx context.Context, apiKey, token, path string, q url.Values, out any) error {
 	return c.do(ctx, http.MethodGet, apiKey, token, path, q, out)

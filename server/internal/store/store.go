@@ -670,6 +670,14 @@ type LogStore interface {
 	// runs). Unlike ListTraces, Tools/Steps/Skills are populated. Powers the
 	// end-of-day self-tuner's review step.
 	ListLowScoreTracesWithSkills(ctx context.Context, userID int64, from, to time.Time, maxOverall float64, excludeSources []string, limit int) ([]Trace, error)
+	// ListFailedTraces returns full-detail traces (Tools/Steps/Skills populated)
+	// for one user in [from, to) that the assistant could not handle well —
+	// either the agent run errored (status == "error") or the judge scored it
+	// below LowScoreThreshold. Errors sort first, then worst score; newest is the
+	// tiebreak. Traces whose Source is in excludeSources are omitted (so the
+	// nightly triage never triages its own runs). Powers the auto-triage skill's
+	// failure scan.
+	ListFailedTraces(ctx context.Context, userID int64, from, to time.Time, excludeSources []string, limit int) ([]Trace, error)
 
 	// Usage analytics (aggregates over traces & tool_usage)
 	// platforms nil/empty = all; otherwise restricted to any listed platform.
