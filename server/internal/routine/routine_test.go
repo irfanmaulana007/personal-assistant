@@ -72,8 +72,8 @@ func at(hh, mm int) time.Time { return time.Date(2026, time.March, 10, hh, mm, 0
 func TestList_Defaults(t *testing.T) {
 	svc, _, _ := newSvc(t, &fakeAgent{})
 	views := svc.List(context.Background())
-	if len(views) != 2 {
-		t.Fatalf("expected 2 routines, got %d", len(views))
+	if len(views) != 3 {
+		t.Fatalf("expected 3 routines, got %d", len(views))
 	}
 	sod := views[0]
 	if sod.Key != "start_of_day" || sod.Enabled || sod.Time != "07:00" {
@@ -84,6 +84,9 @@ func TestList_Defaults(t *testing.T) {
 	}
 	if views[1].Key != "end_of_day" || views[1].Time != "21:00" {
 		t.Errorf("end_of_day defaults wrong: %+v", views[1])
+	}
+	if views[2].Key != "nightly_triage" || views[2].Enabled || views[2].Time != "23:00" {
+		t.Errorf("nightly_triage defaults wrong: %+v", views[2])
 	}
 }
 
