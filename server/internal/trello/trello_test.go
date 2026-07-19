@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -114,6 +115,37 @@ func TestUpdateCardEmptyIsGet(t *testing.T) {
 	}
 	if card.Name != "unchanged" {
 		t.Errorf("card name = %q", card.Name)
+	}
+}
+
+// GetCard must ask Trello for the closed + idList fields (so read-after-write
+// can tell an archived or misplaced card from a persisted one) and decode them.
+func TestGetCardFetchesClosedAndList(t *testing.T) {
+	var gotFields string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotFields = r.URL.Query().Get("fields")
+		_, _ = w.Write([]byte(`{"id":"c1","name":"Task","idList":"L1","closed":true}`))
+	}))
+	defer srv.Close()
+	orig := base
+	base = srv.URL
+	defer func() { base = orig }()
+
+	c := New()
+	card, err := c.GetCard(context.Background(), "k", "t", "c1")
+	if err != nil {
+		t.Fatalf("GetCard: %v", err)
+	}
+	for _, f := range []string{"idList", "closed"} {
+		if !strings.Contains(gotFields, f) {
+			t.Errorf("fields %q missing %q", gotFields, f)
+		}
+	}
+	if card.IDList != "L1" {
+		t.Errorf("idList = %q, want L1", card.IDList)
+	}
+	if !card.Closed {
+		t.Error("closed should decode as true")
 	}
 }
 

@@ -169,9 +169,10 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 		return fmt.Sprintf("Couldn't create the task card: %v", err), nil
 	}
 
-	// Read-after-write: confirm the card actually exists on Trello before telling
-	// the user it was filed.
-	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+	// Read-after-write: confirm the card actually persisted — that it exists, sits
+	// on the Backlog list we filed it to, and isn't archived — before telling the
+	// user it was filed.
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listBacklog); err != nil {
 		h.log.Warn("trello verify task failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to create the task card but couldn't verify it saved on Trello: %v", err), nil
 	}
@@ -194,6 +195,37 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 		labelNote = labelKey
 	}
 	return fmt.Sprintf("Added task %q to the Task Management → Backlog list (label: %s).\n%s\nConfirm this to the user in their language.", title, labelNote, card.ShortURL), nil
+}
+
+// verifyCard is the read-after-write check behind every create and update: it
+// re-reads the card straight from Trello and confirms it truly persisted —
+// nudging past the mistake where CreateCard returns a card object but nothing
+// visible landed for the user. It fails if the card can't be read back, is
+// archived, or sits on a different list than the one we filed it to (wantList;
+// pass "" to skip the list check).
+func (h *Handler) verifyCard(ctx context.Context, apiKey, token, cardID, wantList string) error {
+	got, err := h.client.GetCard(ctx, apiKey, token, cardID)
+	if err != nil {
+		return err
+	}
+	return checkPersisted(got, wantList)
+}
+
+// checkPersisted validates a card read back after a write against what we meant
+// to leave on Trello. It is split out from verifyCard so the verification rules
+// are unit-testable without a live Trello. A nil card, an archived card, or a
+// card on the wrong list all count as "did not persist".
+func checkPersisted(got *trello.Card, wantList string) error {
+	if got == nil {
+		return fmt.Errorf("the card wasn't found after creating it")
+	}
+	if got.Closed {
+		return fmt.Errorf("the card was created but is archived")
+	}
+	if wantList != "" && got.IDList != wantList {
+		return fmt.Errorf("the card was created but landed on a different list")
+	}
+	return nil
 }
 
 // reportBug files a bug on the Issue → Bug list, with Actual/Expected sections.
@@ -224,9 +256,9 @@ func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[str
 		return fmt.Sprintf("Couldn't file the bug card: %v", err), nil
 	}
 
-	// Read-after-write: confirm the card actually exists on Trello before telling
-	// the user it was filed.
-	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+	// Read-after-write: confirm the card actually persisted on the Bug list before
+	// telling the user it was filed.
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listBug); err != nil {
 		h.log.Warn("trello verify bug failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to file the bug card but couldn't verify it saved on Trello: %v", err), nil
 	}
@@ -356,8 +388,14 @@ func (h *Handler) updateCard(ctx context.Context, apiKey, token string, e map[st
 		h.replaceAcceptanceChecklist(ctx, apiKey, token, card.ID, newCriteria)
 	}
 
-	// Read-after-write: only report success once Trello confirms the change.
-	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+	// Read-after-write: only report success once Trello confirms the change. The
+	// card must still be live on its expected list — the one we moved it to, or
+	// its current list if this edit didn't move it.
+	wantList := card.IDList
+	if in.IDList != nil {
+		wantList = *in.IDList
+	}
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, wantList); err != nil {
 		h.log.Warn("trello verify update failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I updated the card but couldn't verify it saved on Trello: %v", err), nil
 	}
@@ -443,9 +481,9 @@ func (h *Handler) createGameIdea(ctx context.Context, apiKey, token string, e ma
 		return fmt.Sprintf("Couldn't save the game idea card: %v", err), nil
 	}
 
-	// Read-after-write: confirm the card actually exists on Trello before telling
-	// the user it was saved.
-	if _, err := h.client.GetCard(ctx, apiKey, token, card.ID); err != nil {
+	// Read-after-write: confirm the card actually persisted on the Ideas list
+	// before telling the user it was saved.
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listGameIdeas); err != nil {
 		h.log.Warn("trello verify game idea failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to save the game idea but couldn't verify it saved on Trello: %v", err), nil
 	}
