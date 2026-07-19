@@ -17,7 +17,8 @@ interface SectionGroup {
 }
 
 // Settings are grouped: the active project's management lives up top (visible
-// only to that project's admins), the assistant/platform settings below.
+// only to that project's admins), then the user's own preferences and the
+// system/platform settings below.
 const groups: SectionGroup[] = [
   {
     label: 'Project',
@@ -31,14 +32,19 @@ const groups: SectionGroup[] = [
     ],
   },
   {
-    label: 'Assistant',
+    label: 'User',
     sections: [
       { to: '/settings', label: 'Agent', end: true },
+      { to: '/settings/display', label: 'Display' },
+    ],
+  },
+  {
+    label: 'System',
+    sections: [
       { to: '/settings/model', label: 'Model', admin: true },
       { to: '/settings/api-keys', label: 'API Keys', admin: true },
       { to: '/settings/whatsapp', label: 'WhatsApp', admin: true },
       { to: '/settings/whatsapp-mappings', label: 'WhatsApp Projects', admin: true },
-      { to: '/settings/display', label: 'Display' },
       { to: '/settings/pricing', label: 'Pricing', admin: true },
     ],
   },
