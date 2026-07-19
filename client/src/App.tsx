@@ -144,6 +144,20 @@ function App() {
               <Route path="users" element={<Users />} />
             </Route>
 
+            {/* Superadmin per-project dashboard: the full dashboard tabs scoped
+                to a specific project by URL, without switching the active
+                project. Reached by drilling in from the All Projects overview. */}
+            <Route
+              path="dashboard/projects/:id"
+              element={isAdmin ? <Dashboard /> : <Navigate to="/dashboard" replace />}
+            >
+              <Route index element={<Overview />} />
+              <Route path="usage" element={<Usage />} />
+              <Route path="activity" element={<Activity />} />
+              <Route path="performance" element={<Performance />} />
+              <Route path="users" element={<Users />} />
+            </Route>
+
             <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
               <Route index element={<AgentSettings />} />
               {isAdmin && <Route path="model" element={<ModelSettings />} />}
