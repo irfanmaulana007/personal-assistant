@@ -125,6 +125,13 @@ function App() {
                 </ProjectAdminRoute>
               }
             />
+            {/* Global superadmin dashboard: platform-wide metrics across every
+                project. Not scoped to the active project, so it lives at its own
+                top-level route above the project-scoped dashboard tabs. */}
+            <Route
+              path="overview"
+              element={isAdmin ? <ProjectsOverview /> : <Navigate to="/chat" replace />}
+            />
             <Route
               path="dashboard"
               element={
@@ -134,10 +141,6 @@ function App() {
               }
             >
               <Route index element={<Overview />} />
-              <Route
-                path="projects"
-                element={isAdmin ? <ProjectsOverview /> : <Navigate to="/dashboard" replace />}
-              />
               <Route path="usage" element={<Usage />} />
               <Route path="activity" element={<Activity />} />
               <Route path="performance" element={<Performance />} />
