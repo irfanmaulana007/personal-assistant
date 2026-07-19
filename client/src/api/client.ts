@@ -588,6 +588,21 @@ export async function addProjectMember(
   });
 }
 
+// createProjectMember creates a brand-new user account and adds them to the
+// project in a single request (for onboarding someone who has no account yet).
+// Returns the refreshed member list, like addProjectMember.
+export async function createProjectMember(
+  id: number,
+  email: string,
+  password: string,
+  role: 'admin' | 'member',
+): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members/create`, {
+    method: 'POST',
+    body: JSON.stringify({ email, password, role }),
+  });
+}
+
 export async function updateProjectMember(
   id: number,
   userId: number,

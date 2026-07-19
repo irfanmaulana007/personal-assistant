@@ -130,6 +130,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("DELETE /api/projects/{id}", protect(s.handleDeleteProject))
 	mux.Handle("GET /api/projects/{id}/members", protect(s.handleListMembers))
 	mux.Handle("POST /api/projects/{id}/members", protect(s.handleAddMember))
+	mux.Handle("POST /api/projects/{id}/members/create", protect(s.handleCreateMember))
 	mux.Handle("PATCH /api/projects/{id}/members/{userId}", protect(s.handleUpdateMember))
 	mux.Handle("DELETE /api/projects/{id}/members/{userId}", protect(s.handleRemoveMember))
 	mux.Handle("GET /api/projects/{id}/audit", protect(s.handleListAudit))

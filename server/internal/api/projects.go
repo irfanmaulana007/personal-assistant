@@ -310,6 +310,71 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	s.handleListMembers(w, r)
 }
 
+// handleCreateMember creates a brand-new user account and adds them to the
+// project in one step. This lets a project admin onboard someone who has no
+// account yet (handleAddMember only attaches an existing user). The created
+// user always gets the global "member" role — a project admin cannot mint a
+// global superadmin — while appointing them a *project* admin stays superadmin
+// only, matching handleAddMember.
+func (s *Server) handleCreateMember(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	role := strings.ToLower(strings.TrimSpace(req.Role))
+	if role == "" {
+		role = store.ProjectRoleMember
+	}
+	if role != store.ProjectRoleAdmin && role != store.ProjectRoleMember {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be admin or member"})
+		return
+	}
+	if role == store.ProjectRoleAdmin && !s.isSuperadmin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only a superadmin can appoint a project admin"})
+		return
+	}
+	if msg := validateCredentials(credentials{Email: req.Email, Password: req.Password}); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	existing, err := s.store.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "a user with that email already exists"})
+		return
+	}
+	user, err := s.createUser(r, email, req.Password, store.GlobalRoleMember)
+	if err != nil {
+		s.log.Error("create member user", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		return
+	}
+	// Every new user gets their own personal project so they're never stranded
+	// with zero projects, mirroring handleCreateUser.
+	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
+		s.log.Error("provision personal project", "error", err)
+	}
+	if err := s.store.AddProjectMember(r.Context(), pid, user.ID, role); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to add member"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "member_create", user.Email, map[string]any{"role": role})
+	s.handleListMembers(w, r)
+}
+
 // handleUpdateMember changes a member's project role. Promoting to or demoting
 // from admin requires superadmin; the last admin cannot be demoted.
 func (s *Server) handleUpdateMember(w http.ResponseWriter, r *http.Request) {
