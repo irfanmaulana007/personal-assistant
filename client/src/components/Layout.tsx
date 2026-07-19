@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
+import { useProjects } from '../contexts/project';
 import type { User } from '../types';
 
 interface LayoutProps {
@@ -11,17 +12,26 @@ interface LayoutProps {
   user: User | null;
 }
 
+// Who can see a nav item:
+//   'everyone'      — any authenticated user
+//   'projectAdmin'  — admin of the active project (superadmin always qualifies)
+//   'superadmin'    — global superadmin only
+type NavGate = 'everyone' | 'projectAdmin' | 'superadmin';
+
 interface NavLeaf {
   to: string;
   label: string;
   icon: ReactNode;
-  adminOnly?: boolean;
+  gate?: NavGate;
+  // When set, the item is a project feature — shown only if that feature (and,
+  // if it owns skills, at least one of its skills) is enabled for the project.
+  feature?: string;
 }
 interface NavGroupItem {
   label: string;
   icon: ReactNode;
-  adminOnly?: boolean;
-  children: { to: string; label: string; end?: boolean }[];
+  gate?: NavGate;
+  children: { to: string; label: string; end?: boolean; gate?: NavGate }[];
 }
 type NavEntry = NavLeaf | NavGroupItem;
 
@@ -52,10 +62,10 @@ const settingsIcon = (
 );
 
 const navItems: NavEntry[] = [
-  { to: '/chat', label: 'Chat', icon: chatIcon },
+  { to: '/chat', label: 'Chat', icon: chatIcon, gate: 'everyone' },
   {
     label: 'Dashboard',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -66,7 +76,7 @@ const navItems: NavEntry[] = [
     ),
     children: [
       { to: '/dashboard', label: 'Overview', end: true },
-      { to: '/dashboard/projects', label: 'Projects' },
+      { to: '/dashboard/projects', label: 'All Projects', gate: 'superadmin' },
       { to: '/dashboard/usage', label: 'Usage' },
       { to: '/dashboard/activity', label: 'Activity' },
       { to: '/dashboard/performance', label: 'Performance' },
@@ -76,6 +86,7 @@ const navItems: NavEntry[] = [
   {
     to: '/reminders',
     label: 'Reminders',
+    feature: 'reminders',
     icon: (
       <path
         strokeLinecap="round"
@@ -88,6 +99,7 @@ const navItems: NavEntry[] = [
   {
     to: '/bucket-list',
     label: 'Bucket List',
+    feature: 'bucket_list',
     icon: (
       <path
         strokeLinecap="round"
@@ -100,6 +112,7 @@ const navItems: NavEntry[] = [
   {
     to: '/skills',
     label: 'Skills',
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -112,6 +125,7 @@ const navItems: NavEntry[] = [
   {
     to: '/projects',
     label: 'Projects',
+    gate: 'superadmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -124,7 +138,7 @@ const navItems: NavEntry[] = [
   {
     to: '/integrations',
     label: 'Integrations',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -137,7 +151,7 @@ const navItems: NavEntry[] = [
   {
     to: '/logs',
     label: 'Logs',
-    adminOnly: true,
+    gate: 'projectAdmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -150,7 +164,7 @@ const navItems: NavEntry[] = [
   {
     to: '/account',
     label: 'Account',
-    adminOnly: true,
+    gate: 'superadmin',
     icon: (
       <path
         strokeLinecap="round"
@@ -228,7 +242,32 @@ function NavGroup({ item }: { item: NavGroupItem }) {
 }
 
 export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
-  const items = navItems.filter((item) => isAdmin || !item.adminOnly);
+  const { canManageActive, navFeatureVisible } = useProjects();
+
+  const canSee = (gate: NavGate | undefined): boolean => {
+    switch (gate ?? 'everyone') {
+      case 'superadmin':
+        return isAdmin; // isAdmin === global superadmin
+      case 'projectAdmin':
+        return canManageActive;
+      default:
+        return true;
+    }
+  };
+
+  const items = navItems
+    .filter((item) => {
+      if (!canSee(item.gate)) return false;
+      // Feature-gated leaf items (Reminders, Bucket List) follow the project's
+      // enabled features/skills.
+      if ('feature' in item && item.feature) return navFeatureVisible(item.feature);
+      return true;
+    })
+    .map((item) =>
+      'children' in item
+        ? { ...item, children: item.children.filter((c) => canSee(c.gate)) }
+        : item,
+    );
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">

@@ -1,12 +1,20 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { listProjects, getActiveProjectId, setActiveProjectId } from '../api/client';
-import type { Project } from '../types';
+import {
+  listProjects,
+  listFeatures,
+  listSkills,
+  getActiveProjectId,
+  setActiveProjectId,
+} from '../api/client';
+import type { Project, ProjectFeature } from '../types';
 import { ProjectCtx } from './project';
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<number | null>(getActiveProjectId());
   const [loading, setLoading] = useState(true);
+  const [features, setFeatures] = useState<ProjectFeature[]>([]);
+  const [enabledSkillKeys, setEnabledSkillKeys] = useState<Set<string>>(new Set());
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -30,7 +38,34 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
   }, [tick]);
 
+  // Load the active project's features + enabled skills so the nav can hide
+  // feature items whose feature/skill is disabled for this project.
+  useEffect(() => {
+    let active = true;
+    if (!activeId) return;
+    Promise.all([listFeatures().catch(() => []), listSkills().catch(() => [])])
+      .then(([f, s]) => {
+        if (!active) return;
+        setFeatures(f);
+        setEnabledSkillKeys(new Set(s.filter((sk) => sk.enabled).map((sk) => sk.key)));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [activeId, tick]);
+
   const activeProject = projects.find((p) => p.id === activeId) ?? null;
+
+  // A feature's nav item is visible when the feature is enabled AND (it owns no
+  // skills, or at least one of its skills is enabled for the project).
+  const navFeatureVisible = (featureKey: string): boolean => {
+    const f = features.find((x) => x.key === featureKey);
+    if (!f) return true; // unknown key → don't hide (feature catalog not loaded yet)
+    if (!f.enabled) return false;
+    if (f.skill_keys.length === 0) return true;
+    return f.skill_keys.some((k) => enabledSkillKeys.has(k));
+  };
 
   const setActiveProject = (id: number) => {
     setActiveProjectId(id);
@@ -52,6 +87,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         setActiveProject,
         reload: () => setTick((t) => t + 1),
         canManageActive,
+        features,
+        navFeatureVisible,
       }}
     >
       {children}

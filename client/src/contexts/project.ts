@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Project } from '../types';
+import type { Project, ProjectFeature } from '../types';
 
 export interface ProjectValue {
   projects: Project[];
@@ -11,6 +11,12 @@ export interface ProjectValue {
   reload: () => void;
   // Whether the caller can manage the active project (project admin or superadmin).
   canManageActive: boolean;
+  // The active project's features + whether its nav item should show. A feature's
+  // nav is visible only when the feature is enabled AND (it owns no skills, or at
+  // least one of its skills is enabled for the project) — so disabling a project
+  // skill/feature hides its navigation entry.
+  features: ProjectFeature[];
+  navFeatureVisible: (featureKey: string) => boolean;
 }
 
 export const ProjectCtx = createContext<ProjectValue | null>(null);

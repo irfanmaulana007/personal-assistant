@@ -438,6 +438,7 @@ type TraceScore struct {
 // ordered by id descending, so the next page is everything with id < Cursor.
 type TraceFilter struct {
 	Platforms []string // nil/empty = all; otherwise match any listed platform
+	ProjectID int64    // 0 = all projects; otherwise restrict to this project
 	From      time.Time
 	To        time.Time
 	Limit     int

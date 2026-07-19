@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   listProjects,
   updateProject,
@@ -9,11 +9,23 @@ import {
   updateProjectMember,
   removeProjectMember,
   listProjectAudit,
+  getProjectSkills,
+  setProjectSkill,
+  getProjectFeatures,
+  setProjectFeature,
 } from '../api/client';
 import { useProjects } from '../contexts/project';
-import type { Project, ProjectMember, ProjectRole, AuditEvent } from '../types';
-import { Skeleton, SkeletonCard } from './ui/Skeleton';
+import type {
+  Project,
+  ProjectMember,
+  ProjectRole,
+  ProjectSkill,
+  ProjectFeature,
+  AuditEvent,
+} from '../types';
+import { Skeleton, SkeletonCard, SkeletonListRow } from './ui/Skeleton';
 import { Modal } from './ui/Modal';
+import { Toggle } from './ui/Toggle';
 
 const inputClass =
   'rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
@@ -21,15 +33,24 @@ const inputClass =
 const selectClass =
   'rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-900 outline-none transition focus:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400';
 
+// Tabs available to a project manager. A non-manager only ever sees Overview.
+type TabKey = 'overview' | 'members' | 'skills' | 'features' | 'audit';
+const MANAGE_TABS: { key: TabKey; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'members', label: 'Members' },
+  { key: 'skills', label: 'Skills' },
+  { key: 'features', label: 'Features' },
+  { key: 'audit', label: 'Audit' },
+];
+
 export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
   const { id } = useParams();
   const projectId = Number(id);
   const { reload: reloadSwitcher } = useProjects();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [project, setProject] = useState<Project | null>(null);
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -39,6 +60,10 @@ export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
   // The caller's effective role in this project drives every RBAC gate below.
   const role = project?.role;
   const canManage = role === 'admin' || role === 'superadmin';
+
+  // Project admins can't see the projects list, so they go back to chat.
+  const backTo = isSuperadmin ? '/projects' : '/chat';
+  const backLabel = isSuperadmin ? 'Projects' : 'Chat';
 
   useEffect(() => {
     let active = true;
@@ -61,15 +86,7 @@ export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
           setLoading(false);
           return;
         }
-        const canManageProj = proj.role === 'admin' || proj.role === 'superadmin';
-        const [mem, aud] = await Promise.all([
-          listProjectMembers(projectId),
-          canManageProj ? listProjectAudit(projectId) : Promise.resolve([] as AuditEvent[]),
-        ]);
-        if (!active) return;
         setProject(proj);
-        setMembers(mem);
-        setAudit(aud);
         setError('');
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load project');
@@ -82,10 +99,30 @@ export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
     };
   }, [projectId, refreshKey]);
 
+  // Active tab persists in ?tab=. A non-manager (or a stale link to a manage-only
+  // tab) always resolves to Overview.
+  const requested = (searchParams.get('tab') as TabKey) || 'overview';
+  const activeTab: TabKey =
+    canManage && MANAGE_TABS.some((t) => t.key === requested) ? requested : 'overview';
+
+  const selectTab = (key: TabKey) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (key === 'overview') next.delete('tab');
+        else next.set('tab', key);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const tabs = canManage ? MANAGE_TABS : MANAGE_TABS.filter((t) => t.key === 'overview');
+
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
       <Link
-        to="/projects"
+        to={backTo}
         className="inline-flex items-center gap-1 text-sm font-medium text-indigo-700 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
       >
         <svg
@@ -97,7 +134,7 @@ export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
         </svg>
-        Projects
+        {backLabel}
       </Link>
 
       {loading ? (
@@ -122,51 +159,130 @@ export function ProjectDetail({ isSuperadmin }: { isSuperadmin: boolean }) {
         </p>
       ) : (
         <>
-          <ProjectHeader
-            project={project}
-            canManage={canManage}
-            onChanged={reload}
-            onRenamed={reloadSwitcher}
-          />
+          <h1 className="mt-4 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            {project.name}
+          </h1>
 
           {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-          <MembersCard
-            projectId={projectId}
-            members={members}
-            canManage={canManage}
-            isSuperadmin={isSuperadmin}
-            onChanged={setMembers}
-          />
+          {/* Tab bar */}
+          <div className="mt-4 border-b border-gray-200 dark:border-gray-700">
+            <nav className="-mb-px flex gap-6 overflow-x-auto">
+              {tabs.map((t) => {
+                const isActive = t.key === activeTab;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => selectTab(t.key)}
+                    className={`whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition ${
+                      isActive
+                        ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
+                        : 'border-transparent text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
-          {canManage && <AuditCard events={audit} />}
-
-          {canManage && (
-            <DangerZone
-              project={project}
-              onDeleted={() => {
-                reloadSwitcher();
-                navigate('/projects');
-              }}
-            />
-          )}
+          <div className="mt-6">
+            {activeTab === 'overview' && (
+              <OverviewTab
+                project={project}
+                canManage={canManage}
+                onRenamed={() => {
+                  reloadSwitcher();
+                  reload();
+                }}
+                onDeleted={() => {
+                  reloadSwitcher();
+                  navigate(isSuperadmin ? '/projects' : '/chat');
+                }}
+              />
+            )}
+            {activeTab === 'members' && canManage && (
+              <MembersTab projectId={projectId} canManage={canManage} isSuperadmin={isSuperadmin} />
+            )}
+            {activeTab === 'skills' && canManage && (
+              <SkillsTab projectId={projectId} canManage={canManage} />
+            )}
+            {activeTab === 'features' && canManage && (
+              <FeaturesTab projectId={projectId} canManage={canManage} />
+            )}
+            {activeTab === 'audit' && canManage && <AuditTab projectId={projectId} />}
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function ProjectHeader({
+// -------------------------------------------------------------------------
+// Overview
+// -------------------------------------------------------------------------
+
+function OverviewTab({
   project,
   canManage,
-  onChanged,
   onRenamed,
+  onDeleted,
 }: {
   project: Project;
   canManage: boolean;
-  onChanged: () => void;
   onRenamed: () => void;
+  onDeleted: () => void;
 }) {
+  const created = useMemo(() => {
+    const d = new Date(project.created_at);
+    return isNaN(d.getTime()) ? project.created_at : d.toLocaleDateString();
+  }, [project.created_at]);
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">Project</h2>
+          {canManage && <RenameButton project={project} onRenamed={onRenamed} />}
+        </div>
+        <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Name
+            </dt>
+            <dd className="mt-1 text-sm text-gray-800 dark:text-gray-100">{project.name}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Your role
+            </dt>
+            <dd className="mt-1 text-sm text-gray-800 dark:text-gray-100">{project.role}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Members
+            </dt>
+            <dd className="mt-1 text-sm text-gray-800 dark:text-gray-100">
+              {project.member_count}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Created
+            </dt>
+            <dd className="mt-1 text-sm text-gray-800 dark:text-gray-100">{created}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {canManage && <DangerZone project={project} onDeleted={onDeleted} />}
+    </div>
+  );
+}
+
+function RenameButton({ project, onRenamed }: { project: Project; onRenamed: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
   const [busy, setBusy] = useState(false);
@@ -189,7 +305,6 @@ function ProjectHeader({
     try {
       await updateProject(project.id, trimmed);
       onRenamed();
-      onChanged();
       setEditing(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Rename failed');
@@ -199,18 +314,13 @@ function ProjectHeader({
   };
 
   return (
-    <div className="mt-4 flex items-center gap-3">
-      <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-        {project.name}
-      </h1>
-      {canManage && (
-        <button
-          onClick={open}
-          className="rounded-lg px-2.5 py-1 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/15"
-        >
-          Rename
-        </button>
-      )}
+    <>
+      <button
+        onClick={open}
+        className="rounded-lg px-2.5 py-1 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/15"
+      >
+        Rename
+      </button>
 
       <Modal
         open={editing}
@@ -248,7 +358,139 @@ function ProjectHeader({
           </div>
         </div>
       </Modal>
+    </>
+  );
+}
+
+function DangerZone({ project, onDeleted }: { project: Project; onDeleted: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const doDelete = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      await deleteProject(project.id);
+      onDeleted();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Delete failed');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-red-200 bg-white p-5 dark:border-red-500/30 dark:bg-gray-800">
+      <h2 className="mb-1 text-sm font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Deleting a project is permanent and removes its members, features, and data.
+      </p>
+      <button
+        onClick={() => {
+          setErr('');
+          setConfirming(true);
+        }}
+        className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 dark:bg-red-500 dark:hover:bg-red-400"
+      >
+        Delete project
+      </button>
+
+      <Modal
+        open={confirming}
+        onClose={() => (busy ? undefined : setConfirming(false))}
+        title="Delete project"
+        description={`This permanently deletes "${project.name}". This cannot be undone.`}
+      >
+        <div className="space-y-4">
+          {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={doDelete}
+              disabled={busy}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-400"
+            >
+              {busy ? 'Deleting…' : 'Delete project'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Members
+// -------------------------------------------------------------------------
+
+function MembersTab({
+  projectId,
+  canManage,
+  isSuperadmin,
+}: {
+  projectId: number;
+  canManage: boolean;
+  isSuperadmin: boolean;
+}) {
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    listProjectMembers(projectId)
+      .then((m) => {
+        if (active) {
+          setMembers(m);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load members');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <SkeletonCard>
+        <Skeleton className="mb-4 h-3.5 w-20" />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <Skeleton className="h-4 w-56 max-w-full" />
+              <Skeleton className="h-7 w-24 rounded-lg" />
+              <Skeleton className="h-6 w-16 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </SkeletonCard>
+    );
+  }
+
+  if (error) {
+    return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
+  }
+
+  return (
+    <MembersCard
+      projectId={projectId}
+      members={members}
+      canManage={canManage}
+      isSuperadmin={isSuperadmin}
+      onChanged={setMembers}
+    />
   );
 }
 
@@ -285,7 +527,7 @@ function MembersCard({
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
       <h2 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">Members</h2>
 
       <div className="overflow-x-auto">
@@ -444,6 +686,258 @@ function AddMemberForm({
   );
 }
 
+// -------------------------------------------------------------------------
+// Skills — set the project's skills from the global catalog.
+// -------------------------------------------------------------------------
+
+function SkillsTab({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+  const [skills, setSkills] = useState<ProjectSkill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getProjectSkills(projectId)
+      .then((s) => {
+        if (active) {
+          setSkills(s);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load skills');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  const toggle = async (sk: ProjectSkill) => {
+    setBusyId(sk.id);
+    setError('');
+    try {
+      setSkills(await setProjectSkill(projectId, sk.id, !sk.enabled));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update skill');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Group by category, preserving order.
+  const groups: { category: string; skills: ProjectSkill[] }[] = [];
+  for (const sk of skills) {
+    const cat = sk.category || 'Other';
+    let g = groups.find((x) => x.category === cat);
+    if (!g) {
+      g = { category: cat, skills: [] };
+      groups.push(g);
+    }
+    g.skills.push(sk);
+  }
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Enable the global skills this project can use.
+      </p>
+
+      {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {loading ? (
+        <div className="space-y-6">
+          {[3, 2].map((count, g) => (
+            <div key={g}>
+              <Skeleton className="mb-2 h-2.5 w-24" />
+              <div className="space-y-2">
+                {Array.from({ length: count }).map((_, i) => (
+                  <SkeletonListRow key={i} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : skills.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">No skills available.</p>
+      ) : (
+        <div className="space-y-6">
+          {groups.map((g) => (
+            <div key={g.category}>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                {g.category}
+              </h2>
+              <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
+                {g.skills.map((sk) => (
+                  <div key={sk.id} className="flex items-start gap-4 p-4">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                        {sk.name}
+                      </span>
+                      <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                        {sk.description}
+                      </p>
+                    </div>
+                    <Toggle
+                      on={sk.enabled}
+                      busy={busyId === sk.id}
+                      disabled={!canManage}
+                      onClick={() => toggle(sk)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Features
+// -------------------------------------------------------------------------
+
+function FeaturesTab({ projectId, canManage }: { projectId: number; canManage: boolean }) {
+  const [features, setFeatures] = useState<ProjectFeature[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getProjectFeatures(projectId)
+      .then((f) => {
+        if (active) {
+          setFeatures(f);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load features');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  const toggle = async (f: ProjectFeature) => {
+    setBusyId(f.id);
+    setError('');
+    try {
+      setFeatures(await setProjectFeature(projectId, f.id, !f.enabled));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update feature');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Disabling a feature hides its navigation and turns off all of its skills for this project.
+      </p>
+
+      {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <SkeletonListRow key={i} />
+          ))}
+        </div>
+      ) : features.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">No features available.</p>
+      ) : (
+        <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
+          {features.map((f) => (
+            <div key={f.id} className="flex items-start gap-4 p-4">
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                  {f.name}
+                </span>
+                <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{f.description}</p>
+                {f.skill_keys.length > 0 && (
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    Skills: {f.skill_keys.join(', ')}
+                  </p>
+                )}
+              </div>
+              <Toggle
+                on={f.enabled}
+                busy={busyId === f.id}
+                disabled={!canManage}
+                onClick={() => toggle(f)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Audit
+// -------------------------------------------------------------------------
+
+function AuditTab({ projectId }: { projectId: number }) {
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    listProjectAudit(projectId)
+      .then((a) => {
+        if (active) {
+          setEvents(a);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load audit log');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <SkeletonCard>
+        <Skeleton className="mb-4 h-3.5 w-20" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <Skeleton className="h-4 w-56 max-w-full" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+          ))}
+        </div>
+      </SkeletonCard>
+    );
+  }
+
+  if (error) {
+    return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
+  }
+
+  return <AuditCard events={events} />;
+}
+
 function AuditCard({ events }: { events: AuditEvent[] }) {
   // Newest first.
   const sorted = useMemo(
@@ -472,7 +966,7 @@ function AuditCard({ events }: { events: AuditEvent[] }) {
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
       <h2 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">Audit log</h2>
 
       <div className="overflow-x-auto">
@@ -524,69 +1018,6 @@ function AuditCard({ events }: { events: AuditEvent[] }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function DangerZone({ project, onDeleted }: { project: Project; onDeleted: () => void }) {
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const doDelete = async () => {
-    setBusy(true);
-    setErr('');
-    try {
-      await deleteProject(project.id);
-      onDeleted();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Delete failed');
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mt-6 rounded-2xl border border-red-200 bg-white p-5 dark:border-red-500/30 dark:bg-gray-800">
-      <h2 className="mb-1 text-sm font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        Deleting a project is permanent and removes its members, features, and data.
-      </p>
-      <button
-        onClick={() => {
-          setErr('');
-          setConfirming(true);
-        }}
-        className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 dark:bg-red-500 dark:hover:bg-red-400"
-      >
-        Delete project
-      </button>
-
-      <Modal
-        open={confirming}
-        onClose={() => (busy ? undefined : setConfirming(false))}
-        title="Delete project"
-        description={`This permanently deletes "${project.name}". This cannot be undone.`}
-      >
-        <div className="space-y-4">
-          {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setConfirming(false)}
-              disabled={busy}
-              className="rounded-xl px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={doDelete}
-              disabled={busy}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-400"
-            >
-              {busy ? 'Deleting…' : 'Delete project'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

@@ -49,6 +49,15 @@ export interface ProjectFeature {
   skill_keys: string[];
 }
 
+export interface ProjectSkill {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+}
+
 export interface AuditEvent {
   id: number;
   action: string;

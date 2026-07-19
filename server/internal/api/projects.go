@@ -462,6 +462,131 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	s.handleListFeatures(w, r)
 }
 
+// --- Per-project skills (path-scoped: manage a specific project's skills) ---
+
+type projectSkillResp struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	Enabled     bool   `json:"enabled"`
+}
+
+func (s *Server) handleProjectSkills(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, false)
+	if !ok {
+		return
+	}
+	list, err := s.store.ListProjectSkills(r.Context(), pid)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load skills"})
+		return
+	}
+	out := make([]projectSkillResp, 0, len(list))
+	for _, u := range list {
+		out = append(out, projectSkillResp{
+			ID: u.ID, Key: u.Key, Name: u.Name, Description: u.Description,
+			Category: u.Category, Enabled: u.Enabled,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetProjectSkill enables/disables a skill for a specific project (by
+// path). Requires project admin (or superadmin) on that project.
+func (s *Server) handleSetProjectSkill(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	skillID, err := strconv.ParseInt(r.PathValue("skillId"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill id"})
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	sk, err := s.store.GetSkill(r.Context(), skillID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if sk == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+		return
+	}
+	if err := s.store.SetProjectSkillEnabled(r.Context(), pid, skillID, req.Enabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "skill_toggle", sk.Key, map[string]any{"enabled": req.Enabled})
+	s.handleProjectSkills(w, r)
+}
+
+// --- Per-project features (path-scoped) ---
+
+func (s *Server) handleProjectFeatures(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, false)
+	if !ok {
+		return
+	}
+	feats, err := s.store.ListProjectFeatures(r.Context(), pid)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load features"})
+		return
+	}
+	out := make([]projectFeatureResp, 0, len(feats))
+	for _, f := range feats {
+		out = append(out, projectFeatureResp{
+			ID: f.ID, Key: f.Key, Name: f.Name, Description: f.Description,
+			Enabled: f.Enabled, SkillKeys: f.SkillKeys,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetProjectFeature enables/disables a feature for a specific project (by
+// path); disabling cascades to its skills. Requires project admin / superadmin.
+func (s *Server) handleSetProjectFeature(w http.ResponseWriter, r *http.Request) {
+	pid, _, ok := s.projectAccess(w, r, true)
+	if !ok {
+		return
+	}
+	featureID, err := strconv.ParseInt(r.PathValue("featureId"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid feature id"})
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	f, err := s.store.GetFeature(r.Context(), featureID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if f == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "feature not found"})
+		return
+	}
+	if err := s.store.SetProjectFeatureEnabled(r.Context(), pid, featureID, req.Enabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update feature"})
+		return
+	}
+	s.recordAudit(r.Context(), pid, claimsFrom(r.Context()), "feature_toggle", f.Key, map[string]any{"enabled": req.Enabled})
+	s.handleProjectFeatures(w, r)
+}
+
 // --- Audit ---
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {

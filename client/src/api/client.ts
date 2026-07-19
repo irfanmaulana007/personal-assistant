@@ -662,3 +662,35 @@ export async function getAdminOverview(
   const qs = p.toString();
   return request(`/api/admin/overview${qs ? `?${qs}` : ''}`);
 }
+
+// --- Per-project skills & features (path-scoped: manage a specific project) ---
+
+export async function getProjectSkills(id: number): Promise<import('../types').ProjectSkill[]> {
+  return request(`/api/projects/${id}/skills`);
+}
+
+export async function setProjectSkill(
+  id: number,
+  skillId: number,
+  enabled: boolean,
+): Promise<import('../types').ProjectSkill[]> {
+  return request(`/api/projects/${id}/skills/${skillId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function getProjectFeatures(id: number): Promise<import('../types').ProjectFeature[]> {
+  return request(`/api/projects/${id}/features`);
+}
+
+export async function setProjectFeature(
+  id: number,
+  featureId: number,
+  enabled: boolean,
+): Promise<import('../types').ProjectFeature[]> {
+  return request(`/api/projects/${id}/features/${featureId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
