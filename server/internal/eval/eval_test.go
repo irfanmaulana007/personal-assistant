@@ -1,6 +1,11 @@
 package eval
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
+)
 
 func TestParseVerdict(t *testing.T) {
 	cases := []struct {
@@ -31,6 +36,37 @@ func TestParseVerdict(t *testing.T) {
 				t.Errorf("accuracy = %d, want %d", v.Accuracy, c.wantAcc)
 			}
 		})
+	}
+}
+
+func TestJudgePromptsSelectsTranslatorRubric(t *testing.T) {
+	tr := &store.Trace{
+		Input:  "duh sakit banget kaki",
+		Output: "Ouch, my foot really hurts",
+		Skills: []string{"translator"},
+	}
+	sys, user := judgePrompts(tr)
+	if sys != translatorJudgeSystemPrompt {
+		t.Fatalf("translator run should use the translator system prompt")
+	}
+	if !strings.Contains(user, "Assistant's translation:") {
+		t.Errorf("translator user prompt should label the output as a translation, got:\n%s", user)
+	}
+	if !strings.Contains(user, tr.Input) || !strings.Contains(user, tr.Output) {
+		t.Errorf("user prompt missing input/output")
+	}
+}
+
+func TestJudgePromptsDefaultsToGeneralRubric(t *testing.T) {
+	for _, skills := range [][]string{nil, {"web_search"}, {"bucket_list", "reminder"}} {
+		tr := &store.Trace{Input: "what's the weather", Output: "It's sunny", Skills: skills}
+		sys, user := judgePrompts(tr)
+		if sys != judgeSystemPrompt {
+			t.Errorf("skills %v should use the general system prompt", skills)
+		}
+		if !strings.Contains(user, "Assistant reply:") {
+			t.Errorf("skills %v should use the general reply label", skills)
+		}
 	}
 }
 
