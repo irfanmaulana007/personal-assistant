@@ -330,10 +330,13 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
         ) : (
           <>
             {isAdmin && (
-              <div className="border-b border-white/10 px-3 pb-3 pt-4">
-                <NavLink to="/overview" className={leafClass(false)}>
+              <div className="px-3 pt-3">
+                <NavLink
+                  to="/overview"
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+                >
                   <svg
-                    className="h-5 w-5 shrink-0"
+                    className="h-3.5 w-3.5 shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
