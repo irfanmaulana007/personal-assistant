@@ -6,7 +6,6 @@ const allSections = [
   { to: '/settings/api-keys', label: 'API Keys', end: false, admin: true },
   { to: '/settings/whatsapp', label: 'WhatsApp', end: false, admin: true },
   { to: '/settings/whatsapp-mappings', label: 'WhatsApp Projects', end: false, admin: true },
-  { to: '/settings/daily-skills', label: 'Daily Skills', end: false, admin: true },
   { to: '/settings/display', label: 'Display', end: false, admin: false },
   { to: '/settings/pricing', label: 'Pricing', end: false, admin: true },
 ];
