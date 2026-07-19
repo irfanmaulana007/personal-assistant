@@ -297,6 +297,13 @@ var skillTools = map[string][]toolSpec{
 			action:      intent.ActionTrelloReportBug,
 			parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Short summary of the defect, in English (e.g. 'Login button unresponsive on mobile Safari')."},"description":{"type":"string","description":"Context and, when known, the steps to reproduce, in English."},"actual_result":{"type":"string","description":"What currently happens — the wrong behaviour — in English."},"expected_result":{"type":"string","description":"What should happen instead, in English."}},"required":["title","actual_result","expected_result"]}`,
 		},
+		{
+			name:        "trello_update_card",
+			description: "Edit an EXISTING task card on the Trello Task Management board — retitle it, rewrite its description, replace its acceptance criteria, change or remove its type label, and/or move it to another list (Backlog / Todo / In Progress / Done, e.g. mark a task in progress or done). Identify the card by its current title (or a distinctive part of it, as shown by trello_review). Only pass the fields you want to change; omitted fields are left untouched. Use this when the user wants to change, edit, rename, re-scope, relabel, or move a task that already exists — NOT to create a new one (use trello_create_task) and NOT for bugs on the Issue board. Write any text in English.",
+			capability:  intent.CapabilityTrello,
+			action:      intent.ActionTrelloUpdateCard,
+			parameters:  `{"type":"object","properties":{"card":{"type":"string","description":"Which task to update: its current title, or a distinctive part of it, exactly as it appears on the board (from trello_review). Matched on the Task Management board."},"title":{"type":"string","description":"New title for the card. Omit to keep the current title."},"description":{"type":"string","description":"New description/context for the card, in English. Replaces the current description. Do NOT put acceptance criteria here — use acceptance_criteria. Omit to keep the current description."},"acceptance_criteria":{"type":"string","description":"Replacement acceptance criteria — 2-5 testable items, ONE PER LINE (newline-separated), no numbering. Replaces both the Acceptance Criteria section and the trackable checklist. Omit to leave them unchanged."},"label":{"type":"string","enum":["feature","improvement","chore","refactor","none"],"description":"Change the task type label; use 'none' to remove all labels. Omit to leave the label unchanged."},"list":{"type":"string","enum":["Backlog","Todo","In Progress","Done"],"description":"Move the card to this list on the Task Management board. Omit to leave it where it is."}},"required":["card"]}`,
+		},
 	},
 	"game_idea": {
 		{
