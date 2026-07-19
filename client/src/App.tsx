@@ -12,7 +12,6 @@ import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { ApiKeysSettings } from './components/settings/ApiKeysSettings';
-import { WhatsAppSettings } from './components/settings/WhatsAppSettings';
 import { Workflow } from './components/Workflow';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
@@ -26,12 +25,12 @@ import { Logs } from './components/Logs';
 import { Account } from './components/Account';
 import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
+import { IntegrationsWhatsApp } from './components/IntegrationsWhatsApp';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
 import { Projects } from './components/Projects';
 import { ProjectDetail } from './components/ProjectDetail';
 import { ProjectsOverview } from './components/dashboard/ProjectsOverview';
-import { WhatsAppMappingsSettings } from './components/settings/WhatsAppMappingsSettings';
 
 // ProjectAdminRoute guards a route to admins of the active project (superadmin
 // always qualifies). Members are redirected to Chat. Must render inside
@@ -118,6 +117,14 @@ function App() {
               }
             />
             <Route
+              path="integrations/whatsapp"
+              element={
+                <ProjectAdminRoute>
+                  <IntegrationsWhatsApp isAdmin={isAdmin} />
+                </ProjectAdminRoute>
+              }
+            />
+            <Route
               path="logs"
               element={
                 <ProjectAdminRoute>
@@ -162,8 +169,6 @@ function App() {
               <Route index element={<AgentSettings />} />
               {isAdmin && <Route path="model" element={<ModelSettings />} />}
               {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
-              {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
-              {isAdmin && <Route path="whatsapp-mappings" element={<WhatsAppMappingsSettings />} />}
               <Route path="display" element={<DisplaySettings />} />
               {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
             </Route>
