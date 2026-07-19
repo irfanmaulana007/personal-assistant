@@ -62,8 +62,12 @@ func New(s store.Store, encKey []byte) *Service {
 // LLMConfig resolves the effective LLM configuration from the database. The
 // selected provider supplies default base URL/model; explicit stored values
 // override those. Falls back to built-in defaults if nothing is set.
+//
+// Every field is resolved per-project (with the global value as the fallback),
+// so each project can point at a different provider/model/key while a
+// platform-wide default still serves projects that haven't overridden it.
 func (s *Service) LLMConfig(ctx context.Context) (llm.Config, error) {
-	provider, err := s.getString(ctx, KeyLLMProvider)
+	provider, err := s.getScopedString(ctx, KeyLLMProvider)
 	if err != nil {
 		return llm.Config{}, err
 	}
@@ -77,35 +81,29 @@ func (s *Service) LLMConfig(ctx context.Context) (llm.Config, error) {
 		Model:   firstNonEmpty(preset.DefaultModel, llm.DefaultModel),
 	}
 
-	if v, err := s.getString(ctx, KeyLLMBaseURL); err != nil {
+	if v, err := s.getScopedString(ctx, KeyLLMBaseURL); err != nil {
 		return cfg, err
 	} else if v != "" {
 		cfg.BaseURL = v
 	}
 
-	if v, err := s.getString(ctx, KeyLLMModel); err != nil {
+	if v, err := s.getScopedString(ctx, KeyLLMModel); err != nil {
 		return cfg, err
 	} else if v != "" {
 		cfg.Model = v
 	}
 
-	if v, err := s.getString(ctx, KeyLLMVision); err != nil {
+	if v, err := s.getScopedString(ctx, KeyLLMVision); err != nil {
 		return cfg, err
 	} else if v == "true" {
 		cfg.Vision = true
 	}
 
-	enc, err := s.store.GetSetting(ctx, KeyLLMAPIKey)
+	key, err := s.getScopedSecret(ctx, KeyLLMAPIKey)
 	if err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("decrypt api key: %w", err)
 	}
-	if len(enc) > 0 {
-		dec, err := crypto.Decrypt(s.encKey, enc)
-		if err != nil {
-			return cfg, fmt.Errorf("decrypt api key: %w", err)
-		}
-		cfg.APIKey = string(dec)
-	}
+	cfg.APIKey = key
 
 	return cfg, nil
 }
@@ -129,7 +127,7 @@ func (s *Service) LLMView(ctx context.Context) (LLMView, error) {
 	if err != nil {
 		return LLMView{}, err
 	}
-	provider, err := s.getString(ctx, KeyLLMProvider)
+	provider, err := s.getScopedString(ctx, KeyLLMProvider)
 	if err != nil {
 		return LLMView{}, err
 	}
@@ -159,35 +157,26 @@ type LLMUpdate struct {
 	ResponseMode *string
 }
 
-// UpdateLLM persists the provided LLM settings.
+// UpdateLLM persists the provided LLM settings, scoped to the active project
+// (a project's own values override the global fallback).
 func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 	if u.Provider != nil {
-		if err := s.store.SetSetting(ctx, KeyLLMProvider, []byte(*u.Provider)); err != nil {
+		if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyLLMProvider), []byte(*u.Provider)); err != nil {
 			return err
 		}
 	}
 	if u.APIKey != nil {
-		if *u.APIKey == "" {
-			if err := s.store.SetSetting(ctx, KeyLLMAPIKey, []byte{}); err != nil {
-				return err
-			}
-		} else {
-			enc, err := crypto.Encrypt(s.encKey, []byte(*u.APIKey))
-			if err != nil {
-				return fmt.Errorf("encrypt api key: %w", err)
-			}
-			if err := s.store.SetSetting(ctx, KeyLLMAPIKey, enc); err != nil {
-				return err
-			}
+		if err := s.setEncrypted(ctx, scopedSecretKey(ctx, KeyLLMAPIKey), *u.APIKey); err != nil {
+			return fmt.Errorf("store api key: %w", err)
 		}
 	}
 	if u.Model != nil {
-		if err := s.store.SetSetting(ctx, KeyLLMModel, []byte(*u.Model)); err != nil {
+		if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyLLMModel), []byte(*u.Model)); err != nil {
 			return err
 		}
 	}
 	if u.BaseURL != nil {
-		if err := s.store.SetSetting(ctx, KeyLLMBaseURL, []byte(*u.BaseURL)); err != nil {
+		if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyLLMBaseURL), []byte(*u.BaseURL)); err != nil {
 			return err
 		}
 	}
@@ -196,7 +185,7 @@ func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 		if *u.Vision {
 			val = "true"
 		}
-		if err := s.store.SetSetting(ctx, KeyLLMVision, []byte(val)); err != nil {
+		if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyLLMVision), []byte(val)); err != nil {
 			return err
 		}
 	}
@@ -212,21 +201,21 @@ func (s *Service) UpdateLLM(ctx context.Context, u LLMUpdate) error {
 // SSE) or "block" (a single response once complete). Blocking is the default;
 // only an explicit "stream" opts in.
 func (s *Service) ResponseMode(ctx context.Context) string {
-	v, _ := s.getString(ctx, KeyResponseMode)
+	v, _ := s.getScopedString(ctx, KeyResponseMode)
 	if v == "stream" {
 		return "stream"
 	}
 	return "block"
 }
 
-// SetResponseMode persists the reply-delivery mode. Any value other than
-// "stream" is normalised to "block".
+// SetResponseMode persists the reply-delivery mode, scoped to the active
+// project. Any value other than "stream" is normalised to "block".
 func (s *Service) SetResponseMode(ctx context.Context, mode string) error {
 	val := "block"
 	if mode == "stream" {
 		val = "stream"
 	}
-	return s.store.SetSetting(ctx, KeyResponseMode, []byte(val))
+	return s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyResponseMode), []byte(val))
 }
 
 // Integration keys are scoped to the active project: a project's own key is
@@ -241,6 +230,22 @@ func scopedSecretKey(ctx context.Context, base string) string {
 		return fmt.Sprintf("project:%d:%s", pid, base)
 	}
 	return base
+}
+
+// getScopedString reads a project's plaintext setting, falling back to the
+// global value when the project has none. Mirrors getScopedSecret for
+// non-encrypted values (provider, model, base URL, vision, response mode).
+func (s *Service) getScopedString(ctx context.Context, base string) (string, error) {
+	if pid := authctx.ProjectID(ctx); pid > 0 {
+		v, err := s.getString(ctx, fmt.Sprintf("project:%d:%s", pid, base))
+		if err != nil {
+			return "", err
+		}
+		if v != "" {
+			return v, nil
+		}
+	}
+	return s.getString(ctx, base)
 }
 
 // getScopedSecret reads a project's secret, falling back to the global one.

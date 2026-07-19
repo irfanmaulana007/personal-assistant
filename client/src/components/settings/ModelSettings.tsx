@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import { SkeletonFormCard } from '../ui/Skeleton';
+import { ApiKeysSection } from './ApiKeysSection';
 import type { LlmTestResult } from '../../types';
 
 const inputClass =
@@ -85,174 +86,188 @@ export function ModelSettings() {
   if (loading) return <SkeletonFormCard fields={4} />;
 
   return (
-    <form
-      onSubmit={handleSave}
-      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
-    >
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">LLM Provider</h2>
-        {settings?.configured ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-300">
-            Configured
-          </span>
-        ) : (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-            Not configured
-          </span>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            Provider
-          </label>
-          <select
-            value={provider}
-            onChange={(e) => handleProviderChange(e.target.value)}
-            className={inputClass}
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            All providers use an OpenAI-compatible API. Choosing one fills in its default endpoint
-            and model.
-          </p>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            API Key
-          </label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={
-              settings?.configured
-                ? `Saved (${settings.api_key_mask}) — leave blank to keep`
-                : `Paste your ${providers.find((p) => p.id === provider)?.label ?? ''} API key`
-            }
-            className={inputClass}
-            autoComplete="off"
-          />
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Stored encrypted on the server. Leave blank to keep the existing key.
-          </p>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            Model
-          </label>
-          <input
-            type="text"
-            value={model}
-            onChange={(e) => setModelInput(e.target.value)}
-            placeholder="deepseek-chat"
-            className={inputClass}
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            Base URL
-          </label>
-          <input
-            type="text"
-            value={baseURL}
-            onChange={(e) => setBaseURLInput(e.target.value)}
-            placeholder="https://api.deepseek.com"
-            className={inputClass}
-          />
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Any OpenAI-compatible endpoint works (DeepSeek, OpenAI, …).
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-          <label className="flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={vision}
-              onChange={(e) => setVisionInput(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-indigo-500 dark:focus:ring-indigo-400"
-            />
-            <span>
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                Send images to the model (vision)
-              </span>
-              <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">
-                Only enable for a vision-capable model. Text-only models (e.g. deepseek-v4-flash)
-                reject attached images and the request fails. Image editing still works with this
-                off.
-              </span>
+    <div className="space-y-8">
+      <form
+        onSubmit={handleSave}
+        className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">LLM Provider</h2>
+          {settings?.configured ? (
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-300">
+              Configured
             </span>
-          </label>
+          ) : (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+              Not configured
+            </span>
+          )}
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            Response delivery
-          </label>
-          <select
-            value={responseMode}
-            onChange={(e) => setResponseModeInput(e.target.value)}
-            className={inputClass}
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Provider
+            </label>
+            <select
+              value={provider}
+              onChange={(e) => handleProviderChange(e.target.value)}
+              className={inputClass}
+            >
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              All providers use an OpenAI-compatible API. Choosing one fills in its default endpoint
+              and model.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              API Key
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={
+                settings?.configured
+                  ? `Saved (${settings.api_key_mask}) — leave blank to keep`
+                  : `Paste your ${providers.find((p) => p.id === provider)?.label ?? ''} API key`
+              }
+              className={inputClass}
+              autoComplete="off"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Stored encrypted on the server. Leave blank to keep the existing key.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Model
+            </label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModelInput(e.target.value)}
+              placeholder="deepseek-chat"
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Base URL
+            </label>
+            <input
+              type="text"
+              value={baseURL}
+              onChange={(e) => setBaseURLInput(e.target.value)}
+              placeholder="https://api.deepseek.com"
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Any OpenAI-compatible endpoint works (DeepSeek, OpenAI, …).
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={vision}
+                onChange={(e) => setVisionInput(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-indigo-500 dark:focus:ring-indigo-400"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Send images to the model (vision)
+                </span>
+                <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">
+                  Only enable for a vision-capable model. Text-only models (e.g. deepseek-v4-flash)
+                  reject attached images and the request fails. Image editing still works with this
+                  off.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Response delivery
+            </label>
+            <select
+              value={responseMode}
+              onChange={(e) => setResponseModeInput(e.target.value)}
+              className={inputClass}
+            >
+              <option value="block">Block — send the full reply at once</option>
+              <option value="stream">Stream — reveal the reply token-by-token</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Streaming shows the answer as it's generated (feels faster); blocking waits for the
+              complete reply. Applies to every chat. Tool calls run before the reply either way.
+            </p>
+          </div>
+        </div>
+
+        {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+        {testResult && (
+          <p
+            className={`mt-4 text-sm ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
           >
-            <option value="block">Block — send the full reply at once</option>
-            <option value="stream">Stream — reveal the reply token-by-token</option>
-          </select>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Streaming shows the answer as it's generated (feels faster); blocking waits for the
-            complete reply. Applies to every chat. Tool calls run before the reply either way.
+            {testResult.ok
+              ? `Connection OK${testResult.model ? ` (${testResult.model})` : ''}`
+              : `Connection failed: ${testResult.error}`}
           </p>
-        </div>
-      </div>
+        )}
 
-      {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-      {testResult && (
-        <p
-          className={`mt-4 text-sm ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-        >
-          {testResult.ok
-            ? `Connection OK${testResult.model ? ` (${testResult.model})` : ''}`
-            : `Connection failed: ${testResult.error}`}
-        </p>
-      )}
-
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={testing || !settings?.configured}
-          className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-        >
-          {testing ? 'Testing…' : 'Test connection'}
-        </button>
-        {settings?.configured && (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
           <button
             type="button"
-            onClick={handleClearKey}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/15"
+            onClick={handleTest}
+            disabled={testing || !settings?.configured}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
           >
-            Clear key
+            {testing ? 'Testing…' : 'Test connection'}
           </button>
-        )}
-        {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved</span>}
-      </div>
-    </form>
+          {settings?.configured && (
+            <button
+              type="button"
+              onClick={handleClearKey}
+              className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/15"
+            >
+              Clear key
+            </button>
+          )}
+          {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved</span>}
+        </div>
+      </form>
+
+      <section className="space-y-6">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">
+            Skill API keys
+          </h2>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Keys the assistant uses for specific skills. Each project sets its own.
+          </p>
+        </div>
+        <ApiKeysSection />
+      </section>
+    </div>
   );
 }

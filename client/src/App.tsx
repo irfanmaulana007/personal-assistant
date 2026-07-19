@@ -11,7 +11,6 @@ import { BucketList } from './components/BucketList';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
-import { ApiKeysSettings } from './components/settings/ApiKeysSettings';
 import { Workflow } from './components/Workflow';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
@@ -208,8 +207,19 @@ function App() {
                   </ProjectAdminRoute>
                 }
               />
-              {isAdmin && <Route path="model" element={<ModelSettings />} />}
-              {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
+              {/* The model + skill API keys are per-project, so this is gated to
+                  project admins (like the other Project settings) rather than to
+                  global superadmins. */}
+              <Route
+                path="model"
+                element={
+                  <ProjectAdminRoute>
+                    <ModelSettings />
+                  </ProjectAdminRoute>
+                }
+              />
+              {/* API keys moved into the Model page; redirect the old path. */}
+              <Route path="api-keys" element={<Navigate to="/settings/model" replace />} />
               <Route path="display" element={<DisplaySettings />} />
               {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
             </Route>

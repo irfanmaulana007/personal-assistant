@@ -28,6 +28,9 @@ const groups: SectionGroup[] = [
       { to: '/settings/project/members', label: 'Members' },
       { to: '/settings/project/skills', label: 'Skills' },
       { to: '/settings/project/features', label: 'Features' },
+      // The LLM provider + skill API keys are per-project, so they live under
+      // Project management (visible to project admins), not the System group.
+      { to: '/settings/model', label: 'Model' },
       { to: '/settings/project/audit', label: 'Audit' },
     ],
   },
@@ -40,11 +43,7 @@ const groups: SectionGroup[] = [
   },
   {
     label: 'System',
-    sections: [
-      { to: '/settings/model', label: 'Model', admin: true },
-      { to: '/settings/api-keys', label: 'API Keys', admin: true },
-      { to: '/settings/pricing', label: 'Pricing', admin: true },
-    ],
+    sections: [{ to: '/settings/pricing', label: 'Pricing', admin: true }],
   },
 ];
 
