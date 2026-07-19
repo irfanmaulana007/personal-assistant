@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@personal-assistant/shared": "*",
     "@radix-ui/react-popover": "^1.1.19",
     "date-fns": "^4.4.0",
     "react": "^19.2.7",

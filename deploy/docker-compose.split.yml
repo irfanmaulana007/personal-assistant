@@ -1,21 +1,28 @@
-# Combined all-in-one stack (single image: Go server serving the bundled web
-# assets) for quick local dev. For the split deployment — backend and web as
-# separate images, mirroring production — use deploy/docker-compose.split.yml.
+# Split deployment (local parity with the independently-deployed services).
+#
+# Runs the backend API and the web app as SEPARATE images/containers — mirroring
+# how they ship in production via the per-service pipelines — alongside Postgres
+# + Mongo. Contrast with the repo-root docker-compose.yml, which runs the single
+# combined image for quick all-in-one local dev.
+#
+# From the repo root:
+#   docker compose -f deploy/docker-compose.split.yml --env-file .env up --build
+#
+# The web container serves static assets on :8080 and proxies /api to the backend
+# (VITE_API_BASE_URL left empty ⇒ same-origin), so the app behaves exactly like
+# the combined build while each service is built and scaled on its own.
 services:
-  assistant:
-    build: .
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
     restart: unless-stopped
-    ports:
-      - '8090:8090'
-    # Stateless: all data — including the WhatsApp (whatsmeow) session — lives in
-    # Postgres/Mongo, so the assistant container needs no persistent volume.
     environment:
       - APP_ENV=${APP_ENV:-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WEB_PASSWORD=${WEB_PASSWORD}
       - OWNER_JID=${OWNER_JID}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # Storage: PostgreSQL for main data, MongoDB for logs.
       - POSTGRES_DSN=postgres://assistant:${POSTGRES_PASSWORD}@postgres:5432/assistant?sslmode=disable
       - MONGO_URI=mongodb://root:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
       - MONGO_DB=assistant_logs
@@ -24,6 +31,22 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      args:
+        # Empty ⇒ the web app calls the backend same-origin through the nginx
+        # /api proxy below. Set to the backend's public URL to call it directly.
+        VITE_API_BASE_URL: ''
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+    environment:
+      - BACKEND_URL=http://backend:8090
+    depends_on:
+      - backend
 
   postgres:
     image: postgres:17
