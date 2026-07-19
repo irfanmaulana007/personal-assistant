@@ -251,3 +251,125 @@ func TestProjectSkillsAndFeatureCascade(t *testing.T) {
 		t.Fatal("bucket_list feature missing from ListProjectFeatures")
 	}
 }
+
+// TestProjectSkillForks covers project-owned skills: a fork shadows the global
+// skill of the same key for that project (with its own prompt), inherits the
+// global twin's feature gate, drives EnabledProjectSkillKeys, is isolated to its
+// project, and deleting it reverts the project to the global skill.
+func TestProjectSkillForks(t *testing.T) {
+	s := newTestPostgres(t)
+	ctx := context.Background()
+	owner, _ := s.CreateUser(ctx, "o@example.com", "h", GlobalRoleSuperadmin)
+	p, _ := s.CreateProject(ctx, "P", owner.ID)
+	other, _ := s.CreateProject(ctx, "Other", owner.ID)
+
+	// A helper returning the row for a key in a project's effective listing.
+	row := func(pid int64, key string) *UserSkill {
+		list, err := s.ListProjectSkills(ctx, pid)
+		if err != nil {
+			t.Fatalf("list project skills: %v", err)
+		}
+		for i := range list {
+			if list[i].Key == key {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+
+	// web_search is global, default-disabled. Enable it for p, then fork it.
+	webID := findSkillID(t, s, "web_search")
+	if err := s.SetProjectSkillEnabled(ctx, p.ID, webID, true); err != nil {
+		t.Fatalf("enable web_search: %v", err)
+	}
+	base := Skill{Key: "web_search", Name: "Web Search (P)", Description: "d", Prompt: "PROJECT PROMPT", Category: "Knowledge", DefaultEnabled: true, SortOrder: 8}
+	fork, err := s.CreateProjectSkill(ctx, p.ID, base, "o@example.com")
+	if err != nil {
+		t.Fatalf("create fork: %v", err)
+	}
+	if !fork.IsProjectOwned() || fork.ProjectID == nil || *fork.ProjectID != p.ID {
+		t.Fatalf("fork not owned by project: %+v", fork)
+	}
+	// Carry the enabled state over, as the API layer does.
+	if err := s.SetProjectSkillEnabled(ctx, p.ID, fork.ID, true); err != nil {
+		t.Fatalf("enable fork: %v", err)
+	}
+
+	// In p's listing the fork SHADOWS the global row: exactly one web_search, the
+	// project-owned one, with the project prompt.
+	var count int
+	for _, u := range mustList(t, s, p.ID) {
+		if u.Key == "web_search" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one web_search row for p, got %d", count)
+	}
+	r := row(p.ID, "web_search")
+	if r == nil || !r.IsProjectOwned() || r.Prompt != "PROJECT PROMPT" {
+		t.Fatalf("p's web_search should be the fork with the project prompt, got %+v", r)
+	}
+	if !r.Enabled {
+		t.Fatal("forked web_search should be enabled for p")
+	}
+
+	// The fork inherits the global twin's feature ('knowledge'): disabling that
+	// feature cascades the fork off.
+	knowledge := findFeatureID(t, s, "knowledge")
+	if err := s.SetProjectFeatureEnabled(ctx, p.ID, knowledge, false); err != nil {
+		t.Fatalf("disable knowledge feature: %v", err)
+	}
+	if row(p.ID, "web_search").Enabled {
+		t.Fatal("forked web_search must go off when its inherited feature is disabled")
+	}
+	if err := s.SetProjectFeatureEnabled(ctx, p.ID, knowledge, true); err != nil {
+		t.Fatalf("re-enable knowledge feature: %v", err)
+	}
+
+	// EnabledProjectSkillKeys reflects the fork (the key is the shared capability).
+	keys, _ := s.EnabledProjectSkillKeys(ctx, p.ID)
+	if !contains(keys, "web_search") {
+		t.Fatalf("EnabledProjectSkillKeys should include web_search via the fork, got %v", keys)
+	}
+
+	// Isolation: the other project still sees only the global web_search.
+	if o := row(other.ID, "web_search"); o == nil || o.IsProjectOwned() {
+		t.Fatalf("other project must see the global web_search, got %+v", o)
+	}
+
+	// Deleting the fork reverts p to the global skill.
+	if err := s.DeleteProjectSkill(ctx, p.ID, fork.ID); err != nil {
+		t.Fatalf("delete fork: %v", err)
+	}
+	after := row(p.ID, "web_search")
+	if after == nil || after.IsProjectOwned() {
+		t.Fatalf("after delete, p should see the global web_search, got %+v", after)
+	}
+	// DeleteProjectSkill must refuse to touch a global skill.
+	if err := s.DeleteProjectSkill(ctx, p.ID, webID); err == nil {
+		t.Fatal("DeleteProjectSkill must not delete a global skill")
+	}
+	// The global catalog is intact.
+	if findSkillID(t, s, "web_search") == 0 {
+		t.Fatal("global web_search must still exist")
+	}
+}
+
+func mustList(t *testing.T, s *PostgresStore, pid int64) []UserSkill {
+	t.Helper()
+	list, err := s.ListProjectSkills(context.Background(), pid)
+	if err != nil {
+		t.Fatalf("list project skills: %v", err)
+	}
+	return list
+}
+
+func contains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}

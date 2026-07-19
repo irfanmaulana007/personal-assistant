@@ -38,7 +38,6 @@ const groups: SectionGroup[] = [
       { to: '/settings/api-keys', label: 'API Keys', admin: true },
       { to: '/settings/whatsapp', label: 'WhatsApp', admin: true },
       { to: '/settings/whatsapp-mappings', label: 'WhatsApp Projects', admin: true },
-      { to: '/settings/daily-skills', label: 'Daily Skills', admin: true },
       { to: '/settings/display', label: 'Display' },
       { to: '/settings/pricing', label: 'Pricing', admin: true },
     ],

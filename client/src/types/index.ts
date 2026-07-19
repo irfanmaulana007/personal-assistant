@@ -276,8 +276,12 @@ export interface Skill {
   category: string;
   enabled: boolean;
   auto_tuned: boolean; // the end-of-day self-tuner has overridden this skill's prompt
-  // Prompt management fields. Present only for admins (the API omits them for
-  // members). `prompt_updated_at` is null when the prompt is still the default.
+  // 'global' = a shared, code-seeded skill; 'project' = a fork this project owns
+  // and customized (it shadows the global skill of the same key here).
+  scope: 'global' | 'project';
+  // Prompt management fields. Present only for the caller allowed to edit this
+  // skill's prompt — a superadmin for a global skill, a project admin for a
+  // project fork. `prompt_updated_at` is null when the prompt is still default.
   prompt?: string;
   default_prompt?: string;
   prompt_updated_at?: string | null;

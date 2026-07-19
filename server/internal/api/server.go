@@ -142,6 +142,12 @@ func (s *Server) Start(ctx context.Context) error {
 	// Active-project scoped: skills + features
 	mux.Handle("GET /api/skills", project(s.handleListSkills))
 	mux.Handle("PUT /api/skills/{id}", projectAdmin(s.handleSetSkill))
+	// Prompt editing is scope-gated inside the handler: a superadmin for a global
+	// skill (platform-wide), a project admin for a project fork.
+	mux.Handle("PUT /api/skills/{id}/prompt", project(s.handleSetSkillPrompt))
+	// Fork a global skill into the active project / remove that fork.
+	mux.Handle("POST /api/skills/{id}/customize", projectAdmin(s.handleCustomizeSkill))
+	mux.Handle("DELETE /api/skills/{id}", projectAdmin(s.handleDeleteSkill))
 	mux.Handle("GET /api/features", project(s.handleListFeatures))
 	mux.Handle("PUT /api/features/{id}", projectAdmin(s.handleSetFeature))
 
@@ -167,7 +173,6 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/preferences", superadmin(s.handleUpdatePreferences))
 	mux.Handle("PUT /api/reminders/config", superadmin(s.handleSetRemindersConfig))
 	mux.Handle("POST /api/skills/{id}/reset-prompt", superadmin(s.handleResetSkillPrompt))
-	mux.Handle("PUT /api/skills/{id}/prompt", superadmin(s.handleSetSkillPrompt))
 	mux.Handle("PUT /api/routines/{key}", superadmin(s.handleUpdateRoutine))
 	mux.Handle("POST /api/routines/{key}/run", superadmin(s.handleRunRoutine))
 	mux.Handle("GET /api/pricing", superadmin(s.handleListPricing))

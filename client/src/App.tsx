@@ -13,7 +13,7 @@ import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
 import { ApiKeysSettings } from './components/settings/ApiKeysSettings';
 import { WhatsAppSettings } from './components/settings/WhatsAppSettings';
-import { RoutinesSettings } from './components/settings/RoutinesSettings';
+import { Workflow } from './components/Workflow';
 import { DisplaySettings } from './components/settings/DisplaySettings';
 import { PricingSettings } from './components/settings/PricingSettings';
 import { Dashboard } from './components/Dashboard';
@@ -132,6 +132,20 @@ function App() {
               <Route path="users" element={<Users />} />
             </Route>
 
+            {/* Superadmin per-project dashboard: the full dashboard tabs scoped
+                to a specific project by URL, without switching the active
+                project. Reached by drilling in from the All Projects overview. */}
+            <Route
+              path="dashboard/projects/:id"
+              element={isAdmin ? <Dashboard /> : <Navigate to="/dashboard" replace />}
+            >
+              <Route index element={<Overview />} />
+              <Route path="usage" element={<Usage />} />
+              <Route path="activity" element={<Activity />} />
+              <Route path="performance" element={<Performance />} />
+              <Route path="users" element={<Users />} />
+            </Route>
+
             <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
               <Route index element={<AgentSettings />} />
               {/* Active-project management, gated to that project's admins. */}
@@ -179,12 +193,12 @@ function App() {
               {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
               {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
               {isAdmin && <Route path="whatsapp-mappings" element={<WhatsAppMappingsSettings />} />}
-              {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
               <Route path="display" element={<DisplaySettings />} />
               {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
             </Route>
 
             {/* Superadmin-only */}
+            {isAdmin && <Route path="workflow" element={<Workflow />} />}
             {isAdmin && <Route path="account" element={<Account />} />}
 
             <Route path="*" element={<Navigate to="/chat" replace />} />

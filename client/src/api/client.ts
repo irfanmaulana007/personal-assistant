@@ -285,12 +285,26 @@ export async function setSkillPrompt(id: number, prompt: string): Promise<Skill[
   });
 }
 
-// Admin only. Resets a skill's prompt back to the shipped default.
+// Resets a skill's prompt back to the shipped default. For a global skill this
+// is superadmin-only and hands the prompt back to the boot seed; for a project
+// fork it restores the base default while keeping the fork.
 export async function resetSkillPrompt(id: number): Promise<Skill[]> {
   return request<Skill[]>(`/api/skills/${id}/prompt`, {
     method: 'PUT',
     body: JSON.stringify({ reset: true }),
   });
+}
+
+// Project admin only. Forks a global skill into the active project so it can be
+// given a project-specific prompt; returns the refreshed list.
+export async function customizeSkill(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}/customize`, { method: 'POST' });
+}
+
+// Project admin only. Removes the active project's fork of a skill, reverting it
+// to the shared global skill; returns the refreshed list.
+export async function deleteProjectSkill(id: number): Promise<Skill[]> {
+  return request<Skill[]>(`/api/skills/${id}`, { method: 'DELETE' });
 }
 
 // clearTunedPrompt clears a skill's auto-tuned prompt override (set by the
@@ -447,13 +461,19 @@ export async function testSettings(): Promise<LlmTestResult> {
 
 // Multi-value filters (platform, score) are sent as a single comma-separated
 // query param; an empty array omits the param entirely ("all").
+//
+// projectId overrides the active-project scope for this one request (via the
+// X-Project-Id header, which request() leaves alone when already set). A
+// superadmin uses this to read any project's usage without switching projects.
 export async function getUsage(
   from: string,
   to: string,
   platforms: ChannelValue[] = [],
+  projectId?: number,
 ): Promise<UsageStats> {
   const p = platforms.length ? `&platform=${platforms.join(',')}` : '';
-  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`);
+  const options = projectId ? { headers: { 'X-Project-Id': String(projectId) } } : {};
+  return request<UsageStats>(`/api/metrics/usage?from=${from}&to=${to}${p}`, options);
 }
 
 export async function getLogs(
