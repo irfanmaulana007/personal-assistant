@@ -362,11 +362,10 @@ func (s *Server) handleCreateMember(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
 		return
 	}
-	// Every new user gets their own personal project so they're never stranded
-	// with zero projects, mirroring handleCreateUser.
-	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
-		s.log.Error("provision personal project", "error", err)
-	}
+	// Unlike handleCreateUser, we do NOT provision a personal project here: the
+	// user is created from within a project and is added to it right below, so
+	// they're never stranded with zero projects. Creating an extra personal
+	// project would be a surprise side effect of onboarding someone to a project.
 	if err := s.store.AddProjectMember(r.Context(), pid, user.ID, role); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to add member"})
 		return
