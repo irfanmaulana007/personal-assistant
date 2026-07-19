@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -48,13 +50,58 @@ func (s *PostgresStore) seedFeatures(ctx context.Context) error {
 
 // --- Projects ---
 
+var slugStripRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// slugify converts a project name into a URL-safe slug: lowercase, with runs of
+// non-alphanumeric characters collapsed to single dashes and trimmed. Falls back
+// to "project" when the name has no alphanumeric characters.
+func slugify(name string) string {
+	s := slugStripRe.ReplaceAllString(strings.ToLower(name), "-")
+	s = strings.Trim(s, "-")
+	if s == "" {
+		return "project"
+	}
+	return s
+}
+
+// reservedSlugs are top-level route words the client owns (the global shell). A
+// project may not take one, or its /:slug shell would be shadowed by that route.
+var reservedSlugs = map[string]bool{
+	"overview": true, "account": true, "projects": true, "settings": true,
+	"login": true, "api": true,
+}
+
+// uniqueProjectSlug returns base if it is free and unreserved, otherwise base-2,
+// base-3, … until it finds a slug no project holds and no route reserves.
+func (s *PostgresStore) uniqueProjectSlug(ctx context.Context, base string) (string, error) {
+	slug := base
+	for i := 2; ; i++ {
+		if !reservedSlugs[slug] {
+			var exists bool
+			if err := s.pool.QueryRow(ctx,
+				`SELECT EXISTS(SELECT 1 FROM projects WHERE slug = $1)`, slug,
+			).Scan(&exists); err != nil {
+				return "", fmt.Errorf("check project slug: %w", err)
+			}
+			if !exists {
+				return slug, nil
+			}
+		}
+		slug = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
 func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUserID int64) (*Project, error) {
+	slug, err := s.uniqueProjectSlug(ctx, slugify(name))
+	if err != nil {
+		return nil, err
+	}
 	var p Project
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO projects (name, owner_user_id) VALUES ($1, $2)
-		 RETURNING id, name, owner_user_id, created_at`,
-		name, ownerUserID,
-	).Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt)
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO projects (name, slug, owner_user_id) VALUES ($1, $2, $3)
+		 RETURNING id, name, slug, owner_user_id, created_at`,
+		name, slug, ownerUserID,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
 	}
@@ -64,8 +111,8 @@ func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUse
 func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, error) {
 	var p Project
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, owner_user_id, created_at FROM projects WHERE id = $1`, id,
-	).Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt)
+		`SELECT id, name, slug, owner_user_id, created_at FROM projects WHERE id = $1`, id,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -77,7 +124,7 @@ func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, err
 
 func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, owner_user_id, created_at FROM projects ORDER BY id ASC`)
+		`SELECT id, name, slug, owner_user_id, created_at FROM projects ORDER BY id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
@@ -86,7 +133,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	var out []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.OwnerUserID, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
 		out = append(out, p)
@@ -96,7 +143,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 
 func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) ([]ProjectSummary, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT p.id, p.name, p.owner_user_id, p.created_at, pm.role,
+		`SELECT p.id, p.name, p.slug, p.owner_user_id, p.created_at, pm.role,
 		        (SELECT count(*) FROM project_members m WHERE m.project_id = p.id) AS member_count
 		 FROM projects p
 		 JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1
@@ -109,7 +156,7 @@ func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) (
 	var out []ProjectSummary
 	for rows.Next() {
 		var ps ProjectSummary
-		if err := rows.Scan(&ps.ID, &ps.Name, &ps.OwnerUserID, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Slug, &ps.OwnerUserID, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
 			return nil, fmt.Errorf("scan project summary: %w", err)
 		}
 		out = append(out, ps)

@@ -76,6 +76,7 @@ const (
 type Project struct {
 	ID          int64
 	Name        string
+	Slug        string // immutable, URL-safe; generated from Name at creation
 	OwnerUserID int64
 	CreatedAt   time.Time
 }

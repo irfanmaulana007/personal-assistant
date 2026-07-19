@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useProjects } from './contexts/project';
 import { Login } from './components/Login';
@@ -8,6 +8,7 @@ import { Chat } from './components/Chat';
 import { Skills } from './components/Skills';
 import { Reminders } from './components/Reminders';
 import { BucketList } from './components/BucketList';
+import { Projects } from './components/Projects';
 import { Settings } from './components/Settings';
 import { AgentSettings } from './components/settings/AgentSettings';
 import { ModelSettings } from './components/settings/ModelSettings';
@@ -38,12 +39,56 @@ import {
 } from './components/settings/ProjectSettings';
 
 // ProjectAdminRoute guards a route to admins of the active project (superadmin
-// always qualifies). Members are redirected to Chat. Must render inside
-// ProjectProvider.
+// always qualifies). Members are sent to the project's chat. Must render inside
+// ProjectProvider and a project (/:slug) shell.
 function ProjectAdminRoute({ children }: { children: ReactNode }) {
-  const { canManageActive, loading } = useProjects();
+  const { canManageActive, loading, projectPath } = useProjects();
   if (loading) return null;
-  return canManageActive ? <>{children}</> : <Navigate to="/chat" replace />;
+  return canManageActive ? <>{children}</> : <Navigate to={projectPath('chat')} replace />;
+}
+
+// SuperadminRoute guards the global platform pages. Non-superadmins are sent to
+// the Projects picker, their only global surface.
+function SuperadminRoute({ isAdmin, children }: { isAdmin: boolean; children: ReactNode }) {
+  return isAdmin ? <>{children}</> : <Navigate to="/projects" replace />;
+}
+
+// RootRedirect decides the landing page: superadmins get the global overview,
+// members get the Projects picker (their only top-level surface).
+function RootRedirect({ isAdmin }: { isAdmin: boolean }) {
+  return isAdmin ? <Navigate to="/overview" replace /> : <Navigate to="/projects" replace />;
+}
+
+// Old flat project paths that predate the /:slug prefix. A bookmark to one of
+// these is re-pointed into the active project's shell.
+const LEGACY_PROJECT_PREFIXES = new Set([
+  'chat',
+  'reminders',
+  'bucket-list',
+  'skills',
+  'profile',
+  'integrations',
+  'logs',
+  'dashboard',
+  'workflow',
+  'settings',
+]);
+
+// LegacyRedirect catches anything the two shells don't match: pre-slug bookmarks
+// (/chat, /settings/project) get the active slug prefixed; an unknown path inside
+// a real project shell falls back to its chat; everything else goes home.
+function LegacyRedirect({ isAdmin }: { isAdmin: boolean }) {
+  const { projects, activeProject, loading } = useProjects();
+  const location = useLocation();
+  if (loading) return null;
+  const segs = location.pathname.split('/').filter(Boolean);
+  if (segs.length > 0 && projects.some((p) => p.slug === segs[0])) {
+    return <Navigate to={`/${segs[0]}/chat`} replace />;
+  }
+  if (activeProject && segs.length > 0 && LEGACY_PROJECT_PREFIXES.has(segs[0])) {
+    return <Navigate to={`/${activeProject.slug}/${segs.join('/')}${location.search}`} replace />;
+  }
+  return <RootRedirect isAdmin={isAdmin} />;
 }
 
 function App() {
@@ -80,8 +125,47 @@ function App() {
     <PreferencesProvider>
       <ProjectProvider>
         <Routes>
-          <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
-            <Route index element={<Chat />} />
+          <Route path="/" element={<RootRedirect isAdmin={isAdmin} />} />
+
+          {/* Global shell — platform-wide surfaces. The four items are superadmin
+              only, except Projects which every member reaches as their picker. */}
+          <Route element={<Layout mode="global" onLogout={logout} isAdmin={isAdmin} user={user} />}>
+            <Route
+              path="overview"
+              element={
+                <SuperadminRoute isAdmin={isAdmin}>
+                  <ProjectsOverview />
+                </SuperadminRoute>
+              }
+            />
+            <Route
+              path="account"
+              element={
+                <SuperadminRoute isAdmin={isAdmin}>
+                  <Account />
+                </SuperadminRoute>
+              }
+            />
+            <Route path="projects" element={<Projects isAdmin={isAdmin} />} />
+            <Route path="settings" element={<Settings scope="system" isAdmin={isAdmin} />}>
+              <Route index element={<Navigate to="pricing" replace />} />
+              <Route
+                path="pricing"
+                element={
+                  <SuperadminRoute isAdmin={isAdmin}>
+                    <PricingSettings />
+                  </SuperadminRoute>
+                }
+              />
+            </Route>
+          </Route>
+
+          {/* Project shell — every project-scoped page, prefixed by /:slug. */}
+          <Route
+            path=":slug"
+            element={<Layout mode="project" onLogout={logout} isAdmin={isAdmin} user={user} />}
+          >
+            <Route index element={<Navigate to="chat" replace />} />
             <Route path="chat" element={<Chat />} />
             <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
             <Route path="bucket-list" element={<BucketList />} />
@@ -95,7 +179,6 @@ function App() {
             />
             <Route path="profile" element={<Profile />} />
 
-            {/* Project-admin surfaces, scoped to the active project. */}
             <Route
               path="integrations"
               element={
@@ -128,13 +211,6 @@ function App() {
                 </ProjectAdminRoute>
               }
             />
-            {/* Global superadmin dashboard: platform-wide metrics across every
-                project. Not scoped to the active project, so it lives at its own
-                top-level route above the project-scoped dashboard tabs. */}
-            <Route
-              path="overview"
-              element={isAdmin ? <ProjectsOverview /> : <Navigate to="/chat" replace />}
-            />
             <Route
               path="dashboard"
               element={
@@ -150,23 +226,11 @@ function App() {
               <Route path="users" element={<Users />} />
             </Route>
 
-            {/* Superadmin per-project dashboard: the full dashboard tabs scoped
-                to a specific project by URL, without switching the active
-                project. Reached by drilling in from the All Projects overview. */}
-            <Route
-              path="dashboard/projects/:id"
-              element={isAdmin ? <Dashboard /> : <Navigate to="/dashboard" replace />}
-            >
-              <Route index element={<Overview />} />
-              <Route path="usage" element={<Usage />} />
-              <Route path="activity" element={<Activity />} />
-              <Route path="performance" element={<Performance />} />
-              <Route path="users" element={<Users />} />
-            </Route>
+            {/* Superadmin routines/workflow, kept project-scoped. */}
+            {isAdmin && <Route path="workflow" element={<Workflow />} />}
 
-            <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
+            <Route path="settings" element={<Settings scope="project" isAdmin={isAdmin} />}>
               <Route index element={<AgentSettings />} />
-              {/* Active-project management, gated to that project's admins. */}
               <Route
                 path="project"
                 element={
@@ -207,9 +271,6 @@ function App() {
                   </ProjectAdminRoute>
                 }
               />
-              {/* The model + skill API keys are per-project, so this is gated to
-                  project admins (like the other Project settings) rather than to
-                  global superadmins. */}
               <Route
                 path="model"
                 element={
@@ -218,18 +279,12 @@ function App() {
                   </ProjectAdminRoute>
                 }
               />
-              {/* API keys moved into the Model page; redirect the old path. */}
-              <Route path="api-keys" element={<Navigate to="/settings/model" replace />} />
               <Route path="display" element={<DisplaySettings />} />
-              {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
             </Route>
-
-            {/* Superadmin-only */}
-            {isAdmin && <Route path="workflow" element={<Workflow />} />}
-            {isAdmin && <Route path="account" element={<Account />} />}
-
-            <Route path="*" element={<Navigate to="/chat" replace />} />
           </Route>
+
+          {/* Legacy bookmarks + anything unmatched. */}
+          <Route path="*" element={<LegacyRedirect isAdmin={isAdmin} />} />
         </Routes>
       </ProjectProvider>
     </PreferencesProvider>

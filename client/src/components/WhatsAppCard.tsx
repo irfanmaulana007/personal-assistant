@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getWhatsApp, connectWhatsApp, disconnectWhatsApp } from '../api/client';
+import { useProjects } from '../contexts/project';
 import type { WhatsAppStatus } from '../types';
 
 const badge: Record<string, { label: string; cls: string }> = {
@@ -32,6 +33,7 @@ const avatar = (
 // current status and links into the WhatsApp integration detail page, where
 // pairing and the WhatsApp settings live.
 export function WhatsAppCard() {
+  const { projectPath } = useProjects();
   const [wa, setWa] = useState<WhatsAppStatus | null>(null);
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function WhatsAppCard() {
 
   return (
     <Link
-      to="/integrations/whatsapp"
+      to={projectPath('integrations/whatsapp')}
       className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
     >
       <div className="flex items-center gap-3">

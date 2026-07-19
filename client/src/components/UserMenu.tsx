@@ -1,5 +1,6 @@
 import * as Popover from '@radix-ui/react-popover';
 import { useNavigate } from 'react-router-dom';
+import { useProjects } from '../contexts/project';
 import type { User } from '../types';
 
 const itemClass =
@@ -7,6 +8,7 @@ const itemClass =
 
 export function UserMenu({ user, onLogout }: { user: User | null; onLogout: () => void }) {
   const navigate = useNavigate();
+  const { projectPath } = useProjects();
   const displayName = user?.name?.trim() || user?.email || 'Account';
   const initial = (user?.name?.trim() || user?.email || '?').charAt(0).toUpperCase();
   const showEmailLine = Boolean(user?.email && user?.name?.trim());
@@ -57,7 +59,7 @@ export function UserMenu({ user, onLogout }: { user: User | null; onLogout: () =
           <div className="p-1">
             <Popover.Close asChild>
               <button
-                onClick={() => navigate('/profile')}
+                onClick={() => navigate(projectPath('profile'))}
                 className={`${itemClass} text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800`}
               >
                 <svg

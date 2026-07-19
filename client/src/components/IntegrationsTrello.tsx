@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getIntegrations, setTrelloCreds } from '../api/client';
+import { useProjects } from '../contexts/project';
 import type { Integrations as IntegrationsData } from '../types';
 import { SkeletonFormCard } from './ui/Skeleton';
 import { useIsDark } from '../lib/useChartTheme';
@@ -167,6 +168,7 @@ function TrelloCredsCard({
 // a back-link to the integrations list, a header, then the credentials card
 // that used to live under Settings → API keys.
 export function IntegrationsTrello() {
+  const { projectPath } = useProjects();
   const [data, setData] = useState<IntegrationsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -194,7 +196,7 @@ export function IntegrationsTrello() {
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
       <Link
-        to="/integrations"
+        to={projectPath('integrations')}
         className="inline-flex items-center gap-1 text-sm font-medium text-gray-500 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">

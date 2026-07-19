@@ -82,10 +82,10 @@ export function ProjectOverviewSettings() {
       canManage={canManage}
       onRenamed={reloadSwitcher}
       onDeleted={() => {
-        // The active project is gone; refresh the switcher (which auto-selects
-        // another project) and drop the user back to chat.
+        // The active project is gone; refresh the project list and drop the user
+        // back to the global Projects picker to choose another.
         reloadSwitcher();
-        navigate('/chat');
+        navigate('/projects');
       }}
     />
   );

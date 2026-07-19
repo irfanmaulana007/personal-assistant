@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
@@ -10,6 +10,9 @@ interface LayoutProps {
   onLogout: () => void;
   isAdmin: boolean;
   user: User | null;
+  // 'global'  — the platform shell (Dashboard / Account / Projects / Settings).
+  // 'project' — a single project's shell, prefixed by /:slug.
+  mode: 'global' | 'project';
 }
 
 // Who can see a nav item:
@@ -79,14 +82,26 @@ const overviewIcon = (
   />
 );
 
-// Global superadmin surfaces. These are not tied to any single project (a
-// superadmin manages every project), so they are pinned above the project
-// switcher, separate from the project-scoped nav below it.
+const projectsIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+  />
+);
+
+// Global platform surfaces (the global shell). Dashboard / Account / Settings are
+// superadmin only; Projects is every member's picker into their project shells.
 const globalNavItems: NavLeaf[] = [
   { to: '/overview', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
   { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
+  { to: '/projects', label: 'Projects', gate: 'everyone', icon: projectsIcon },
+  { to: '/settings', label: 'Settings', gate: 'superadmin', icon: settingsIcon },
 ];
 
+// Project-scoped nav. Paths are relative to the project root (leading '/') and
+// get the active project's /:slug prefix applied before rendering.
 const navItems: NavEntry[] = [
   { to: '/chat', label: 'Chat', icon: chatIcon, gate: 'everyone' },
   {
@@ -253,8 +268,9 @@ function NavGroup({ item }: { item: NavGroupItem }) {
   );
 }
 
-export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
-  const { canManageActive, navFeatureVisible } = useProjects();
+export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
+  const { canManageActive, navFeatureVisible, projects, loading } = useProjects();
+  const { slug } = useParams();
 
   const canSee = (gate: NavGate | undefined): boolean => {
     switch (gate ?? 'everyone') {
@@ -267,18 +283,29 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
     }
   };
 
+  // In a project shell, a slug that matches no project the caller can see is a
+  // dead URL — bounce home rather than render someone else's project chrome.
+  if (mode === 'project' && !loading && slug && !projects.some((p) => p.slug === slug)) {
+    return <Navigate to="/" replace />;
+  }
+
+  const withSlug = (to: string) => `/${slug}${to}`;
+
   const items = navItems
     .filter((item) => {
       if (!canSee(item.gate)) return false;
-      // Feature-gated leaf items (Reminders, Bucket List) follow the project's
-      // enabled features/skills.
       if ('feature' in item && item.feature) return navFeatureVisible(item.feature);
       return true;
     })
     .map((item) =>
       'children' in item
-        ? { ...item, children: item.children.filter((c) => canSee(c.gate)) }
-        : item,
+        ? {
+            ...item,
+            children: item.children
+              .filter((c) => canSee(c.gate))
+              .map((c) => ({ ...c, to: withSlug(c.to) })),
+          }
+        : { ...item, to: withSlug(item.to) },
     );
 
   const globalItems = globalNavItems.filter((item) => canSee(item.gate));
@@ -286,40 +313,72 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
-        {globalItems.length > 0 && (
-          <div className="space-y-0.5 border-b border-white/10 px-3 pb-3 pt-4">
+        {mode === 'global' ? (
+          <nav className="flex-1 space-y-0.5 px-3 py-4">
             {globalItems.map((item) => (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => leafClass(isActive)}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/settings'}
+                className={({ isActive }) => leafClass(isActive)}
+              >
                 <Icon>{item.icon}</Icon>
                 {item.label}
               </NavLink>
             ))}
-          </div>
-        )}
+          </nav>
+        ) : (
+          <>
+            {isAdmin && (
+              <div className="border-b border-white/10 px-3 pb-3 pt-4">
+                <NavLink to="/overview" className={leafClass(false)}>
+                  <svg
+                    className="h-5 w-5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 17l-5-5m0 0l5-5m-5 5h12"
+                    />
+                  </svg>
+                  Overview
+                </NavLink>
+              </div>
+            )}
 
-        <div className={`px-3 pb-1 ${globalItems.length > 0 ? 'pt-3' : 'pt-4'}`}>
-          <ProjectSwitcher isSuperadmin={isAdmin} />
-        </div>
+            <div className={`px-3 pb-1 ${isAdmin ? 'pt-3' : 'pt-4'}`}>
+              <ProjectSwitcher isSuperadmin={isAdmin} />
+            </div>
 
-        <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {items.map((item) =>
-            'children' in item ? (
-              <NavGroup key={item.label} item={item} />
-            ) : (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => leafClass(isActive)}>
-                <Icon>{item.icon}</Icon>
-                {item.label}
+            <nav className="flex-1 space-y-0.5 px-3 py-2">
+              {items.map((item) =>
+                'children' in item ? (
+                  <NavGroup key={item.label} item={item} />
+                ) : (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) => leafClass(isActive)}
+                  >
+                    <Icon>{item.icon}</Icon>
+                    {item.label}
+                  </NavLink>
+                ),
+              )}
+            </nav>
+
+            <div className="px-3 pb-2">
+              <NavLink to={withSlug('/settings')} className={({ isActive }) => leafClass(isActive)}>
+                <Icon>{settingsIcon}</Icon>
+                Settings
               </NavLink>
-            ),
-          )}
-        </nav>
-
-        <div className="px-3 pb-2">
-          <NavLink to="/settings" className={({ isActive }) => leafClass(isActive)}>
-            <Icon>{settingsIcon}</Icon>
-            Settings
-          </NavLink>
-        </div>
+            </div>
+          </>
+        )}
 
         <div className="border-t border-white/10 p-2">
           <UserMenu user={user} onLogout={onLogout} />
