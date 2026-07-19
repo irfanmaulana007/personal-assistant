@@ -1,11 +1,17 @@
 ---
-description: Implement every card in the Todo list of the "Task Management" Trello board, each as its own branch + PR to staging (1 card = 1 branch = 1 PR)
+description: Implement every card in the Todo list of the "Task Management" Trello board — each card dispatched to its own subagent in an isolated git worktree, as its own branch + PR to staging (1 card = 1 agent = 1 worktree = 1 branch = 1 PR)
 ---
 
 Implement **every card in the `Todo` list of the "Task Management" Trello
 board**. Each card is one feature; every card becomes **its own branch and its
 own pull request into `staging`** — never batch multiple cards into one branch
 or PR.
+
+**Each card is handled by a dedicated subagent working in its own isolated git
+worktree.** You (the orchestrator) read the cards and fan them out to subagents
+that run **in parallel**, then collect their results. Because every agent works
+in a separate worktree on a separate branch, they never collide with each other
+or with the user's working copy.
 
 Read Trello through the globally-configured `trello` MCP server (tools
 `set_active_board`, `get_lists`, `get_cards_by_list_id`, `get_card`,
@@ -37,7 +43,8 @@ Each Todo card is a single feature and carries:
   of done for that card's PR.
 
 If a card is missing a description or acceptance criteria, do **not** guess the
-feature — skip it and report it as skipped-for-missing-detail.
+feature — skip it and report it as skipped-for-missing-detail. **Do not dispatch
+an agent for a skipped card.**
 
 ## Procedure
 
@@ -49,8 +56,9 @@ feature — skip it and report it as skipped-for-missing-detail.
 2. **Read every card in Todo.** `get_cards_by_list_id` for
    `6a54dda5bd020d9d6740ade7`, then `get_card` on each to pull the full
    description, checklists (acceptance criteria), attachments, **and the card's
-   `shortUrl` / `url` — you must attach this link to the PR**. Print a numbered
-   plan of the cards you're about to work through.
+   `shortUrl` / `url` — this link must go into the PR**. Print a numbered plan of
+   the cards you're about to work through, marking any you're skipping for
+   missing detail.
 
 3. **Preflight the repo once.** `staging` is the base for every card's branch:
 
@@ -59,19 +67,36 @@ feature — skip it and report it as skipped-for-missing-detail.
    git rev-parse --verify origin/staging   # must exist; if not, stop and report
    ```
 
-   The working tree must be clean before starting. If it is dirty, stop and
-   report — do not stash or discard the user's work.
+   You do **not** need a clean working tree here — each agent works in its own
+   worktree, not this checkout — but confirm `origin/staging` resolves before
+   dispatching anyone.
 
-4. **For each card, in order, do a full isolated cycle:**
+4. **Dispatch one subagent per valid card, in parallel.** For each card that has
+   a description and acceptance criteria, launch an `Agent` with
+   `isolation: "worktree"` so it gets its own git worktree. Send all the
+   card-handling agents **in a single message** (multiple `Agent` tool calls in
+   one turn) so they run concurrently. Give each agent everything it needs — it
+   cannot see the Trello board itself:
 
-   a. **Branch off fresh `staging`:**
+   - The card **title**, full **description**, and **every acceptance criterion**
+     (verbatim).
+   - The card **`shortUrl`** (for the PR body and commit trailer).
+   - The branch slug: `feat/<slug>`, where `<slug>` is a short kebab-case slug
+     derived from the card title.
+
+   Each agent's prompt must instruct it to run this full isolated cycle **inside
+   its own worktree** and then **return a structured result** (branch name, PR
+   number + URL, and status: `opened` / `failed-verification`):
+
+   a. **Create its branch off fresh `staging`, inside its worktree:**
 
       ```
-      git checkout staging && git pull origin staging
-      git checkout -b feat/<slug>
+      git fetch origin
+      git checkout -b feat/<slug> origin/staging
       ```
 
-      `<slug>` is a short kebab-case slug derived from the card title.
+      (The worktree isolates this checkout, so no other agent or the user's tree
+      is affected.)
 
    b. **Implement the feature** to satisfy the card's description and *every*
       acceptance-criterion. Follow all of CLAUDE.md — especially the theming
@@ -84,7 +109,9 @@ feature — skip it and report it as skipped-for-missing-detail.
       make build      # and make lint / make test as relevant to the change
       ```
 
-      For UI changes, verify both themes per CLAUDE.md.
+      For UI changes, verify both themes per CLAUDE.md. If verification can't be
+      made to pass, stop, return status `failed-verification`, and do **not**
+      open a PR.
 
    d. **Commit and push.** Include the Trello card link as a trailer so
       `/release` can find it later:
@@ -109,27 +136,37 @@ feature — skip it and report it as skipped-for-missing-detail.
       gh pr edit <number> --add-label feature
       ```
 
-   f. **Comment the PR link back on the card** (`add_comment`, e.g.
-      `Implemented in PR: <url>`) and **move the card to `In Progress`**
-      (`move_card` → `6a54dda869fc7862c4139b49`).
+      Return the PR number and URL.
 
-5. **Do not merge** any PR — leave them as drafts for the user to review. Never
+   The agent does **not** touch Trello — you handle the Trello updates in the
+   next step once it reports back.
+
+5. **After each agent returns, update its card (you, the orchestrator).** For
+   every agent that reported an opened PR: **comment the PR link back on the
+   card** (`add_comment`, e.g. `Implemented in PR: <url>`) and **move the card to
+   `In Progress`** (`move_card` → `6a54dda869fc7862c4139b49`). Do not move or
+   comment on cards whose agent reported `failed-verification`.
+
+6. **Do not merge** any PR — leave them as drafts for the user to review. Never
    commit to `main`, never force-push, never target `main`.
 
-6. **Report** a table of every card: card title → branch → PR number/URL →
-   status (opened / skipped-for-missing-detail / failed-verification). Leave the
-   repo checked out on `staging` and clean.
+7. **Report** a table of every card: card title → branch → PR number/URL →
+   status (opened / skipped-for-missing-detail / failed-verification). The agents'
+   worktrees are auto-cleaned; leave your own checkout as you found it.
 
 ## Rules
 
 - **Always the Todo list of the Task Management board.** No board argument.
-- **1 card = 1 branch = 1 PR.** Never combine cards.
+- **1 card = 1 agent = 1 worktree = 1 branch = 1 PR.** Never combine cards, and
+  never have one agent handle two cards.
+- **Fan out in parallel.** Dispatch all valid cards' agents in one turn so they
+  run concurrently; each is isolated in its own worktree.
 - **Every PR:** title prefixed `[trello]`, Trello card link in the body, base
   `staging` (never `main`), opened as a draft. This command never merges.
-- Skip — do not fabricate — any card missing a description or acceptance
-  criteria, and report it.
-- If a card's verification fails and you can't make it pass, stop work on that
-  card, leave its branch/PR as-is (or close the PR), report it, and continue to
-  the next card rather than forcing a broken change through.
+- Skip — do not fabricate, and do not dispatch an agent for — any card missing a
+  description or acceptance criteria, and report it.
+- If an agent's verification fails and it can't make it pass, it returns
+  `failed-verification` without opening a PR; you record it and move on to the
+  other results rather than forcing a broken change through.
 - Respect both light and dark theme for any UI, and follow the repo's frontend
   and PR conventions throughout.
