@@ -137,22 +137,37 @@ type pairResult struct {
 	Translation string `json:"translation"`
 }
 
+// BetweenResult is the outcome of one Between translation. It carries the
+// resolved source language and translated text along with the LLM usage
+// metadata (model + token counts) so the caller can persist the call as a
+// /logs trace for later review and LLM judging.
+type BetweenResult struct {
+	Source           string // resolved source language (langA or langB); "" when undetected
+	Translated       string // the translated text
+	Model            string // LLM model that produced the translation
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 // Between detects which of langA/langB the text is written in and translates it
-// into the other. It returns the resolved source language (equal to langA or
-// langB) and the translated text. On success source is always one of the two
-// inputs; if the model's reply cannot be parsed as JSON, source is returned
-// empty and translated holds the best-effort raw output so the caller can still
-// show something. It never mutates global state and is safe to call per message.
-func (t *Translator) Between(ctx context.Context, langA, langB, formality, text string) (source, translated string, err error) {
+// into the other. On success Result.Source is one of the two inputs and
+// Result.Translated holds the translation; if the model's reply cannot be
+// parsed as JSON, Source is empty and Translated holds the best-effort raw
+// output so the caller can still show something. Result.Model/*Tokens report the
+// LLM usage for the call (populated whenever the LLM was actually reached, even
+// on a downstream parse error). It never mutates global state and is safe to
+// call per message.
+func (t *Translator) Between(ctx context.Context, langA, langB, formality, text string) (BetweenResult, error) {
 	if strings.TrimSpace(text) == "" {
-		return "", "", errors.New("empty text")
+		return BetweenResult{}, errors.New("empty text")
 	}
 	cfg, err := t.settings.LLMConfig(ctx)
 	if err != nil {
-		return "", "", err
+		return BetweenResult{}, err
 	}
 	if cfg.APIKey == "" {
-		return "", "", ErrNotConfigured
+		return BetweenResult{}, ErrNotConfigured
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
@@ -163,7 +178,20 @@ func (t *Translator) Between(ctx context.Context, langA, langB, formality, text 
 		{Role: "user", Content: text},
 	}, nil)
 	if err != nil {
-		return "", "", err
+		return BetweenResult{}, err
+	}
+
+	// The LLM was reached — record which model answered and its token usage so
+	// the caller can log the call regardless of how parsing turns out below.
+	model := cfg.Model
+	if model == "" {
+		model = llm.DefaultModel
+	}
+	out := BetweenResult{
+		Model:            model,
+		PromptTokens:     res.Usage.PromptTokens,
+		CompletionTokens: res.Usage.CompletionTokens,
+		TotalTokens:      res.Usage.TotalTokens,
 	}
 
 	raw := stripFences(clean(res.Message.Content))
@@ -171,23 +199,24 @@ func (t *Translator) Between(ctx context.Context, langA, langB, formality, text 
 	if err := json.Unmarshal([]byte(raw), &pr); err != nil {
 		// Model didn't honour the JSON contract. Fall back to showing the raw
 		// output as the translation with an unknown source, rather than failing.
-		if out := strings.TrimSpace(raw); out != "" {
-			return "", out, nil
+		if s := strings.TrimSpace(raw); s != "" {
+			out.Translated = s
+			return out, nil
 		}
-		return "", "", errors.New("empty translation")
+		return out, errors.New("empty translation")
 	}
-	translated = strings.TrimSpace(pr.Translation)
-	if translated == "" {
-		return "", "", errors.New("empty translation")
+	out.Translated = strings.TrimSpace(pr.Translation)
+	if out.Translated == "" {
+		return out, errors.New("empty translation")
 	}
 	switch strings.ToUpper(strings.TrimSpace(pr.Source)) {
 	case "B":
-		source = langB
+		out.Source = langB
 	default:
 		// "A" or anything unexpected defaults to language A as the source.
-		source = langA
+		out.Source = langA
 	}
-	return source, translated, nil
+	return out, nil
 }
 
 // stripFences removes a wrapping ```-fenced block (optionally tagged, e.g.
