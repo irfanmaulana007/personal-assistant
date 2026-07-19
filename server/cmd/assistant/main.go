@@ -281,8 +281,13 @@ func main() {
 				replyTo = msg.From
 			}
 
-			// Send response
-			if err := wa.SendMessage(ctx, replyTo, response); err != nil {
+			// Send response. When the English Tutor skill is active its reply
+			// begins with a [[grammar]]…[[/grammar]] correction block; on WhatsApp
+			// that's rendered as a readable "English check" card (original struck
+			// through, corrected version with changed words bolded). The logged
+			// body below keeps the raw markers so the web chat renders its own
+			// correction view; only the WhatsApp-bound text is reformatted here.
+			if err := wa.SendMessage(ctx, replyTo, whatsapp.FormatGrammarReply(msg.Text, response)); err != nil {
 				log.Error("failed to send response",
 					"to", replyTo,
 					"error", err,
