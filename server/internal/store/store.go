@@ -387,9 +387,10 @@ type LLMCall struct {
 // Trace is a full record of one agent run — the source of truth for both the
 // dashboard aggregates and the logs viewer.
 type Trace struct {
-	ID       int64
-	UserID   int64
-	Platform string
+	ID        int64
+	UserID    int64
+	ProjectID int64 // active project the run executed in (0 = none / background)
+	Platform  string
 	// Source is what triggered the run: "chat" for an interactive message
 	// (web/WhatsApp), or a routine key ("start_of_day" / "end_of_day") for a
 	// scheduled run. Empty is normalised to "chat" on write.

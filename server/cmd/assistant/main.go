@@ -220,8 +220,11 @@ func main() {
 				_ = wa.SendMessage(ctx, msg.From, "The assistant isn't set up yet. Open the web app to create an admin account first.")
 				return
 			}
-			userID := owner.ID
-			uctx := authctx.WithUserID(ctx, userID)
+			// Resolve which project (and role) the agent acts as from where the
+			// message came from: a group JID → its mapped project (role clamped, no
+			// superadmin from a group); a personal number → its mapped project + role
+			// (superadmin allowed for 1:1 only), else the owner's personal project.
+			uctx, userID := resolveWhatsAppScope(ctx, db, owner, msg, log)
 
 			// Group Translator skill: a "/t" command in a group is a
 			// self-contained translate/config request. Handle it directly and
@@ -466,6 +469,53 @@ func setupLogger(cfg config.LoggingConfig) *slog.Logger {
 
 // recentAgentHistory loads the most recent conversation turns for a platform and
 // maps them to agent messages (oldest first), for use as agent context.
+// resolveWhatsAppScope decides which project, role, and user the agent acts as
+// for an inbound WhatsApp message, and returns the context carrying that scope
+// plus the effective user id (used for history/logging).
+//
+//   - Group message: look up the group JID. A mapping scopes the run to its
+//     project; the role is clamped so a group can never confer superadmin.
+//   - Personal (1:1) message: look up the sender's number. A mapping scopes the
+//     run to its project and role (superadmin honoured here only) and, if it
+//     names a user, attributes the chat to that user. Unmapped personal chats
+//     fall back to the owner's personal project so the owner's 1:1 keeps working.
+func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User, msg *transport.Message, log *slog.Logger) (context.Context, int64) {
+	userID := owner.ID
+	jid := msg.From
+	if msg.IsGroup {
+		jid = msg.Chat
+	}
+
+	m, err := db.GetWhatsAppMapping(ctx, jid)
+	if err != nil {
+		log.Error("whatsapp mapping lookup", "error", err, "jid", jid)
+	}
+	if m != nil {
+		role := m.Role
+		if msg.IsGroup && role == store.GlobalRoleSuperadmin {
+			role = store.ProjectRoleAdmin // a group never confers superadmin
+		}
+		if !msg.IsGroup && m.UserID != 0 {
+			userID = m.UserID
+		}
+		ctx = authctx.WithUserID(ctx, userID)
+		ctx = authctx.WithProjectID(ctx, m.ProjectID)
+		ctx = authctx.WithProjectRole(ctx, role)
+		return ctx, userID
+	}
+
+	ctx = authctx.WithUserID(ctx, userID)
+	// Unmapped personal chat: default to the owner's first/personal project so the
+	// owner's private channel still works. Unmapped groups get no project scope.
+	if !msg.IsGroup {
+		if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
+			ctx = authctx.WithProjectID(ctx, summaries[0].ID)
+			ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+		}
+	}
+	return ctx, userID
+}
+
 func recentAgentHistory(ctx context.Context, db store.Store, userID int64, platform string, limit int) []agent.Message {
 	logs, err := db.GetMessageHistory(ctx, userID, platform, limit)
 	if err != nil {

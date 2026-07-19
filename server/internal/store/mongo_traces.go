@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -32,6 +33,7 @@ type mongoScore struct {
 type mongoTrace struct {
 	ID                    int64            `bson:"id"`
 	UserID                int64            `bson:"user_id"`
+	ProjectID             int64            `bson:"project_id"`
 	Platform              string           `bson:"platform"`
 	Source                string           `bson:"source"`
 	Input                 string           `bson:"input"`
@@ -89,9 +91,16 @@ func (m *MongoStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) {
 	if source == "" {
 		source = "chat"
 	}
+	// Attribute the run to the active project. Callers rarely set ProjectID on the
+	// struct, so fall back to the project carried on the context.
+	projectID := t.ProjectID
+	if projectID == 0 {
+		projectID = authctx.ProjectID(ctx)
+	}
 	doc := mongoTrace{
 		ID:                    id,
 		UserID:                t.UserID,
+		ProjectID:             projectID,
 		Platform:              t.Platform,
 		Source:                source,
 		Input:                 t.Input,
@@ -134,6 +143,7 @@ func (m *MongoStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 	t := Trace{
 		ID:                    doc.ID,
 		UserID:                doc.UserID,
+		ProjectID:             doc.ProjectID,
 		Platform:              doc.Platform,
 		Source:                doc.Source,
 		Input:                 doc.Input,
@@ -228,6 +238,7 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 		traces = append(traces, Trace{
 			ID:                    d.ID,
 			UserID:                d.UserID,
+			ProjectID:             d.ProjectID,
 			Platform:              d.Platform,
 			Source:                d.Source,
 			Input:                 d.Input,
