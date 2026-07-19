@@ -113,6 +113,17 @@ export async function login(email: string, password: string): Promise<AuthRespon
   return data;
 }
 
+// Requests a password reset: the server emails a new temporary password to the
+// account matching `email`. It always resolves for a valid request (the server
+// does not reveal whether an account exists), so the UI shows the same
+// confirmation regardless.
+export async function requestPasswordReset(email: string): Promise<void> {
+  await request('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
 export async function setupAdmin(email: string, password: string): Promise<AuthResponse> {
   const data = await request<AuthResponse>('/api/auth/setup', {
     method: 'POST',

@@ -5,9 +5,11 @@ interface LoginProps {
   onSubmit: (email: string, password: string) => void;
   error: string;
   loading: boolean;
+  // Shown as a "Forgot password?" link in login mode; omitted for setup.
+  onForgot?: () => void;
 }
 
-export function Login({ mode, onSubmit, error, loading }: LoginProps) {
+export function Login({ mode, onSubmit, error, loading, onForgot }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -119,6 +121,16 @@ export function Login({ mode, onSubmit, error, loading }: LoginProps) {
                 ? 'Create account'
                 : 'Sign in'}
           </button>
+
+          {!isSetup && onForgot && (
+            <button
+              type="button"
+              onClick={onForgot}
+              className="w-full text-center text-sm text-indigo-700 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline focus:outline-none transition"
+            >
+              Forgot password?
+            </button>
+          )}
         </form>
       </div>
     </div>
