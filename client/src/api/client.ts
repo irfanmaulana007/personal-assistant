@@ -29,9 +29,26 @@ import type {
 } from '../types';
 
 const TOKEN_KEY = 'assistant_token';
+const PROJECT_KEY = 'assistant_project';
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+// The active project id is sent on every request as X-Project-Id so the server
+// scopes domain data, skills, and chat to it. It is persisted so a reload keeps
+// the same active project.
+export function getActiveProjectId(): number | null {
+  const v = localStorage.getItem(PROJECT_KEY);
+  return v ? Number(v) : null;
+}
+
+export function setActiveProjectId(id: number | null): void {
+  if (id == null) {
+    localStorage.removeItem(PROJECT_KEY);
+  } else {
+    localStorage.setItem(PROJECT_KEY, String(id));
+  }
 }
 
 export function setToken(token: string): void {
@@ -55,6 +72,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const projectId = getActiveProjectId();
+  if (projectId && !headers['X-Project-Id']) {
+    headers['X-Project-Id'] = String(projectId);
   }
 
   const res = await fetch(path, { ...options, headers });
@@ -525,4 +547,118 @@ export async function setWhatsAppAllowlist(
     method: 'PUT',
     body: JSON.stringify({ allowlist, allow_all: allowAll }),
   });
+}
+
+// --- Projects & RBAC ---
+
+export async function listProjects(): Promise<import('../types').Project[]> {
+  return request('/api/projects');
+}
+
+export async function createProject(
+  name: string,
+  adminEmail?: string,
+): Promise<import('../types').Project> {
+  return request('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, admin_email: adminEmail || '' }),
+  });
+}
+
+export async function updateProject(id: number, name: string): Promise<{ ok: boolean }> {
+  return request(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+}
+
+export async function deleteProject(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/projects/${id}`, { method: 'DELETE' });
+}
+
+export async function listProjectMembers(id: number): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members`);
+}
+
+export async function addProjectMember(
+  id: number,
+  email: string,
+  role: 'admin' | 'member',
+): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+export async function updateProjectMember(
+  id: number,
+  userId: number,
+  role: 'admin' | 'member',
+): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function removeProjectMember(
+  id: number,
+  userId: number,
+): Promise<import('../types').ProjectMember[]> {
+  return request(`/api/projects/${id}/members/${userId}`, { method: 'DELETE' });
+}
+
+export async function listProjectAudit(id: number): Promise<import('../types').AuditEvent[]> {
+  return request(`/api/projects/${id}/audit`);
+}
+
+// Features are scoped to the active project via the X-Project-Id header.
+export async function listFeatures(): Promise<import('../types').ProjectFeature[]> {
+  return request('/api/features');
+}
+
+export async function setFeatureEnabled(
+  id: number,
+  enabled: boolean,
+): Promise<import('../types').ProjectFeature[]> {
+  return request(`/api/features/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+// --- WhatsApp mappings (superadmin) ---
+
+export async function listWhatsAppMappings(): Promise<import('../types').WhatsAppMapping[]> {
+  return request('/api/whatsapp/mappings');
+}
+
+export async function createWhatsAppMapping(
+  m: Omit<import('../types').WhatsAppMapping, 'id' | 'created_at'>,
+): Promise<import('../types').WhatsAppMapping> {
+  return request('/api/whatsapp/mappings', { method: 'POST', body: JSON.stringify(m) });
+}
+
+export async function updateWhatsAppMapping(
+  id: number,
+  m: Omit<import('../types').WhatsAppMapping, 'id' | 'created_at'>,
+): Promise<{ ok: boolean }> {
+  return request(`/api/whatsapp/mappings/${id}`, { method: 'PATCH', body: JSON.stringify(m) });
+}
+
+export async function deleteWhatsAppMapping(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/whatsapp/mappings/${id}`, { method: 'DELETE' });
+}
+
+// --- Superadmin cross-project overview ---
+
+export async function getAdminOverview(
+  from?: string,
+  to?: string,
+  projectId?: number,
+): Promise<import('../types').AdminOverview> {
+  const p = new URLSearchParams();
+  if (from) p.set('from', from);
+  if (to) p.set('to', to);
+  if (projectId) p.set('projectId', String(projectId));
+  const qs = p.toString();
+  return request(`/api/admin/overview${qs ? `?${qs}` : ''}`);
 }

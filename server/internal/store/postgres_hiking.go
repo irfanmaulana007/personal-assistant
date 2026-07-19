@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
 func (s *PostgresStore) ListMountains(ctx context.Context, userID int64) ([]Mountain, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name FROM hike_mountains WHERE user_id = $1 ORDER BY name ASC`, userID)
+		`SELECT id, name FROM hike_mountains WHERE user_id = $1 AND ($2 = 0 OR project_id = $2) ORDER BY name ASC`, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list mountains: %w", err)
 	}
@@ -31,8 +32,8 @@ func (s *PostgresStore) ListMountains(ctx context.Context, userID int64) ([]Moun
 func (s *PostgresStore) CreateMountain(ctx context.Context, userID int64, name string) (*Mountain, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO hike_mountains (user_id, name, created_at) VALUES ($1, $2, $3) RETURNING id`,
-		userID, name, time.Now().UTC()).Scan(&id)
+		`INSERT INTO hike_mountains (user_id, project_id, name, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, authctx.ProjectID(ctx), name, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create mountain: %w", err)
 	}
@@ -41,8 +42,8 @@ func (s *PostgresStore) CreateMountain(ctx context.Context, userID int64, name s
 
 func (s *PostgresStore) ListTracks(ctx context.Context, userID, mountainID int64) ([]HikeTrack, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, mountain_id, name FROM hike_tracks WHERE user_id = $1 AND mountain_id = $2 ORDER BY name ASC`,
-		userID, mountainID)
+		`SELECT id, mountain_id, name FROM hike_tracks WHERE user_id = $1 AND mountain_id = $2 AND ($3 = 0 OR project_id = $3) ORDER BY name ASC`,
+		userID, mountainID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list tracks: %w", err)
 	}
@@ -61,8 +62,8 @@ func (s *PostgresStore) ListTracks(ctx context.Context, userID, mountainID int64
 func (s *PostgresStore) CreateTrack(ctx context.Context, userID, mountainID int64, name string) (*HikeTrack, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO hike_tracks (user_id, mountain_id, name, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, mountainID, name, time.Now().UTC()).Scan(&id)
+		`INSERT INTO hike_tracks (user_id, project_id, mountain_id, name, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, authctx.ProjectID(ctx), mountainID, name, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create track: %w", err)
 	}
@@ -71,7 +72,7 @@ func (s *PostgresStore) CreateTrack(ctx context.Context, userID, mountainID int6
 
 func (s *PostgresStore) ListHikers(ctx context.Context, userID int64) ([]Hiker, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name FROM hike_participants WHERE user_id = $1 ORDER BY name ASC`, userID)
+		`SELECT id, name FROM hike_participants WHERE user_id = $1 AND ($2 = 0 OR project_id = $2) ORDER BY name ASC`, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list hikers: %w", err)
 	}
@@ -90,8 +91,8 @@ func (s *PostgresStore) ListHikers(ctx context.Context, userID int64) ([]Hiker, 
 func (s *PostgresStore) CreateHiker(ctx context.Context, userID int64, name string) (*Hiker, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO hike_participants (user_id, name, created_at) VALUES ($1, $2, $3) RETURNING id`,
-		userID, name, time.Now().UTC()).Scan(&id)
+		`INSERT INTO hike_participants (user_id, project_id, name, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, authctx.ProjectID(ctx), name, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create hiker: %w", err)
 	}
@@ -101,9 +102,9 @@ func (s *PostgresStore) CreateHiker(ctx context.Context, userID int64, name stri
 func (s *PostgresStore) CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO hikes (user_id, mountain_id, camped, up_track_id, down_track_id, days, nights, hiked_on, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		userID, h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, h.HikedOn.UTC(), time.Now().UTC()).Scan(&id)
+		`INSERT INTO hikes (user_id, project_id, mountain_id, camped, up_track_id, down_track_id, days, nights, hiked_on, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		userID, authctx.ProjectID(ctx), h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, h.HikedOn.UTC(), time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("create hike: %w", err)
 	}
@@ -133,7 +134,7 @@ func (s *PostgresStore) GetHike(ctx context.Context, userID, id int64) (*HikeDet
 		 JOIN hike_mountains m ON m.id = h.mountain_id
 		 LEFT JOIN hike_tracks ut ON ut.id = h.up_track_id
 		 LEFT JOIN hike_tracks dt ON dt.id = h.down_track_id
-		 WHERE h.user_id = $1 AND h.id = $2`, userID, id).
+		 WHERE h.user_id = $1 AND h.id = $2 AND ($3 = 0 OR h.project_id = $3)`, userID, id, authctx.ProjectID(ctx)).
 		Scan(&d.ID, &d.MountainID, &d.Camped, &d.UpTrackID, &d.DownTrackID, &d.Days, &d.Nights, &d.HikedOn,
 			&d.Mountain, &d.UpTrack, &d.DownTrack, &participants)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -162,8 +163,8 @@ func (s *PostgresStore) ListHikes(ctx context.Context, userID int64, limit int) 
 		 JOIN hike_mountains m ON m.id = h.mountain_id
 		 LEFT JOIN hike_tracks ut ON ut.id = h.up_track_id
 		 LEFT JOIN hike_tracks dt ON dt.id = h.down_track_id
-		 WHERE h.user_id = $1
-		 ORDER BY h.hiked_on DESC LIMIT $2`, userID, limit)
+		 WHERE h.user_id = $1 AND ($2 = 0 OR h.project_id = $2)
+		 ORDER BY h.hiked_on DESC LIMIT $3`, userID, authctx.ProjectID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list hikes: %w", err)
 	}

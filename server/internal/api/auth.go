@@ -98,10 +98,14 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.createUser(r, req.Email, req.Password, "admin")
+	user, err := s.createUser(r, req.Email, req.Password, store.GlobalRoleSuperadmin)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create admin"})
 		return
+	}
+	// The first account is the platform superadmin; give them a personal project.
+	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
+		s.log.Error("provision personal project", "error", err)
 	}
 	s.issueToken(w, user)
 }

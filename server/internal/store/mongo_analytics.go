@@ -510,6 +510,50 @@ func (m *MongoStore) UsageByUserModel(ctx context.Context, from, to time.Time, p
 	return out, nil
 }
 
+// UsageByProject aggregates trace usage per (project, model) over [from, to).
+// Traces written before multi-project (or outside a project) carry project_id 0
+// and are grouped there.
+func (m *MongoStore) UsageByProject(ctx context.Context, from, to time.Time) ([]ProjectModelUsage, error) {
+	pipe := mongo.Pipeline{
+		{{Key: "$match", Value: mongoRangeMatch(from, to, nil)}},
+		{{Key: "$group", Value: bson.M{
+			"_id": bson.M{
+				"project_id": bson.M{"$ifNull": bson.A{"$project_id", int64(0)}},
+				"model":      "$model",
+			},
+			"requests":         bson.M{"$sum": 1},
+			"promptTokens":     bson.M{"$sum": "$prompt_tokens"},
+			"completionTokens": bson.M{"$sum": "$completion_tokens"},
+			"totalTokens":      bson.M{"$sum": "$total_tokens"},
+		}}},
+	}
+	var rows []struct {
+		ID struct {
+			ProjectID int64  `bson:"project_id"`
+			Model     string `bson:"model"`
+		} `bson:"_id"`
+		Requests         int `bson:"requests"`
+		PromptTokens     int `bson:"promptTokens"`
+		CompletionTokens int `bson:"completionTokens"`
+		TotalTokens      int `bson:"totalTokens"`
+	}
+	if err := m.aggregateAll(ctx, colTraces, pipe, &rows); err != nil {
+		return nil, fmt.Errorf("usage by project: %w", err)
+	}
+	out := make([]ProjectModelUsage, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ProjectModelUsage{
+			ProjectID:        r.ID.ProjectID,
+			Model:            r.ID.Model,
+			Requests:         r.Requests,
+			PromptTokens:     r.PromptTokens,
+			CompletionTokens: r.CompletionTokens,
+			TotalTokens:      r.TotalTokens,
+		})
+	}
+	return out, nil
+}
+
 // aggregateAll runs an aggregation pipeline on the named collection and decodes
 // every result document into out (a pointer to a slice). Empty result sets leave
 // out as its zero value (an empty/nil slice), never an error.

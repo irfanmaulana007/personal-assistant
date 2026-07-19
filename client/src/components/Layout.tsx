@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserMenu } from './UserMenu';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import { APP_VERSION_LABEL } from '../appVersion';
 import { usePreferences } from '../contexts/preferences';
 import type { User } from '../types';
@@ -66,6 +67,7 @@ const navItems: NavEntry[] = [
     ),
     children: [
       { to: '/dashboard', label: 'Overview', end: true },
+      { to: '/dashboard/projects', label: 'Projects' },
       { to: '/dashboard/usage', label: 'Usage' },
       { to: '/dashboard/activity', label: 'Activity' },
       { to: '/dashboard/performance', label: 'Performance' },
@@ -105,6 +107,18 @@ const navItems: NavEntry[] = [
         strokeLinejoin="round"
         strokeWidth={2}
         d="M5 3v4M3 5h4M6 17v4m-2-2h4m6-14l2.4 6.6L22 13l-6.6 2.4L13 22l-2.4-6.6L4 13l6.6-2.4L13 3z"
+      />
+    ),
+  },
+  {
+    to: '/projects',
+    label: 'Projects',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
       />
     ),
   },
@@ -233,6 +247,10 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
             </svg>
           </div>
           <h1 className="truncate text-base font-semibold text-white">{assistantName}</h1>
+        </div>
+
+        <div className="px-3 pb-1">
+          <ProjectSwitcher isSuperadmin={isAdmin} />
         </div>
 
         <nav className="flex-1 space-y-0.5 px-3 py-2">

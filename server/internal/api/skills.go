@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
@@ -26,22 +27,32 @@ type skillResp struct {
 	PromptUpdatedBy string  `json:"prompt_updated_by,omitempty"`
 }
 
-// handleListSkills returns the current user's skills with effective enabled
-// state. For admins each skill additionally carries its editable prompt, the
-// code-owned default, and who last edited it.
+// handleListSkills returns the active project's skills with effective enabled
+// state (folding in the feature-cascade gate). For superadmins each skill
+// additionally carries its editable prompt, the code-owned default, and who last
+// edited it (the prompt catalog is platform-wide).
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFrom(r.Context())
 	if claims == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	list, err := s.store.ListUserSkills(r.Context(), claims.UserID())
+	ctx := r.Context()
+	pid := authctx.ProjectID(ctx)
+	if pid == 0 {
+		pid, _ = s.defaultProject(ctx, claims)
+	}
+	if pid == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no active project"})
+		return
+	}
+	list, err := s.store.ListProjectSkills(ctx, pid)
 	if err != nil {
-		s.log.Error("list user skills", "error", err)
+		s.log.Error("list project skills", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load skills"})
 		return
 	}
-	isAdmin := claims.Role == "admin"
+	isAdmin := claims.Role == store.GlobalRoleSuperadmin
 	out := make([]skillResp, 0, len(list))
 	for _, u := range list {
 		resp := skillResp{
@@ -148,11 +159,19 @@ func (s *Server) handleSetSkillPrompt(w http.ResponseWriter, r *http.Request) {
 	s.handleListSkills(w, r)
 }
 
-// handleSetSkill enables/disables a skill for the current user.
+// handleSetSkill enables/disables a skill for the active project. Behind
+// withProject + requireProjectAdmin, so the caller is a project admin (or
+// superadmin) acting on that project.
 func (s *Server) handleSetSkill(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFrom(r.Context())
 	if claims == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	ctx := r.Context()
+	pid := authctx.ProjectID(ctx)
+	if pid == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no active project"})
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -169,7 +188,7 @@ func (s *Server) handleSetSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sk, err := s.store.GetSkill(r.Context(), id)
+	sk, err := s.store.GetSkill(ctx, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -179,9 +198,10 @@ func (s *Server) handleSetSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SetSkillEnabled(r.Context(), claims.UserID(), id, req.Enabled); err != nil {
+	if err := s.store.SetProjectSkillEnabled(ctx, pid, id, req.Enabled); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
 		return
 	}
+	s.recordAudit(ctx, pid, claims, "skill_toggle", sk.Key, map[string]any{"enabled": req.Enabled})
 	s.handleListSkills(w, r)
 }

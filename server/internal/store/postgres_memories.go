@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/irfanmaulana007/personal-assistant/server/internal/authctx"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -15,8 +16,8 @@ func (s *PostgresStore) CreateMemory(ctx context.Context, userID int64, content,
 	now := time.Now().UTC()
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO memories (user_id, content, kind, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, content, kind, now,
+		`INSERT INTO memories (user_id, project_id, content, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, authctx.ProjectID(ctx), content, kind, now,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create memory: %w", err)
@@ -29,8 +30,8 @@ func (s *PostgresStore) CreateMemory(ctx context.Context, userID int64, content,
 func (s *PostgresStore) GetMemory(ctx context.Context, userID, id int64) (*Memory, error) {
 	var m Memory
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, content, kind, created_at FROM memories WHERE id = $1 AND user_id = $2`,
-		id, userID,
+		`SELECT id, content, kind, created_at FROM memories WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`,
+		id, userID, authctx.ProjectID(ctx),
 	).Scan(&m.ID, &m.Content, &m.Kind, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -56,9 +57,9 @@ func (s *PostgresStore) SearchMemories(ctx context.Context, userID int64, query 
 	}
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, content, kind, created_at FROM memories
-		 WHERE search @@ to_tsquery('simple', $1) AND user_id = $2
+		 WHERE search @@ to_tsquery('simple', $1) AND user_id = $2 AND ($4 = 0 OR project_id = $4)
 		 ORDER BY ts_rank(search, to_tsquery('simple', $1)) DESC
-		 LIMIT $3`, tsq, userID, limit)
+		 LIMIT $3`, tsq, userID, limit, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("search memories: %w", err)
 	}
@@ -97,7 +98,7 @@ func (s *PostgresStore) ListMemories(ctx context.Context, userID int64, limit in
 	}
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, content, kind, created_at FROM memories
-		 WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`, userID, limit)
+		 WHERE user_id = $1 AND ($3 = 0 OR project_id = $3) ORDER BY created_at DESC LIMIT $2`, userID, limit, authctx.ProjectID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("list memories: %w", err)
 	}
@@ -106,6 +107,6 @@ func (s *PostgresStore) ListMemories(ctx context.Context, userID int64, limit in
 }
 
 func (s *PostgresStore) DeleteMemory(ctx context.Context, userID, id int64) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM memories WHERE id = $1 AND user_id = $2`, id, userID)
+	_, err := s.pool.Exec(ctx, `DELETE FROM memories WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`, id, userID, authctx.ProjectID(ctx))
 	return err
 }
