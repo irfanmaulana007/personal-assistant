@@ -18,7 +18,7 @@ interface SectionGroup {
 
 // Settings are grouped: the active project's management lives up top (visible
 // only to that project's admins), then the user's own preferences and the
-// system/platform settings below.
+// system/platform settings below. WhatsApp now lives under Integrations.
 const groups: SectionGroup[] = [
   {
     label: 'Project',
@@ -43,8 +43,6 @@ const groups: SectionGroup[] = [
     sections: [
       { to: '/settings/model', label: 'Model', admin: true },
       { to: '/settings/api-keys', label: 'API Keys', admin: true },
-      { to: '/settings/whatsapp', label: 'WhatsApp', admin: true },
-      { to: '/settings/whatsapp-mappings', label: 'WhatsApp Projects', admin: true },
       { to: '/settings/pricing', label: 'Pricing', admin: true },
     ],
   },

@@ -73,7 +73,7 @@ export function WhatsAppSettings() {
         WhatsApp agent access
       </h2>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Choose who the assistant answers. It runs on the account you pair in Integrations.
+        Choose who the assistant answers. It runs on the account you pair above.
       </p>
 
       <div
