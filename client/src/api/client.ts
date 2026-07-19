@@ -82,7 +82,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(path, { ...options, headers });
 
-  if (res.status === 401) {
+  // A 401 on a request we sent *with* a token means the session expired, so we
+  // clear it and reload to bounce back to the login screen. A 401 with no token
+  // is a failed login/setup attempt (e.g. wrong password) — never reload there;
+  // fall through so the endpoint's error message can be shown on the form.
+  if (res.status === 401 && token) {
     clearToken();
     window.location.reload();
     throw new Error('Unauthorized');
