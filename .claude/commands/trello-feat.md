@@ -55,10 +55,16 @@ This command always operates on these exact ids (resolve by name via
 - **Workspace:** `Personal Assistant` — `6a54dd566d0f1d87fc3d9c54`
 - **Board:** `Task Management` — `6a54dd8eecaab3bd510528ba`
 - **Source list (read cards here):** `Todo` — `6a54dda5bd020d9d6740ade7`
-- **In-flight list (move card here once its PR is open):** `In Progress` —
-  `6a54dda869fc7862c4139b49`
-- Do **not** move cards to `Done` (`6a54ddadf123f4f7f7955c95`) — the `/release`
-  command does that when the work actually ships.
+- **In-progress list (move card here BEFORE you start the work):** `In Progress`
+  — `6a54dda869fc7862c4139b49`. A card enters `In Progress` the moment its work
+  begins — before the branch or PR exists — not after the PR is opened.
+- **Test list (`Test` — `6a5c1f75a5a7d68de5e833d7`):** cards land here when their
+  PR is **merged into `staging`**. The `/merge-all` command does that, **not**
+  this command — after you open the PR, leave the card in `In Progress`.
+- **Done list (`Done` — `6a54ddadf123f4f7f7955c95`):** cards land here when the
+  work is **released to `main`**. The `/release` command does that. This command
+  only ever moves cards into `In Progress`; it never moves them to `Test` or
+  `Done`.
 
 ## Expected card shape
 
@@ -101,7 +107,15 @@ Use this when the argument is empty or `all`.
    worktree, not this checkout — but confirm `origin/staging` resolves before
    dispatching anyone.
 
-4. **Dispatch one subagent per valid card, in parallel.** For each card that has
+4. **Move every valid card to `In Progress` before doing any work.** For each
+   card you are about to implement (i.e. every card that has a description and
+   acceptance criteria and is not being skipped), `move_card` it into
+   `In Progress` (`6a54dda869fc7862c4139b49`) **now**, before dispatching its
+   agent — the card enters `In Progress` the moment its work starts, before the
+   branch or PR exists. Do **not** move cards you are skipping for missing
+   detail.
+
+5. **Dispatch one subagent per valid card, in parallel.** For each card that has
    a description and acceptance criteria, launch an `Agent` with
    `isolation: "worktree"` so it gets its own git worktree. Send all the
    card-handling agents **in a single message** (multiple `Agent` tool calls in
@@ -171,16 +185,18 @@ Use this when the argument is empty or `all`.
    The agent does **not** touch Trello — you handle the Trello updates in the
    next step once it reports back.
 
-5. **After each agent returns, update its card (you, the orchestrator).** For
-   every agent that reported an opened PR: **comment the PR link back on the
-   card** (`add_comment`, e.g. `Implemented in PR: <url>`) and **move the card to
-   `In Progress`** (`move_card` → `6a54dda869fc7862c4139b49`). Do not move or
-   comment on cards whose agent reported `failed-verification`.
+6. **After each agent returns, comment its PR link on the card (you, the
+   orchestrator).** For every agent that reported an opened PR: **comment the PR
+   link back on the card** (`add_comment`, e.g. `Implemented in PR: <url>`). The
+   card is already in `In Progress` from step 4 — **leave it there.** Do **not**
+   move it to `Test`; that happens when the PR is merged into `staging` (via
+   `/merge-all`). Do not comment on cards whose agent reported
+   `failed-verification`.
 
-6. **Do not merge** any PR — leave them as drafts for the user to review. Never
+7. **Do not merge** any PR — leave them as drafts for the user to review. Never
    commit to `main`, never force-push, never target `main`.
 
-7. **Report** a table of every card: card title → branch → PR number/URL →
+8. **Report** a table of every card: card title → branch → PR number/URL →
    status (opened / skipped-for-missing-detail / failed-verification). The agents'
    worktrees are auto-cleaned; leave your own checkout as you found it.
 
@@ -210,7 +226,11 @@ in this session.
    git rev-parse --verify origin/staging   # must exist; if not, stop and report
    ```
 
-4. **Isolate this session's work in its own git worktree, then implement.** Use
+4. **Move the card to `In Progress` before starting.** `move_card` the resolved
+   card into `In Progress` (`6a54dda869fc7862c4139b49`) **now** — a card enters
+   `In Progress` the moment its work begins, before the branch or PR exists.
+
+5. **Isolate this session's work in its own git worktree, then implement.** Use
    the `EnterWorktree` tool so your work never disturbs the user's checkout (if
    the session is already running inside a worktree, you are already isolated —
    skip this). Then run the full cycle inside that worktree:
@@ -261,15 +281,18 @@ in this session.
       gh pr edit <number> --add-label feature
       ```
 
-5. **Update the card (only if a PR was opened).** `add_comment` on the card with
-   the PR link (e.g. `Implemented in PR: <url>`) and `move_card` the card to
-   `In Progress` (`6a54dda869fc7862c4139b49`). Do not comment or move if the
-   status was `skipped-for-missing-detail` or `failed-verification`.
+6. **Comment the PR link on the card (only if a PR was opened).** `add_comment`
+   on the card with the PR link (e.g. `Implemented in PR: <url>`). The card is
+   already in `In Progress` from step 4 — **leave it there.** Do **not** move it
+   to `Test`; that happens when the PR is merged into `staging` (via
+   `/merge-all`). Do not comment if the status was `failed-verification`. (A card
+   skipped for missing detail was never moved to `In Progress` and gets no
+   comment.)
 
-6. **Do not merge.** Leave the PR as a draft. Never commit to `main`, never
+7. **Do not merge.** Leave the PR as a draft. Never commit to `main`, never
    force-push, never target `main`.
 
-7. **Report** the one card: card title → branch → PR number/URL → status
+8. **Report** the one card: card title → branch → PR number/URL → status
    (opened / skipped-for-missing-detail / failed-verification).
 
 ## Rules
@@ -285,6 +308,10 @@ in this session.
   one turn so they run concurrently; each is isolated in its own worktree.
   **Single-card mode does not fan out** — it implements the one card inline in
   the current session (still isolated in its own worktree).
+- **Card lifecycle:** a card moves to `In Progress` when its work **starts**
+  (this command, before the branch/PR exists), to `Test` when its PR is **merged
+  into `staging`** (`/merge-all`), and to `Done` when it is **released to `main`**
+  (`/release`). This command only ever moves cards into `In Progress`.
 - **Every PR:** title prefixed `[trello]`, Trello card link in the body, base
   `staging` (never `main`), opened as a draft. This command never merges.
 - Skip — do not fabricate, and do not dispatch an agent for — any card missing a

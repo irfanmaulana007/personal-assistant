@@ -102,11 +102,6 @@ func main() {
 	translator := translate.New(settingsSvc, llmClient, log)
 	db.SetTranslator(translator)
 
-	// Group Translator skill: handles the `/t` command in WhatsApp groups
-	// (translate between a group's two configured languages), short-circuiting
-	// the agent for those messages.
-	groupTranslator := translate.NewGroup(translator, settingsSvc, db, log)
-
 	timezone := cfg.Owner.Location()
 
 	// Build capability router
@@ -182,6 +177,13 @@ func main() {
 	// LLM-as-judge that scores the assistant's own replies inline (async, one
 	// judgement per reply). Shared by the web and WhatsApp ingress paths.
 	evalJudge := eval.NewJudge(llmClient, settingsSvc, db, log)
+
+	// Group Translator skill: handles the `/t` command in WhatsApp groups
+	// (translate between a group's two configured languages), short-circuiting
+	// the agent for those messages. Each translation is logged to /logs (tagged
+	// with the translator skill) and judged out of band, so it shares the store
+	// and the LLM-as-judge above.
+	groupTranslator := translate.NewGroup(translator, settingsSvc, db, db, evalJudge, log)
 
 	// Daily routines ("scheduled skills"): editable start-of-day / end-of-day
 	// prompts run through the agent and delivered over WhatsApp. Supersedes the
@@ -283,8 +285,13 @@ func main() {
 				replyTo = msg.From
 			}
 
-			// Send response
-			if err := wa.SendMessage(ctx, replyTo, response); err != nil {
+			// Send response. When the English Tutor skill is active its reply
+			// begins with a [[grammar]]…[[/grammar]] correction block; on WhatsApp
+			// that's rendered as a readable "English check" card (original struck
+			// through, corrected version with changed words bolded). The logged
+			// body below keeps the raw markers so the web chat renders its own
+			// correction view; only the WhatsApp-bound text is reformatted here.
+			if err := wa.SendMessage(ctx, replyTo, whatsapp.FormatGrammarReply(msg.Text, response)); err != nil {
 				log.Error("failed to send response",
 					"to", replyTo,
 					"error", err,

@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/irfanmaulana007/personal-assistant/server/internal/store"
 )
 
 // SkillKey is the key of the Translator skill in the skills catalog. The group
@@ -30,6 +33,18 @@ type pairStore interface {
 	ClearGroupTranslatePair(ctx context.Context, chatJID string) error
 }
 
+// traceRecorder persists a completed translator run as a /logs trace so every
+// `/t` translation is reviewable and can be judged (satisfied by store.Store).
+type traceRecorder interface {
+	CreateTrace(ctx context.Context, t *store.Trace) (int64, error)
+}
+
+// traceJudge scores a freshly recorded trace out of band with the LLM-as-judge
+// (satisfied by *eval.Judge). It is fire-and-forget and never blocks the reply.
+type traceJudge interface {
+	JudgeInline(ctx context.Context, traceID int64)
+}
+
 // Display modes for the group translator. modeOnly (the default) posts just the
 // translation; modeBoth posts the original message and its translation too.
 // These strings are persisted per group via pairStore.
@@ -47,12 +62,17 @@ type GroupService struct {
 	tr       *Translator
 	settings pairStore
 	skills   skillChecker
+	traces   traceRecorder // optional: logs each translation to /logs; nil disables it
+	judge    traceJudge    // optional: scores logged translations; nil disables it
 	log      *slog.Logger
 }
 
-// NewGroup creates a group translator service.
-func NewGroup(tr *Translator, s pairStore, skills skillChecker, log *slog.Logger) *GroupService {
-	return &GroupService{tr: tr, settings: s, skills: skills, log: log.With("component", "group-translate")}
+// NewGroup creates a group translator service. traces and judge are optional
+// (either may be nil): when a trace recorder is supplied, every `/t` translation
+// is logged to /logs tagged with the translator skill, and when a judge is also
+// supplied each logged translation is scored out of band by the LLM-as-judge.
+func NewGroup(tr *Translator, s pairStore, skills skillChecker, traces traceRecorder, judge traceJudge, log *slog.Logger) *GroupService {
+	return &GroupService{tr: tr, settings: s, skills: skills, traces: traces, judge: judge, log: log.With("component", "group-translate")}
 }
 
 // Handle attempts to service a group message as a `/t` translator command.
@@ -140,18 +160,64 @@ func (g *GroupService) Handle(ctx context.Context, userID int64, chatJID, rawTex
 		if strings.TrimSpace(cmd.text) == "" {
 			return helpText(), true // bare "/t" with nothing to translate
 		}
-		source, translated, err := g.tr.Between(ctx, a, b, formality, cmd.text)
+		start := time.Now()
+		res, err := g.tr.Between(ctx, a, b, formality, cmd.text)
+		latencyMs := int(time.Since(start).Milliseconds())
 		if err != nil {
+			// ErrNotConfigured means the LLM was never called (no API key), so
+			// there is nothing to log; every other error reached the LLM and is
+			// recorded as a failed translation trace.
 			if err == ErrNotConfigured {
 				return "The assistant isn't configured yet — set the LLM API key in the web Settings page.", true
 			}
+			g.recordTranslation(ctx, userID, chatJID, cmd.text, res, err, latencyMs)
 			g.log.Warn("group translation failed", "chat", chatJID, "error", err)
 			return "Sorry, I couldn't translate that right now. Please try again.", true
 		}
-		return formatTranslation(a, b, source, cmd.text, translated, mode), true
+		g.recordTranslation(ctx, userID, chatJID, cmd.text, res, nil, latencyMs)
+		return formatTranslation(a, b, res.Source, cmd.text, res.Translated, mode), true
 	}
 
 	return "", false
+}
+
+// recordTranslation persists one group `/t` translation as a /logs trace tagged
+// with the translator skill, then kicks off out-of-band judging on success. It
+// is fail-soft: it no-ops when no trace recorder is wired and never affects the
+// reply the group sees. input is the original message, res the translation
+// outcome (its Translated field is the output shown to the group), and runErr is
+// non-nil when the translation LLM call failed after being reached.
+func (g *GroupService) recordTranslation(ctx context.Context, userID int64, chatJID, input string, res BetweenResult, runErr error, latencyMs int) {
+	if g.traces == nil {
+		return
+	}
+	t := &store.Trace{
+		UserID:           userID,
+		Platform:         "whatsapp",
+		Source:           "chat",
+		Input:            input,
+		Output:           res.Translated,
+		Model:            res.Model,
+		PromptTokens:     res.PromptTokens,
+		CompletionTokens: res.CompletionTokens,
+		TotalTokens:      res.TotalTokens,
+		LatencyMs:        latencyMs,
+		Skills:           []string{SkillKey},
+		Status:           "ok",
+	}
+	if runErr != nil {
+		t.Status = "error"
+		t.Error = runErr.Error()
+	}
+	traceID, err := g.traces.CreateTrace(ctx, t)
+	if err != nil {
+		g.log.Warn("record translation trace", "chat", chatJID, "error", err)
+		return
+	}
+	// Only a successful translation has an output for the judge to score.
+	if g.judge != nil && runErr == nil {
+		g.judge.JudgeInline(ctx, traceID)
+	}
 }
 
 // enabled reports whether the owner has the Translator skill turned on.

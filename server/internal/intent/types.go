@@ -116,11 +116,13 @@ const (
 	ActionImageEdit     Action = "image_gen.edit"
 )
 
-// Trello actions (review the boards; file a task or a bug card; capture a game idea)
+// Trello actions (review the boards; file a task or a bug card; update an
+// existing card; capture a game idea)
 const (
 	ActionTrelloReview     Action = "trello.review"
 	ActionTrelloCreateTask Action = "trello.create_task"
 	ActionTrelloReportBug  Action = "trello.report_bug"
+	ActionTrelloUpdateCard Action = "trello.update_card"
 	ActionTrelloGameIdea   Action = "trello.game_idea"
 )
 
