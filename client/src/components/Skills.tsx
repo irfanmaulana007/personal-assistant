@@ -5,6 +5,8 @@ import {
   setSkillPrompt,
   resetSkillPrompt,
   clearTunedPrompt,
+  customizeSkill,
+  deleteProjectSkill,
   listFeatures,
   setFeatureEnabled,
 } from '../api/client';
@@ -23,8 +25,11 @@ function formatEdited(iso: string): string {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-// Admin-only editor for a skill's prompt, shown in a modal. Remounted per skill
-// (via a `key` on the caller) so the draft always starts from that skill.
+// Editor for a skill's prompt, shown in a modal. Remounted per skill (via a
+// `key` on the caller) so the draft always starts from that skill. The copy and
+// reach depend on scope: a global skill's prompt applies platform-wide (edited
+// by superadmins); a project fork's prompt applies to the active project only
+// (edited by its admins).
 function SkillPromptModal({
   skill,
   onClose,
@@ -39,6 +44,7 @@ function SkillPromptModal({
   const [resetting, setResetting] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const isProject = skill.scope === 'project';
   const customized = !!skill.prompt_updated_at;
   const dirty = draft !== (skill.prompt ?? '');
   const empty = draft.trim() === '';
@@ -78,7 +84,11 @@ function SkillPromptModal({
       open
       onClose={onClose}
       title={`Edit prompt · ${skill.name}`}
-      description="This is the instruction the assistant follows when this skill is active. It applies to everyone."
+      description={
+        isProject
+          ? 'This is the instruction the assistant follows when this skill is active. It applies to this project only.'
+          : 'This is the instruction the assistant follows when this skill is active. It applies to every project.'
+      }
     >
       <div className="space-y-4">
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400">
@@ -165,6 +175,8 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
   const [featureBusyId, setFeatureBusyId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
+  const [customizingId, setCustomizingId] = useState<number | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -226,6 +238,41 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
     }
   };
 
+  // Forks a global skill into this project, then opens the editor on the new
+  // project-owned copy so the admin can tailor its prompt right away.
+  const customize = async (sk: Skill) => {
+    setCustomizingId(sk.id);
+    setError('');
+    try {
+      const updated = await customizeSkill(sk.id);
+      setSkills(updated);
+      const fork = updated.find((s) => s.key === sk.key && s.scope === 'project');
+      if (fork) setEditingId(fork.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to customize skill');
+    } finally {
+      setCustomizingId(null);
+    }
+  };
+
+  // Removes this project's fork of a skill, reverting it to the shared global one.
+  const removeCustomization = async (sk: Skill) => {
+    setRemovingId(sk.id);
+    setError('');
+    try {
+      setSkills(await deleteProjectSkill(sk.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to remove customization');
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  // Who may edit a given skill's prompt: superadmins for global skills, project
+  // admins for this project's forks.
+  const canEditPrompt = (sk: Skill) =>
+    (sk.scope === 'global' && isAdmin) || (sk.scope === 'project' && canManageActive);
+
   // Group by category, preserving order.
   const groups: { category: string; skills: Skill[] }[] = [];
   for (const sk of skills) {
@@ -248,7 +295,9 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
         Turn skills on to give the assistant new abilities in this project.
         {!canManageActive && ' Only a project admin can change these.'}
-        {isAdmin && ' As a superadmin you can also edit each skill’s prompt for everyone.'}
+        {canManageActive &&
+          ' Customize a skill to give it a prompt that applies to this project only.'}
+        {isAdmin && ' As a superadmin you can also edit a global skill’s prompt for every project.'}
       </p>
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -316,6 +365,14 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-50">
                           {sk.name}
                         </span>
+                        {sk.scope === 'project' && (
+                          <span
+                            title="This skill has a prompt customized for this project."
+                            className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30"
+                          >
+                            Custom
+                          </span>
+                        )}
                         {sk.auto_tuned && (
                           <span
                             title="The end-of-day self-tuner has refined this skill's instructions."
@@ -328,29 +385,53 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
                       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                         {sk.description}
                       </p>
-                      {isAdmin && (
+                      {(canEditPrompt(sk) || (sk.scope === 'global' && canManageActive)) && (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setEditingId(sk.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 hover:text-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                          >
-                            <svg
-                              className="h-3.5 w-3.5"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth={2}
+                          {canEditPrompt(sk) && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(sk.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 hover:text-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M11 4H4v16h16v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
-                              />
-                            </svg>
-                            Edit prompt
-                          </button>
-                          {sk.auto_tuned && (
+                              <svg
+                                className="h-3.5 w-3.5"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M11 4H4v16h16v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                                />
+                              </svg>
+                              {sk.scope === 'global' ? 'Edit prompt' : 'Edit project prompt'}
+                            </button>
+                          )}
+                          {sk.scope === 'global' && canManageActive && (
+                            <button
+                              type="button"
+                              onClick={() => customize(sk)}
+                              disabled={customizingId === sk.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-2.5 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                            >
+                              {customizingId === sk.id
+                                ? 'Customizing…'
+                                : 'Customize for this project'}
+                            </button>
+                          )}
+                          {sk.scope === 'project' && canManageActive && (
+                            <button
+                              type="button"
+                              onClick={() => removeCustomization(sk)}
+                              disabled={removingId === sk.id}
+                              className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
+                            >
+                              {removingId === sk.id ? 'Removing…' : 'Remove customization'}
+                            </button>
+                          )}
+                          {sk.auto_tuned && isAdmin && (
                             <button
                               type="button"
                               onClick={() => revert(sk)}
@@ -383,7 +464,7 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {isAdmin && editing && (
+      {editing && canEditPrompt(editing) && (
         <SkillPromptModal
           key={editing.id}
           skill={editing}

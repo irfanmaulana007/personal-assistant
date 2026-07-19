@@ -33,7 +33,16 @@ type Skill struct {
 	// the seed stops clobbering the prompt.
 	PromptUpdatedAt *time.Time
 	PromptUpdatedBy string
+	// ProjectID scopes the skill. nil ⇒ a global (code-seeded) skill shared by
+	// every project. Set ⇒ a project-owned skill: a fork a project admin created
+	// from a global skill and customized, which shadows the global skill of the
+	// same key for that project.
+	ProjectID *int64
 }
+
+// IsProjectOwned reports whether the skill is a project-owned fork (as opposed
+// to a shared, code-seeded global skill).
+func (s Skill) IsProjectOwned() bool { return s.ProjectID != nil }
 
 // EffectivePrompt is the prompt actually injected into the system prompt: the
 // auto-tuned override when the self-tuner has set one, otherwise the shipped
@@ -654,10 +663,17 @@ type DataStore interface {
 	RemoveProjectMember(ctx context.Context, projectID, userID int64) error
 	CountProjectAdmins(ctx context.Context, projectID int64) (int, error)
 
-	// Per-project skills (effective state folds in the feature-cascade gate)
+	// Per-project skills (effective state folds in the feature-cascade gate).
+	// The listing includes the project's own forks and every global skill not
+	// shadowed by a fork of the same key.
 	ListProjectSkills(ctx context.Context, projectID int64) ([]UserSkill, error)
 	SetProjectSkillEnabled(ctx context.Context, projectID, skillID int64, enabled bool) error
 	EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error)
+	// CreateProjectSkill forks a skill into a project (project-owned copy the
+	// admin then customizes); DeleteProjectSkill removes a project's fork,
+	// reverting that project to the shared global skill.
+	CreateProjectSkill(ctx context.Context, projectID int64, base Skill, updatedBy string) (*Skill, error)
+	DeleteProjectSkill(ctx context.Context, projectID, skillID int64) error
 
 	// Features (catalog + per-project enable/disable; feature off ⇒ its skills off)
 	ListFeatures(ctx context.Context) ([]Feature, error)
