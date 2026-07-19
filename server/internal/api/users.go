@@ -16,7 +16,25 @@ func validRole(role string) bool {
 	return role == store.GlobalRoleSuperadmin || role == store.GlobalRoleMember
 }
 
-// handleListUsers returns all users (admin only).
+// userProjectResp is a project a user belongs to, with their role in it, as
+// shown on the Account page. Superadmins have no memberships (they manage every
+// project) and so carry an empty list.
+type userProjectResp struct {
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+}
+
+// userListResp is a user plus the projects they are a member of. Only the
+// account-management list endpoint returns memberships; auth/me responses use
+// the bare userResp.
+type userListResp struct {
+	userResp
+	Projects []userProjectResp `json:"projects"`
+}
+
+// handleListUsers returns all users, each with the projects they belong to
+// (superadmin only).
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
@@ -24,9 +42,19 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load users"})
 		return
 	}
-	out := make([]userResp, 0, len(users))
+	out := make([]userListResp, 0, len(users))
 	for i := range users {
-		out = append(out, toUserResp(&users[i]))
+		projects := make([]userProjectResp, 0)
+		summaries, err := s.store.ListProjectsForUser(r.Context(), users[i].ID)
+		if err != nil {
+			s.log.Error("list projects for user", "user_id", users[i].ID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load users"})
+			return
+		}
+		for _, ps := range summaries {
+			projects = append(projects, userProjectResp{ProjectID: ps.ID, Name: ps.Name, Role: ps.Role})
+		}
+		out = append(out, userListResp{userResp: toUserResp(&users[i]), Projects: projects})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

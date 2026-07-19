@@ -15,12 +15,23 @@ export type Role = 'superadmin' | 'member';
 // A user's role within a specific project.
 export type ProjectRole = 'admin' | 'member';
 
+// A project a user belongs to, with their role in it. Shown on the Account page.
+export interface UserProject {
+  project_id: number;
+  name: string;
+  role: ProjectRole;
+}
+
 export interface User {
   id: number;
   email: string;
   name: string;
   role: Role;
   created_at: string;
+  // Projects the user is a member of, with their per-project role. Present on
+  // the account-management list; superadmins carry an empty list (they manage
+  // every project). Optional because auth/me responses omit it.
+  projects?: UserProject[];
 }
 
 export interface Project {

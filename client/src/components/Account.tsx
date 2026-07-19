@@ -102,6 +102,7 @@ function UsersCard({
             <tr className="border-b border-gray-100 dark:border-gray-800 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               <th className="pb-2 font-medium">Email</th>
               <th className="pb-2 font-medium">Role</th>
+              <th className="pb-2 font-medium">Projects</th>
               <th className="pb-2 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -124,6 +125,9 @@ function UsersCard({
                     <option value="superadmin">superadmin</option>
                     <option value="member">member</option>
                   </select>
+                </td>
+                <td className="py-3">
+                  <UserProjects user={u} />
                 </td>
                 <td className="py-3 text-right">
                   {u.id !== meId && (
@@ -148,6 +152,43 @@ function UsersCard({
         busy={busy}
         onAdd={(email, password) => run(() => createUser(email, password, 'superadmin'))}
       />
+    </div>
+  );
+}
+
+// UserProjects lists the projects a user belongs to, each as a chip showing the
+// project name and the user's role in it. Superadmins have no memberships — they
+// manage every project — so they render an "All projects" note instead.
+function UserProjects({ user }: { user: User }) {
+  if (user.role === 'superadmin') {
+    return <span className="text-xs italic text-gray-400 dark:text-gray-500">All projects</span>;
+  }
+
+  const projects = user.projects ?? [];
+  if (projects.length === 0) {
+    return <span className="text-xs text-gray-400 dark:text-gray-500">—</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {projects.map((p) => (
+        <span
+          key={p.project_id}
+          className="inline-flex items-center gap-1 rounded-md bg-gray-100 dark:bg-gray-700/60 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-200"
+        >
+          {p.name}
+          <span className="text-gray-400 dark:text-gray-500">·</span>
+          <span
+            className={
+              p.role === 'admin'
+                ? 'font-medium text-indigo-700 dark:text-indigo-400'
+                : 'text-gray-500 dark:text-gray-400'
+            }
+          >
+            {p.role}
+          </span>
+        </span>
+      ))}
     </div>
   );
 }
