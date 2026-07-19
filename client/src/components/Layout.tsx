@@ -84,14 +84,22 @@ const projectsIcon = (
   />
 );
 
-// Global platform surfaces (the global shell). Dashboard / Account / Settings are
-// superadmin only; Projects is every member's picker into their project shells.
+// Global platform surfaces (the global shell). Dashboard / Account are superadmin
+// only; Projects is every member's picker into their project shells. Settings is
+// pinned to the bottom (see globalSettingsItem), mirroring the project shell.
 const globalNavItems: NavLeaf[] = [
   { to: '/dashboard', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
   { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
   { to: '/projects', label: 'Projects', gate: 'everyone', icon: projectsIcon },
-  { to: '/settings', label: 'Settings', gate: 'superadmin', icon: settingsIcon },
 ];
+
+// Settings sits at the bottom of the sidebar in both shells, above the user menu.
+const globalSettingsItem: NavLeaf = {
+  to: '/settings',
+  label: 'Settings',
+  gate: 'superadmin',
+  icon: settingsIcon,
+};
 
 // Project-scoped nav. Paths are relative to the project root (leading '/') and
 // get the active project's /:slug prefix applied before rendering.
@@ -243,26 +251,43 @@ export function Layout({ onLogout, isAdmin, user, mode }: LayoutProps) {
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
         {mode === 'global' ? (
-          <nav className="flex-1 space-y-0.5 px-3 py-4">
-            {globalItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/settings'}
-                className={({ isActive }) => leafClass(isActive)}
-              >
-                <Icon>{item.icon}</Icon>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          <>
+            <nav className="flex-1 space-y-0.5 px-3 py-4">
+              {globalItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{item.icon}</Icon>
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            {canSee(globalSettingsItem.gate) && (
+              <div className="px-3 pb-2">
+                <NavLink
+                  to={globalSettingsItem.to}
+                  end
+                  className={({ isActive }) => leafClass(isActive)}
+                >
+                  <Icon>{globalSettingsItem.icon}</Icon>
+                  {globalSettingsItem.label}
+                </NavLink>
+              </div>
+            )}
+          </>
         ) : (
           <>
             {isAdmin && (
-              <div className="border-b border-white/10 px-3 pb-3 pt-4">
-                <NavLink to="/dashboard" className={leafClass(false)}>
+              <div className="px-3 pt-3">
+                <NavLink
+                  to="/dashboard"
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+                >
                   <svg
-                    className="h-5 w-5 shrink-0"
+                    className="h-3.5 w-3.5 shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
