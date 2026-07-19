@@ -1,0 +1,3 @@
+-- Irreversible: the specific superadmin→project memberships that were removed
+-- are not recorded, so they cannot be faithfully restored. This down migration
+-- is intentionally a no-op.

@@ -73,10 +73,13 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
 		return
 	}
-	// Give every new user their own personal project (admin of it) so they are
-	// never stranded with zero projects.
-	if err := s.provisionPersonalProject(r.Context(), user); err != nil {
-		s.log.Error("provision personal project", "error", err)
+	// Give every new member their own personal project (admin of it) so they are
+	// never stranded with zero projects. Superadmins manage every project and are
+	// intentionally left unattached to any single one, so they get no personal one.
+	if user.Role != store.GlobalRoleSuperadmin {
+		if err := s.provisionPersonalProject(r.Context(), user); err != nil {
+			s.log.Error("provision personal project", "error", err)
+		}
 	}
 	writeJSON(w, http.StatusCreated, toUserResp(user))
 }
@@ -124,6 +127,19 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		if err := s.store.UpdateUserRole(r.Context(), id, *req.Role); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update role"})
 			return
+		}
+		// Promoting a member to superadmin detaches them from every project: a
+		// superadmin manages all projects globally and is not a member of any.
+		if *req.Role == store.GlobalRoleSuperadmin && target.Role != store.GlobalRoleSuperadmin {
+			if projs, err := s.store.ListProjectsForUser(r.Context(), id); err != nil {
+				s.log.Error("list projects for detach", "error", err, "user", id)
+			} else {
+				for _, p := range projs {
+					if err := s.store.RemoveProjectMember(r.Context(), p.ID, id); err != nil {
+						s.log.Error("detach superadmin from project", "error", err, "user", id, "project", p.ID)
+					}
+				}
+			}
 		}
 	}
 

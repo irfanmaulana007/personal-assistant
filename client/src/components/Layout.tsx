@@ -61,10 +61,36 @@ const settingsIcon = (
   </>
 );
 
+const accountIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+  />
+);
+
+const overviewIcon = (
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+  />
+);
+
+// Global superadmin surfaces. These are not tied to any single project (a
+// superadmin manages every project), so they are pinned above the project
+// switcher, separate from the project-scoped nav below it.
+const globalNavItems: NavLeaf[] = [
+  { to: '/overview', label: 'Dashboard', gate: 'superadmin', icon: overviewIcon },
+  { to: '/account', label: 'Account', gate: 'superadmin', icon: accountIcon },
+];
+
 const navItems: NavEntry[] = [
   { to: '/chat', label: 'Chat', icon: chatIcon, gate: 'everyone' },
   {
-    label: 'Dashboard',
+    label: 'Analytics',
     gate: 'projectAdmin',
     icon: (
       <path
@@ -76,7 +102,6 @@ const navItems: NavEntry[] = [
     ),
     children: [
       { to: '/dashboard', label: 'Overview', end: true },
-      { to: '/dashboard/projects', label: 'All Projects', gate: 'superadmin' },
       { to: '/dashboard/usage', label: 'Usage' },
       { to: '/dashboard/activity', label: 'Activity' },
       { to: '/dashboard/performance', label: 'Performance' },
@@ -158,19 +183,6 @@ const navItems: NavEntry[] = [
         strokeLinejoin="round"
         strokeWidth={2}
         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-      />
-    ),
-  },
-  {
-    to: '/account',
-    label: 'Account',
-    gate: 'superadmin',
-    icon: (
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
       />
     ),
   },
@@ -269,10 +281,23 @@ export function Layout({ onLogout, isAdmin, user }: LayoutProps) {
         : item,
     );
 
+  const globalItems = globalNavItems.filter((item) => canSee(item.gate));
+
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300 dark:border-r dark:border-white/5">
-        <div className="px-3 pb-1 pt-4">
+        {globalItems.length > 0 && (
+          <div className="space-y-0.5 border-b border-white/10 px-3 pb-3 pt-4">
+            {globalItems.map((item) => (
+              <NavLink key={item.to} to={item.to} className={({ isActive }) => leafClass(isActive)}>
+                <Icon>{item.icon}</Icon>
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+
+        <div className={`px-3 pb-1 ${globalItems.length > 0 ? 'pt-3' : 'pt-4'}`}>
           <ProjectSwitcher isSuperadmin={isAdmin} />
         </div>
 

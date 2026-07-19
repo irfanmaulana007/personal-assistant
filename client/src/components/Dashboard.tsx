@@ -99,7 +99,7 @@ export function Dashboard() {
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
       {scopedId && (
         <Link
-          to="/dashboard/projects"
+          to="/overview"
           className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-indigo-700 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
         >
           <span aria-hidden>←</span> All projects

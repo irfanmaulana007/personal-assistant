@@ -56,14 +56,14 @@ export function ProjectsOverview() {
   const filterOptions = allProjects.length > 0 ? allProjects : (data?.projects ?? []);
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">
-            Projects overview
-          </h2>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Cross-project usage and cost across the platform.
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Dashboard
+          </h1>
+          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Platform-wide usage and cost across all projects.
           </p>
         </div>
         <label className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -83,107 +83,111 @@ export function ProjectsOverview() {
         </label>
       </div>
 
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-          {error}
-        </div>
-      ) : loading || !data ? (
-        <LoadingState />
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-            <StatTile label="Total requests" value={data.summary.requests.toLocaleString()} />
-            <StatTile label="Total tokens" value={formatTokens(data.summary.total_tokens)} />
-            <StatTile
-              label="Est. cost"
-              value={formatMoney(data.summary.estimated_cost_usd)}
-              sub="estimated"
-            />
-            <StatTile label="Errors" value={data.summary.errors.toLocaleString()} />
-            <StatTile label="Active users" value={data.summary.active_users.toLocaleString()} />
+      <div className="mt-6 space-y-6">
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {error}
           </div>
+        ) : loading || !data ? (
+          <LoadingState />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              <StatTile label="Total requests" value={data.summary.requests.toLocaleString()} />
+              <StatTile label="Total tokens" value={formatTokens(data.summary.total_tokens)} />
+              <StatTile
+                label="Est. cost"
+                value={formatMoney(data.summary.estimated_cost_usd)}
+                sub="estimated"
+              />
+              <StatTile label="Errors" value={data.summary.errors.toLocaleString()} />
+              <StatTile label="Active users" value={data.summary.active_users.toLocaleString()} />
+            </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-            <h3 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">
-              By project
-            </h3>
-            {rows.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500">No projects in this range.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:border-gray-800 dark:text-gray-500">
-                      <th className="pb-2 font-medium">Project</th>
-                      <th className="pb-2 text-right font-medium">Members</th>
-                      <th className="pb-2 text-right font-medium">Enabled skills</th>
-                      <th className="pb-2 text-right font-medium">Requests</th>
-                      <th className="pb-2 text-right font-medium">Tokens</th>
-                      <th className="pb-2 text-right font-medium">Est. cost</th>
-                      <th className="pb-2 font-medium" aria-label="Open dashboard" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((p) => {
-                      const open = () =>
-                        navigate(`/dashboard/projects/${p.project_id}`, {
-                          state: { name: p.name },
-                        });
-                      return (
-                        <tr
-                          key={p.project_id}
-                          role="button"
-                          tabIndex={0}
-                          onClick={open}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              open();
-                            }
-                          }}
-                          title={`Open ${p.name} dashboard`}
-                          className="group cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none dark:border-gray-800 dark:hover:bg-gray-700/40 dark:focus:bg-gray-700/40"
-                        >
-                          <td className="py-3 font-medium text-gray-800 dark:text-gray-100">
-                            {p.name}
-                          </td>
-                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {p.member_count.toLocaleString()}
-                          </td>
-                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {p.enabled_skills.toLocaleString()}
-                          </td>
-                          <td className="py-3 text-right tabular-nums text-gray-800 dark:text-gray-100">
-                            {p.requests.toLocaleString()}
-                          </td>
-                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {formatTokens(p.total_tokens)}
-                          </td>
-                          <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                            {formatMoney(p.estimated_cost_usd)}
-                          </td>
-                          <td className="py-3 pl-3 text-right">
-                            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-400 transition group-hover:text-indigo-700 dark:text-gray-500 dark:group-hover:text-indigo-400">
-                              View <span aria-hidden>→</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">
+                By project
+              </h3>
+              {rows.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500">
+                  No projects in this range.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:border-gray-800 dark:text-gray-500">
+                        <th className="pb-2 font-medium">Project</th>
+                        <th className="pb-2 text-right font-medium">Members</th>
+                        <th className="pb-2 text-right font-medium">Enabled skills</th>
+                        <th className="pb-2 text-right font-medium">Requests</th>
+                        <th className="pb-2 text-right font-medium">Tokens</th>
+                        <th className="pb-2 text-right font-medium">Est. cost</th>
+                        <th className="pb-2 font-medium" aria-label="Open dashboard" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((p) => {
+                        const open = () =>
+                          navigate(`/dashboard/projects/${p.project_id}`, {
+                            state: { name: p.name },
+                          });
+                        return (
+                          <tr
+                            key={p.project_id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={open}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                open();
+                              }
+                            }}
+                            title={`Open ${p.name} dashboard`}
+                            className="group cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none dark:border-gray-800 dark:hover:bg-gray-700/40 dark:focus:bg-gray-700/40"
+                          >
+                            <td className="py-3 font-medium text-gray-800 dark:text-gray-100">
+                              {p.name}
+                            </td>
+                            <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                              {p.member_count.toLocaleString()}
+                            </td>
+                            <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                              {p.enabled_skills.toLocaleString()}
+                            </td>
+                            <td className="py-3 text-right tabular-nums text-gray-800 dark:text-gray-100">
+                              {p.requests.toLocaleString()}
+                            </td>
+                            <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                              {formatTokens(p.total_tokens)}
+                            </td>
+                            <td className="py-3 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                              {formatMoney(p.estimated_cost_usd)}
+                            </td>
+                            <td className="py-3 pl-3 text-right">
+                              <span className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-400 transition group-hover:text-indigo-700 dark:text-gray-500 dark:group-hover:text-indigo-400">
+                                View <span aria-hidden>→</span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-            <h3 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">
-              Requests by project
-            </h3>
-            <RequestsByProjectChart rows={rows} />
-          </div>
-        </>
-      )}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-50">
+                Requests by project
+              </h3>
+              <RequestsByProjectChart rows={rows} />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
