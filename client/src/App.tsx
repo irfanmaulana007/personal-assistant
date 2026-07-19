@@ -25,6 +25,11 @@ import { Account } from './components/Account';
 import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 import { PreferencesProvider } from './contexts/PreferencesContext';
+import { ProjectProvider } from './contexts/ProjectContext';
+import { Projects } from './components/Projects';
+import { ProjectDetail } from './components/ProjectDetail';
+import { ProjectsOverview } from './components/dashboard/ProjectsOverview';
+import { WhatsAppMappingsSettings } from './components/settings/WhatsAppMappingsSettings';
 
 function App() {
   const {
@@ -58,38 +63,44 @@ function App() {
 
   return (
     <PreferencesProvider>
-      <Routes>
-        <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
-          <Route index element={<Chat />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="skills" element={<Skills isAdmin={isAdmin} />} />
-          <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
-          <Route path="bucket-list" element={<BucketList />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
-            <Route index element={<AgentSettings />} />
-            {isAdmin && <Route path="model" element={<ModelSettings />} />}
-            {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
-            {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
-            {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
-            <Route path="display" element={<DisplaySettings />} />
-            {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
+      <ProjectProvider>
+        <Routes>
+          <Route element={<Layout onLogout={logout} isAdmin={isAdmin} user={user} />}>
+            <Route index element={<Chat />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="skills" element={<Skills isAdmin={isAdmin} />} />
+            <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
+            <Route path="bucket-list" element={<BucketList />} />
+            <Route path="projects" element={<Projects isSuperadmin={isAdmin} />} />
+            <Route path="projects/:id" element={<ProjectDetail isSuperadmin={isAdmin} />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="settings" element={<Settings isAdmin={isAdmin} />}>
+              <Route index element={<AgentSettings />} />
+              {isAdmin && <Route path="model" element={<ModelSettings />} />}
+              {isAdmin && <Route path="api-keys" element={<ApiKeysSettings />} />}
+              {isAdmin && <Route path="whatsapp" element={<WhatsAppSettings />} />}
+              {isAdmin && <Route path="whatsapp-mappings" element={<WhatsAppMappingsSettings />} />}
+              {isAdmin && <Route path="daily-skills" element={<RoutinesSettings />} />}
+              <Route path="display" element={<DisplaySettings />} />
+              {isAdmin && <Route path="pricing" element={<PricingSettings />} />}
+            </Route>
+            {isAdmin && [
+              <Route key="integrations" path="integrations" element={<Integrations />} />,
+              <Route key="dashboard" path="dashboard" element={<Dashboard />}>
+                <Route index element={<Overview />} />
+                <Route path="projects" element={<ProjectsOverview />} />
+                <Route path="usage" element={<Usage />} />
+                <Route path="activity" element={<Activity />} />
+                <Route path="performance" element={<Performance />} />
+                <Route path="users" element={<Users />} />
+              </Route>,
+              <Route key="logs" path="logs" element={<Logs />} />,
+              <Route key="account" path="account" element={<Account />} />,
+            ]}
+            <Route path="*" element={<Navigate to="/chat" replace />} />
           </Route>
-          {isAdmin && [
-            <Route key="integrations" path="integrations" element={<Integrations />} />,
-            <Route key="dashboard" path="dashboard" element={<Dashboard />}>
-              <Route index element={<Overview />} />
-              <Route path="usage" element={<Usage />} />
-              <Route path="activity" element={<Activity />} />
-              <Route path="performance" element={<Performance />} />
-              <Route path="users" element={<Users />} />
-            </Route>,
-            <Route key="logs" path="logs" element={<Logs />} />,
-            <Route key="account" path="account" element={<Account />} />,
-          ]}
-          <Route path="*" element={<Navigate to="/chat" replace />} />
-        </Route>
-      </Routes>
+        </Routes>
+      </ProjectProvider>
     </PreferencesProvider>
   );
 }

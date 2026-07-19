@@ -79,7 +79,10 @@ export function useAuth() {
   return {
     user,
     authenticated: user !== null,
-    isAdmin: user?.role === 'admin',
+    // Global platform admin is now the superadmin role; isAdmin keeps its name so
+    // existing platform-admin gating (settings, users, …) tracks superadmin.
+    isAdmin: user?.role === 'superadmin',
+    isSuperadmin: user?.role === 'superadmin',
     needsSetup,
     loading,
     submitting,
