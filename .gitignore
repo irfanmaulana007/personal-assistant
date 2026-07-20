@@ -2,14 +2,14 @@
 /personal-assistant
 
 # Data
-/server/data/*.db
-/server/data/*.db-wal
-/server/data/*.db-shm
-/server/data/files/
+/app/api/data/*.db
+/app/api/data/*.db-wal
+/app/api/data/*.db-shm
+/app/api/data/files/
 
 # Config (contains secrets)
-/server/config/config.yaml
-/server/config/google_credentials.json
+/app/api/config/config.yaml
+/app/api/config/google_credentials.json
 .env
 
 # OS
@@ -24,10 +24,10 @@ Thumbs.db
 
 # Go
 vendor/
-/server/tmp/
+/app/api/tmp/
 
 # Node
 node_modules/
 
-# Client
-/client/dist/
+# Web client
+/app/web/dist/

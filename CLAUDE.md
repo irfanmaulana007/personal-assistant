@@ -12,8 +12,8 @@
 ## Development
 
 - **Server:** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow session) +
-  MongoDB (logs); CGO-free (SQLite removed) — code in `server/`
-- **Client:** TypeScript, React, Vite, Tailwind — code in `client/`
+  MongoDB (logs); CGO-free (SQLite removed) — code in `app/api/`
+- **Client:** TypeScript, React, Vite, Tailwind — code in `app/web/`
 - **Build all:** `make build`
 - **Build server:** `make build-server`
 - **Build client:** `make build-client`
@@ -22,7 +22,8 @@
 - **Dev client:** `make dev-client`
 - **Test:** `make test`
 - **Lint:** `make lint`
-- **Dependencies:** `make tidy` (Go), `cd client && npm install` (JS)
+- **Dependencies:** `make tidy` (Go), `pnpm install` at the repo root (JS —
+  pnpm workspace; do not use npm/yarn)
 
 ## Conventions
 

@@ -1,0 +1,31 @@
+name: Deploy Mobile
+
+# Independent mobile pipeline — reserved slot. The React Native app has not been
+# built yet; its implementation is tracked in a separate card:
+#   https://trello.com/c/TiY5RcSa
+# When the app lands under `app/mobile/`, replace the placeholder job below with the
+# real build+submit steps (e.g. Expo EAS Build / Fastlane for iOS + Android).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/mobile/**'
+      - 'packages/**'
+      - '.github/workflows/deploy-mobile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mobile
+  cancel-in-progress: true
+
+jobs:
+  placeholder:
+    name: Mobile pipeline (not yet implemented)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce reserved slot
+        run: |
+          echo "The React Native mobile app has not been built yet."
+          echo "This pipeline slot is reserved so mobile can ship independently"
+          echo "of web and backend once the app exists (tracked in the mobile card)."
+          echo "Replace this job with EAS Build / Fastlane iOS + Android steps."

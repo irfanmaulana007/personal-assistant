@@ -1,3 +1,6 @@
+# Combined all-in-one stack (single image: Go server serving the bundled web
+# assets) for quick local dev. For the split deployment — backend and web as
+# separate images, mirroring production — use deploy/docker-compose.split.yml.
 services:
   assistant:
     build: .

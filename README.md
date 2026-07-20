@@ -5,9 +5,18 @@ WhatsApp transport. It can manage your calendar, email, reminders, and notes.
 
 ## Stack
 
-- **Server:** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow session) +
-  MongoDB (logs). CGO-free — SQLite has been fully removed — `server/`
-- **Client:** TypeScript, React, Vite, Tailwind — `client/`
+An **npm-workspaces monorepo** heading toward three independently-deployed
+services (Backend, Web, and — later — a React Native Mobile app):
+
+- **Server (Backend):** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow
+  session) + MongoDB (logs). CGO-free — SQLite has been fully removed — `app/api/`
+- **Client (Web):** TypeScript, React, Vite, Tailwind — `app/web/`
+- **Shared package:** `@personal-assistant/shared` — TypeScript types,
+  framework-agnostic utils, and the platform-agnostic API client, shared by the
+  web app (and the future mobile app) — `packages/shared/`
+
+Each service builds and deploys on its own path-filtered pipeline — see
+[`deploy/README.md`](deploy/README.md).
 
 ## Quick start
 
@@ -17,8 +26,8 @@ docker run -d --name pa-pg    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=pos
   -e POSTGRES_DB=personal_assistant -p 5432:5432 postgres:17
 docker run -d --name pa-mongo -p 27017:27017 mongo:7
 
-# 2. Configure the server (see server/config/config.example.yaml)
-cp server/config/config.example.yaml server/config/config.yaml
+# 2. Configure the server (see app/api/config/config.example.yaml)
+cp app/api/config/config.example.yaml app/api/config/config.yaml
 #    - set a WEB_PASSWORD and ENCRYPTION_KEY (openssl rand -base64 32)
 #    - set the database connection (postgres_dsn / mongo_uri / mongo_db) —
 #      see the local-dev example in config.example.yaml
@@ -47,9 +56,16 @@ Go server on `:8090`).
 | `make dev-server`            | Server with hot reload (air)              |
 | `make dev-client`            | Vite dev client (port 5273)               |
 | `make test` / `make lint`    | Server tests / lint                       |
-| `make deps` / `make tidy`    | Install client deps / tidy Go modules     |
+| `make deps` / `make tidy`    | Install workspace deps / tidy Go modules  |
+| `make lint-client`           | Lint the web workspace (eslint)           |
+| `make typecheck-shared`      | Type-check `@personal-assistant/shared`   |
+| `make docker-build-backend`  | Build the backend-only API image          |
+| `make docker-build-web`      | Build the web-only static (nginx) image   |
 
-Component-specific targets live in `server/Makefile` and `client/Makefile`.
+`make deps` runs a single workspace install at the repo root, which links the
+shared package into the client. Component-specific targets live in
+`app/api/Makefile` and `app/web/Makefile`; deployment lives in
+[`deploy/`](deploy/README.md).
 
 ## Docs
 
