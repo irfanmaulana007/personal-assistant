@@ -14,17 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Typecheck shared package
-        run: npm run typecheck --workspace @personal-assistant/shared
+        run: pnpm --filter @personal-assistant/shared typecheck
       - name: Lint web client
-        run: npm run lint --workspace web
+        run: pnpm --filter web lint
       - name: Build web client
-        run: npm run build --workspace web
+        run: pnpm --filter web build
 
   backend:
     name: Backend (vet + build)

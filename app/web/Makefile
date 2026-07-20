@@ -2,15 +2,15 @@
 
 # Build the client
 build:
-	npm run build
+	pnpm build
 
 # Development server
 dev:
-	npm run dev
+	pnpm dev
 
-# Install dependencies
+# Install dependencies (pnpm installs the whole workspace from any package dir)
 deps:
-	npm install
+	pnpm install
 
 clean:
 	rm -rf dist

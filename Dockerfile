@@ -1,20 +1,22 @@
-# Stage 1: Build client (npm-workspaces monorepo). The client depends on the
+# Stage 1: Build client (pnpm-workspace monorepo). The client depends on the
 # `@personal-assistant/shared` workspace package, so install happens at the repo
 # root and the client is built as a workspace.
 FROM node:22-alpine AS client-builder
+RUN corepack enable
 WORKDIR /app
 # Workspace manifests + lockfile first, for cacheable dependency layers.
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY app/web/package.json ./app/web/package.json
-# npm install (not ci) so the Linux/musl-specific optional native deps resolve
-# even though the committed lockfile is generated on a different platform.
-RUN npm install --no-audit --no-fund
+# pnpm's lockfile records optional native deps for every platform, so a frozen
+# install resolves the Linux/musl-specific binaries even though the lockfile is
+# generated on a different platform.
+RUN pnpm install --frozen-lockfile
 # Sources for the shared package and the web app. The root package.json (already
 # copied) is what vite.config.ts reads the app version from.
 COPY packages/ ./packages/
 COPY app/web/ ./app/web/
-RUN npm run build --workspace web
+RUN pnpm --filter web build
 
 # Stage 2: Build server. SQLite was dropped (whatsmeow's session lives in
 # Postgres now), so the build is CGO-free — no C toolchain required.

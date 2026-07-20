@@ -36,7 +36,8 @@ Plus two datastores the **api** needs: **PostgreSQL** (main data + the
 WhatsApp/whatsmeow session) and **MongoDB** (logs).
 
 > **Dockerfiles build from the repo _root_, not the service dir.** The web build
-> needs the root `package-lock.json` and `packages/shared` (workspace build), and
+> needs the root `pnpm-lock.yaml`/`pnpm-workspace.yaml` and `packages/shared`
+> (workspace build), and
 > the api build needs the root `go.mod`/`go.sum`. So in Dokploy the **Docker
 > Context Path is `.`** for both, while the **Docker File** points into the
 > service dir. (As part of the restructure, the Dockerfiles' internal `COPY`
@@ -201,7 +202,8 @@ VITE_API_BASE_URL=
 app/web/**
 packages/shared/**
 package.json
-package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
 app/web/Dockerfile
 deploy/web-nginx.conf.template
 ```

@@ -12,7 +12,8 @@ on:
       - 'deploy/web.Dockerfile'
       - 'deploy/web-nginx.conf.template'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
