@@ -40,9 +40,13 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id int64) (*User, error
 		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE id = $1`, id))
 }
 
+// FirstAdmin returns the platform owner — the first superadmin account created
+// at setup. It backs "act as the owner" flows (WhatsApp transport, routines,
+// reminders). The global owner role is "superadmin" (see GlobalRoleSuperadmin);
+// "admin" is only ever a *project* role, so we must not match on it here.
 func (s *PostgresStore) FirstAdmin(ctx context.Context) (*User, error) {
 	return pgScanUser(s.pool.QueryRow(ctx,
-		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`))
+		`SELECT id, email, name, password_hash, role, created_at FROM users WHERE role = 'superadmin' ORDER BY id ASC LIMIT 1`))
 }
 
 func pgScanUser(row pgx.Row) (*User, error) {
