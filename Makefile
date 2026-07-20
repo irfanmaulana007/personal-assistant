@@ -5,35 +5,35 @@
 build: build-server build-client
 
 build-server:
-	$(MAKE) -C server build
+	$(MAKE) -C app/api build
 
-# The client is an npm workspace that depends on @personal-assistant/shared;
-# `npm run build --workspace client` (run via client/Makefile) resolves it from
+# The web app is an npm workspace that depends on @personal-assistant/shared;
+# `npm run build --workspace web` (run via app/web/Makefile) resolves it from
 # the root node_modules created by `make deps`.
 build-client:
-	$(MAKE) -C client build
+	$(MAKE) -C app/web build
 
 # Run the server
 run:
-	$(MAKE) -C server run
+	$(MAKE) -C app/api run
 
 # Development with hot reload
 dev-server:
-	$(MAKE) -C server dev
+	$(MAKE) -C app/api dev
 
 dev-client:
-	$(MAKE) -C client dev
+	$(MAKE) -C app/web dev
 
 test:
-	$(MAKE) -C server test
+	$(MAKE) -C app/api test
 
 # `make lint` lints the Go server (the release/CI Go gate). Use `make lint-client`
 # for the web workspace's eslint.
 lint:
-	$(MAKE) -C server lint
+	$(MAKE) -C app/api lint
 
 lint-client:
-	npm run lint --workspace client
+	npm run lint --workspace web
 
 # Type-check the shared package on its own.
 typecheck-shared:
@@ -45,7 +45,7 @@ deps:
 	npm install
 
 tidy:
-	$(MAKE) -C server tidy
+	$(MAKE) -C app/api tidy
 
 # --- Split deployment images (built independently per service) ----------------
 # Combined all-in-one image (server + bundled web) — used by docker-compose.
@@ -62,5 +62,5 @@ docker-build-web:
 		--build-arg VITE_API_BASE_URL=$(VITE_API_BASE_URL) -t personal-assistant-web .
 
 clean:
-	$(MAKE) -C server clean
-	$(MAKE) -C client clean
+	$(MAKE) -C app/api clean
+	$(MAKE) -C app/web clean

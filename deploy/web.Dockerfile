@@ -14,17 +14,17 @@ WORKDIR /app
 # Workspace manifests + lockfile first, for cacheable dependency layers.
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/package.json
-COPY client/package.json ./client/package.json
+COPY app/web/package.json ./app/web/package.json
 # `npm install` (not ci) so Linux/musl-specific optional native deps resolve even
 # though the committed lockfile is generated on a different platform.
 RUN npm install --no-audit --no-fund
 # Sources for the shared package and the web app.
 COPY packages/ ./packages/
-COPY client/ ./client/
+COPY app/web/ ./app/web/
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 # vite.config.ts reads the app version from the root package.json (already copied).
-RUN npm run build --workspace client
+RUN npm run build --workspace web
 
 FROM nginx:1.27-alpine
 # nginx:alpine runs envsubst over /etc/nginx/templates/*.template on startup,
@@ -32,5 +32,5 @@ FROM nginx:1.27-alpine
 # $host, … are left intact). BACKEND_URL points the /api proxy at the backend.
 ENV BACKEND_URL=http://backend:8090
 COPY deploy/web-nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=builder /app/client/dist /usr/share/nginx/html
+COPY --from=builder /app/app/web/dist /usr/share/nginx/html
 EXPOSE 80

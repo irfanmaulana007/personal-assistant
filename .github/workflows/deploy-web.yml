@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'client/**'
+      - 'app/web/**'
       - 'packages/**'
       - 'deploy/web.Dockerfile'
       - 'deploy/web-nginx.conf.template'

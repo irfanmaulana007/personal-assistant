@@ -5,9 +5,9 @@ build and deploy **independently**:
 
 | Service     | Source                     | Image (Dockerfile)          | Pipeline                          |
 | ----------- | -------------------------- | --------------------------- | --------------------------------- |
-| **Backend** | `server/` (Go API)         | `deploy/backend.Dockerfile` | `.github/workflows/deploy-backend.yml` |
-| **Web**     | `client/` (React/Vite)     | `deploy/web.Dockerfile`     | `.github/workflows/deploy-web.yml` |
-| **Mobile**  | `mobile/` (React Native)*  | — (EAS/Fastlane)*           | `.github/workflows/deploy-mobile.yml`* |
+| **Backend** | `app/api/` (Go API)         | `deploy/backend.Dockerfile` | `.github/workflows/deploy-backend.yml` |
+| **Web**     | `app/web/` (React/Vite)     | `deploy/web.Dockerfile`     | `.github/workflows/deploy-web.yml` |
+| **Mobile**  | `app/mobile/` (React Native)*  | — (EAS/Fastlane)*           | `.github/workflows/deploy-mobile.yml`* |
 
 `packages/shared` (`@personal-assistant/shared`) holds the code shared across the
 clients — TypeScript types, framework-agnostic utils, and the platform-agnostic
@@ -23,11 +23,11 @@ package.
 Each deploy workflow is **path-filtered**, so a change to one service ships only
 that service:
 
-- `deploy-backend` runs on changes under `server/**`, `go.mod`, `go.sum`, or its
+- `deploy-backend` runs on changes under `app/api/**`, `go.mod`, `go.sum`, or its
   Dockerfile.
-- `deploy-web` runs on changes under `client/**`, `packages/**` (the web bundle
+- `deploy-web` runs on changes under `app/web/**`, `packages/**` (the web bundle
   embeds the shared code), or its Dockerfile / nginx template.
-- `deploy-mobile` runs on changes under `mobile/**` or `packages/**`.
+- `deploy-mobile` runs on changes under `app/mobile/**` or `packages/**`.
 
 Deploy workflows build and push per-service images to GHCR
 (`ghcr.io/<owner>/personal-assistant/{backend,web}`) using the built-in
