@@ -4,7 +4,7 @@ description: Debug a conversation run from the "RUN DETAIL" text copied out of t
 
 Debug a single conversation run using the plain-text **RUN DETAIL** block that a
 maintainer copies from the Logs screen (the "Copy debug detail" button on a
-trace, produced by `buildDebugText` in `client/src/components/Logs.tsx`).
+trace, produced by `buildDebugText` in `app/web/src/components/Logs.tsx`).
 
 The user will paste a block that looks like this:
 
@@ -109,7 +109,7 @@ steps usually mean a tool-use loop.
 3. **Check skill selection.** Compare `Skills` against what the input asked for.
    If the skill that should have handled the request isn't listed (or an
    irrelevant one is), the routing is the bug, not the model. Trace skill
-   selection in the server (`server/`).
+   selection in the server (`app/api/`).
 4. **Walk the LLM calls.** Read `--- LLM calls ---` top to bottom. A single
    `stop` step is a plain answer. Multiple steps with tool-call finish reasons
    mean a tool loop — line them up with the `--- Tool calls ---` section.
@@ -125,8 +125,8 @@ steps usually mean a tool-use loop.
    at bloated context, an over-large model, or an unnecessary tool loop even
    when the answer itself is fine.
 9. **Locate the code and propose a fix.** Map the conclusion to a layer —
-   skill routing, tool implementation, prompt/model config (`server/`), or the
-   Logs rendering itself (`client/src/components/Logs.tsx`) — and, if the user
+   skill routing, tool implementation, prompt/model config (`app/api/`), or the
+   Logs rendering itself (`app/web/src/components/Logs.tsx`) — and, if the user
    wants, dig in and fix it. To pull the same run fresh, use its `ID`.
 
 Finish with a short diagnosis: the most likely root cause, the evidence in the

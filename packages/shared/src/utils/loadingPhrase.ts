@@ -2,7 +2,7 @@
 // the chat "typing" bubble reads like "Checking your calendar..." instead of a
 // generic animation. The chat endpoint is a single non-streaming request, so we
 // have no live tool-step signal — we infer intent from the input keywords,
-// grounded in the agent's actual tool set (see server/internal/agent/tools.go).
+// grounded in the agent's actual tool set (see app/api/internal/agent/tools.go).
 
 interface PhraseRule {
   phrase: string;

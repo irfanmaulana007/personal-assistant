@@ -3,13 +3,13 @@ name: Deploy Mobile
 # Independent mobile pipeline — reserved slot. The React Native app has not been
 # built yet; its implementation is tracked in a separate card:
 #   https://trello.com/c/TiY5RcSa
-# When the app lands under `mobile/`, replace the placeholder job below with the
+# When the app lands under `app/mobile/`, replace the placeholder job below with the
 # real build+submit steps (e.g. Expo EAS Build / Fastlane for iOS + Android).
 on:
   push:
     branches: [main]
     paths:
-      - 'mobile/**'
+      - 'app/mobile/**'
       - 'packages/**'
       - '.github/workflows/deploy-mobile.yml'
   workflow_dispatch:

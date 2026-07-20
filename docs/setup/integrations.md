@@ -35,7 +35,7 @@ in Composio. **Disconnect** removes the connection.
 Separately from Composio, you can link your **personal WhatsApp** so you can chat
 with the assistant from WhatsApp (via whatsmeow — a WhatsApp Web linked device):
 
-1. Set `whatsapp.enabled: true` in `server/config/config.yaml` and start the
+1. Set `whatsapp.enabled: true` in `app/api/config/config.yaml` and start the
    server (it no longer blocks on WhatsApp — the web app comes up immediately).
 2. Open **Integrations** as an admin → the **WhatsApp** card → **Connect**.
 3. A QR code appears in the browser. On your phone: **WhatsApp → Settings →
@@ -59,4 +59,4 @@ needed), and reminders are delivered to that account. **Disconnect** unlinks it.
   documented **v3** shapes (`/api/v3/auth_configs`, `/api/v3/connected_accounts`).
   If a request fails, the exact error from Composio is surfaced in the UI — if an
   endpoint/field name has changed on your account, adjust
-  `server/internal/composio/composio.go` accordingly.
+  `app/api/internal/composio/composio.go` accordingly.

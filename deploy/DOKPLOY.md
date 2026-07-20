@@ -200,8 +200,8 @@ per-service rollout.
 
    And the equivalent in `deploy-web.yml` with `DOKPLOY_WEB_WEBHOOK`.
 
-Because the two workflows are **path-filtered** (backend on `server/**`,
-`go.mod`, …; web on `client/**`, `packages/**`, …), a backend-only change
+Because the two workflows are **path-filtered** (backend on `app/api/**`,
+`go.mod`, …; web on `app/web/**`, `packages/**`, …), a backend-only change
 redeploys only the backend app on Dokploy, and a web/shared change redeploys only
 the web app — which is the whole point of the split.
 

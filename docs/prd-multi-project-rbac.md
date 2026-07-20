@@ -15,9 +15,9 @@
 ## 1. Problem & Goal
 
 Today every row in the database is scoped by a single flat `user_id`
-(`server/internal/store/postgres_*.go`), and authorization is a single global
+(`app/api/internal/store/postgres_*.go`), and authorization is a single global
 `role` string on the user — `"admin"` or `"member"` — enforced by one
-`requireAdmin` middleware (`server/internal/api/middleware.go:50`). There is no
+`requireAdmin` middleware (`app/api/internal/api/middleware.go:50`). There is no
 concept of a project, workspace, or tenant anywhere in the codebase, and skills
 are toggled per **user** (`user_skills`), not per anything larger.
 

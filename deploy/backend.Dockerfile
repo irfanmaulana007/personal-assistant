@@ -6,17 +6,17 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-COPY server/ server/
+COPY app/api/ app/api/
 # SQLite was dropped (whatsmeow's session lives in Postgres), so the build is
 # CGO-free — a static binary, no C toolchain required.
-RUN CGO_ENABLED=0 go build -o personal-assistant ./server/cmd/assistant
+RUN CGO_ENABLED=0 go build -o personal-assistant ./app/api/cmd/assistant
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/personal-assistant .
 # Container config (paths relative to /app; secrets injected from env at runtime).
-COPY server/config/config.docker.yaml ./config/config.yaml
+COPY app/api/config/config.docker.yaml ./config/config.yaml
 # All persistent state lives in PostgreSQL + MongoDB, so the container is
 # stateless — no data volume.
 EXPOSE 8090

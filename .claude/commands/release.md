@@ -54,7 +54,7 @@ The single source of truth for the app version is the root `package.json`
    `1.0.0 → 1.1.0`.
 
 4. **Update the version field** in the root `package.json` to the new version.
-   Do not touch any other file. (`client/package.json` tracks the client bundle
+   Do not touch any other file. (`app/web/package.json` tracks the client bundle
    independently and is out of scope for the app release.)
 
 5. **Verify the app still builds** before promoting it:

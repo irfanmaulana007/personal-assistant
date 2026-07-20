@@ -22,9 +22,9 @@ jobs:
       - name: Typecheck shared package
         run: npm run typecheck --workspace @personal-assistant/shared
       - name: Lint web client
-        run: npm run lint --workspace client
+        run: npm run lint --workspace web
       - name: Build web client
-        run: npm run build --workspace client
+        run: npm run build --workspace web
 
   backend:
     name: Backend (vet + build)
@@ -35,6 +35,6 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
-      - run: go vet ./server/...
+      - run: go vet ./app/api/...
       - name: Build server
-        run: CGO_ENABLED=0 go build -o /dev/null ./server/cmd/assistant
+        run: CGO_ENABLED=0 go build -o /dev/null ./app/api/cmd/assistant

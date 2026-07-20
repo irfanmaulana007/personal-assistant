@@ -4,7 +4,7 @@
   "version": "1.0.18",
   "workspaces": [
     "packages/*",
-    "client"
+    "app/web"
   ],
   "scripts": {
     "prepare": "husky"
@@ -16,11 +16,11 @@
     "prettier": "^3.9.4"
   },
   "lint-staged": {
-    "client/src/**/*.{ts,tsx}": [
+    "app/web/src/**/*.{ts,tsx}": [
       "prettier --write",
-      "eslint -c client/eslint.config.js --max-warnings 0"
+      "eslint -c app/web/eslint.config.js --max-warnings 0"
     ],
-    "client/src/**/*.{css,json}": [
+    "app/web/src/**/*.{css,json}": [
       "prettier --write"
     ]
   }
