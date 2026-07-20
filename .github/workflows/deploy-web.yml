@@ -9,8 +9,8 @@ on:
     paths:
       - 'app/web/**'
       - 'packages/**'
-      - 'deploy/web.Dockerfile'
-      - 'deploy/web-nginx.conf.template'
+      - 'app/web/Dockerfile'
+      - 'app/web/nginx.conf.template'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -41,7 +41,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/web.Dockerfile
+          file: app/web/Dockerfile
           push: true
           # WEB_API_BASE_URL (repo variable) points the bundle at the backend's
           # public origin. Leave it unset to serve API same-origin via the nginx

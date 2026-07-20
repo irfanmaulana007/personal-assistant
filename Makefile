@@ -54,11 +54,11 @@ docker-build:
 
 # Backend-only API image.
 docker-build-backend:
-	docker build -f deploy/backend.Dockerfile -t personal-assistant-backend .
+	docker build -f app/api/Dockerfile -t personal-assistant-backend .
 
 # Web-only static image (nginx). Pass VITE_API_BASE_URL to point at the backend.
 docker-build-web:
-	docker build -f deploy/web.Dockerfile \
+	docker build -f app/web/Dockerfile \
 		--build-arg VITE_API_BASE_URL=$(VITE_API_BASE_URL) -t personal-assistant-web .
 
 clean:

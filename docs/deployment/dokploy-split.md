@@ -6,25 +6,20 @@ This guide runs the split deployment (from
 the repo** using that service's Dockerfile and **only redeploys the service whose
 files changed** (Dokploy *Watch Paths*).
 
-## Assumed repo layout (`app/` restructure)
+## Repo layout
 
-This guide targets the planned layout where every service lives under `app/`:
+Every service lives under `app/`, with its Dockerfile beside its source:
 
 ```
 app/
-  api/      Go core API            (was server/)   → app/api/Dockerfile
-  web/      React/Vite web app     (was client/)   → app/web/Dockerfile
-  mobile/   React Native app*      (reserved)       → no web service (EAS/CI)
+  api/      Go core API          → app/api/Dockerfile
+  web/      React/Vite web app   → app/web/Dockerfile
+  mobile/   React Native app*    (reserved) → no web service (EAS/CI)
 packages/
   shared/   @personal-assistant/shared — types, utils, API client (consumed by web + mobile)
 ```
 
 \* Mobile is a **reserved slot** — see [Step 6](#step-6--mobile-reserved-slot).
-
-> **If your final restructure differs, adjust two things only:** the Dockerfile
-> **path** and the **Watch Paths** for each app (both called out per-step below).
-> Everything else — build context, env, ports — is unchanged. Until the `app/`
-> move lands, substitute `server/` → `app/api` and `client/` → `app/web`.
 
 | Service   | Source dir | Dockerfile           | Dokploy build type | Port | Public? |
 | --------- | ---------- | -------------------- | ------------------ | ---- | ------- |
@@ -37,13 +32,9 @@ WhatsApp/whatsmeow session) and **MongoDB** (logs).
 
 > **Dockerfiles build from the repo _root_, not the service dir.** The web build
 > needs the root `pnpm-lock.yaml`/`pnpm-workspace.yaml` and `packages/shared`
-> (workspace build), and
-> the api build needs the root `go.mod`/`go.sum`. So in Dokploy the **Docker
-> Context Path is `.`** for both, while the **Docker File** points into the
-> service dir. (As part of the restructure, the Dockerfiles' internal `COPY`
-> paths must be updated from `client/`/`server/` to `app/web`/`app/api` — but the
-> Dokploy fields below don't care where the sources sit, only that the context is
-> the repo root.)
+> (workspace build), and the api build needs the root `go.mod`/`go.sum`. So in
+> Dokploy the **Docker Context Path is `.`** for both, while the **Docker File**
+> points into the service dir (`app/api/Dockerfile`, `app/web/Dockerfile`).
 
 ---
 
@@ -205,7 +196,7 @@ package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 app/web/Dockerfile
-deploy/web-nginx.conf.template
+app/web/nginx.conf.template
 ```
 
 **Environment** — one runtime variable, pointing nginx's `/api` proxy at the api

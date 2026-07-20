@@ -16,7 +16,7 @@ services (Backend, Web, and — later — a React Native Mobile app):
   web app (and the future mobile app) — `packages/shared/`
 
 Each service builds and deploys on its own path-filtered pipeline — see
-[`deploy/README.md`](deploy/README.md).
+[`docs/deployment/README.md`](docs/deployment/README.md).
 
 ## Quick start
 
@@ -65,7 +65,7 @@ Go server on `:8090`).
 `make deps` runs a single workspace install at the repo root, which links the
 shared package into the client. Component-specific targets live in
 `app/api/Makefile` and `app/web/Makefile`; deployment lives in
-[`deploy/`](deploy/README.md).
+[`docs/deployment/`](docs/deployment/README.md).
 
 ## Docs
 
