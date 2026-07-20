@@ -39,11 +39,12 @@ build) and the backend (vet + build) on every PR to `staging`/`main`.
 
 ## Deploying to a host (Dokploy)
 
-The deploy workflows push images to GHCR but leave the final push-to-host step as
-a TODO. See [`DOKPLOY.md`](./DOKPLOY.md) for a step-by-step guide to running the
-split stack on [Dokploy](https://dokploy.com) — provisioning the databases, the
-backend + web applications from the GHCR images, and wiring the workflows to
-trigger per-service redeploys.
+See [`DOKPLOY.md`](./DOKPLOY.md) for a step-by-step guide to running the split
+stack on [Dokploy](https://dokploy.com), where Dokploy builds each service from
+its own Dockerfile and only redeploys the service whose files changed (Watch
+Paths). It covers the `app/{api,web,mobile}` layout, the exact **Build Type:
+Dockerfile** field values (Docker File path + context), per-service env, and a
+GHCR-image alternative.
 
 ## Building locally
 
