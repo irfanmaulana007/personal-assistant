@@ -1,0 +1,40 @@
+name: CI
+
+# One CI run, two independent jobs — the web workspace and the Go backend —
+# so a change to one service is validated without coupling it to the other.
+on:
+  pull_request:
+    branches: [staging, main]
+  push:
+    branches: [staging, main]
+
+jobs:
+  web:
+    name: Web (shared typecheck + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck shared package
+        run: npm run typecheck --workspace @personal-assistant/shared
+      - name: Lint web client
+        run: npm run lint --workspace client
+      - name: Build web client
+        run: npm run build --workspace client
+
+  backend:
+    name: Backend (vet + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - run: go vet ./server/...
+      - name: Build server
+        run: CGO_ENABLED=0 go build -o /dev/null ./server/cmd/assistant
