@@ -1,7 +1,7 @@
 # Backend (Core API) image — builds ONLY the Go server, no client assets, so the
 # backend deploys independently of the web app. Serves the JSON API on :8090.
 #
-# Build from the repo root:  docker build -f deploy/backend.Dockerfile -t pa-backend .
+# Build from the repo root:  docker build -f app/api/Dockerfile -t pa-backend .
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./

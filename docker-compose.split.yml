@@ -6,7 +6,7 @@
 # combined image for quick all-in-one local dev.
 #
 # From the repo root:
-#   docker compose -f deploy/docker-compose.split.yml --env-file .env up --build
+#   docker compose -f docker-compose.split.yml --env-file .env up --build
 #
 # The web container serves static assets on :8080 and proxies /api to the backend
 # (VITE_API_BASE_URL left empty ⇒ same-origin), so the app behaves exactly like
@@ -14,8 +14,8 @@
 services:
   backend:
     build:
-      context: ..
-      dockerfile: deploy/backend.Dockerfile
+      context: .
+      dockerfile: app/api/Dockerfile
     restart: unless-stopped
     environment:
       - APP_ENV=${APP_ENV:-production}
@@ -34,8 +34,8 @@ services:
 
   web:
     build:
-      context: ..
-      dockerfile: deploy/web.Dockerfile
+      context: .
+      dockerfile: app/web/Dockerfile
       args:
         # Empty ⇒ the web app calls the backend same-origin through the nginx
         # /api proxy below. Set to the backend's public URL to call it directly.
