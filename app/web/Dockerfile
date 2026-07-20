@@ -3,7 +3,7 @@
 # independently of the backend.
 #
 # Build from the repo root:
-#   docker build -f deploy/web.Dockerfile \
+#   docker build -f app/web/Dockerfile \
 #     --build-arg VITE_API_BASE_URL=https://api.example.com -t pa-web .
 #
 # VITE_API_BASE_URL (build-time) is baked into the bundle as the API origin. Leave
@@ -33,6 +33,6 @@ FROM nginx:1.27-alpine
 # substituting only variables present in the environment (so nginx's own $uri,
 # $host, … are left intact). BACKEND_URL points the /api proxy at the backend.
 ENV BACKEND_URL=http://backend:8090
-COPY deploy/web-nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY app/web/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/app/web/dist /usr/share/nginx/html
 EXPOSE 80

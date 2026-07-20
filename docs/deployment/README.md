@@ -5,8 +5,8 @@ build and deploy **independently**:
 
 | Service     | Source                     | Image (Dockerfile)          | Pipeline                          |
 | ----------- | -------------------------- | --------------------------- | --------------------------------- |
-| **Backend** | `app/api/` (Go API)         | `deploy/backend.Dockerfile` | `.github/workflows/deploy-backend.yml` |
-| **Web**     | `app/web/` (React/Vite)     | `deploy/web.Dockerfile`     | `.github/workflows/deploy-web.yml` |
+| **Backend** | `app/api/` (Go API)         | `app/api/Dockerfile`        | `.github/workflows/deploy-backend.yml` |
+| **Web**     | `app/web/` (React/Vite)     | `app/web/Dockerfile`        | `.github/workflows/deploy-web.yml` |
 | **Mobile**  | `app/mobile/` (React Native)*  | — (EAS/Fastlane)*           | `.github/workflows/deploy-mobile.yml`* |
 
 `packages/shared` (`@personal-assistant/shared`) holds the code shared across the
@@ -15,7 +15,7 @@ API client. The web app consumes it today; the mobile app will consume the same
 package.
 
 \* Mobile is a **reserved slot** — the app is not built yet. See
-[`deploy/mobile/README.md`](./mobile/README.md) and the tracking card
+[`app/mobile/README.md`](../../app/mobile/README.md) and the tracking card
 <https://trello.com/c/TiY5RcSa>.
 
 ## Independent pipelines
@@ -39,7 +39,7 @@ build) and the backend (vet + build) on every PR to `staging`/`main`.
 
 ## Deploying to a host (Dokploy)
 
-See [`DOKPLOY.md`](./DOKPLOY.md) for a step-by-step guide to running the split
+See [`dokploy-split.md`](./dokploy-split.md) for a step-by-step guide to running the split
 stack on [Dokploy](https://dokploy.com), where Dokploy builds each service from
 its own Dockerfile and only redeploys the service whose files changed (Watch
 Paths). It covers the `app/{api,web,mobile}` layout, the exact **Build Type:
@@ -54,7 +54,7 @@ make docker-build-backend
 make docker-build-web VITE_API_BASE_URL=https://api.example.com   # empty ⇒ same-origin proxy
 
 # Run the split stack (backend + web + Postgres + Mongo) — web on :8080
-docker compose -f deploy/docker-compose.split.yml --env-file .env up --build
+docker compose -f docker-compose.split.yml --env-file .env up --build
 ```
 
 The repo-root `Dockerfile` + `docker-compose.yml` still build and run the

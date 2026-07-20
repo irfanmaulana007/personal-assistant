@@ -9,7 +9,7 @@ on:
       - 'app/api/**'
       - 'go.mod'
       - 'go.sum'
-      - 'deploy/backend.Dockerfile'
+      - 'app/api/Dockerfile'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
@@ -37,7 +37,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/backend.Dockerfile
+          file: app/api/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/backend:latest
