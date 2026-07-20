@@ -37,6 +37,14 @@ TODO in each workflow.
 `ci.yml` validates both the web workspace (shared typecheck + client lint +
 build) and the backend (vet + build) on every PR to `staging`/`main`.
 
+## Deploying to a host (Dokploy)
+
+The deploy workflows push images to GHCR but leave the final push-to-host step as
+a TODO. See [`DOKPLOY.md`](./DOKPLOY.md) for a step-by-step guide to running the
+split stack on [Dokploy](https://dokploy.com) — provisioning the databases, the
+backend + web applications from the GHCR images, and wiring the workflows to
+trigger per-service redeploys.
+
 ## Building locally
 
 ```sh
