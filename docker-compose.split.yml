@@ -26,6 +26,14 @@ services:
       - POSTGRES_DSN=postgres://assistant:${POSTGRES_PASSWORD}@postgres:5432/assistant?sslmode=disable
       - MONGO_URI=mongodb://root:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
       - MONGO_DB=assistant_logs
+      # SMTP transport for the password-reset email. All optional: leave unset to
+      # keep the forgot-password endpoint disabled (it reports "not available").
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy
