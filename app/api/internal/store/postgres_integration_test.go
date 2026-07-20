@@ -90,6 +90,39 @@ func TestPostgresUsersAndSettings(t *testing.T) {
 	}
 }
 
+// TestPostgresFirstAdmin guards the WhatsApp/routines "act as the owner" flows:
+// the platform owner is the first superadmin created at setup, and FirstAdmin
+// must find them. A prior regression queried the legacy project role "admin",
+// which the owner never has, so every WhatsApp message got "not set up yet".
+func TestPostgresFirstAdmin(t *testing.T) {
+	s := newTestPostgres(t)
+	ctx := context.Background()
+
+	// No users yet: FirstAdmin returns (nil, nil), not an error.
+	if owner, err := s.FirstAdmin(ctx); err != nil || owner != nil {
+		t.Fatalf("FirstAdmin with no users = (%v, %v), want (nil, nil)", owner, err)
+	}
+
+	// The setup handler creates the owner with the global superadmin role.
+	want, err := s.CreateUser(ctx, "owner@example.com", "hash", GlobalRoleSuperadmin)
+	if err != nil {
+		t.Fatalf("create superadmin: %v", err)
+	}
+	// A plain member must never be mistaken for the owner.
+	if _, err := s.CreateUser(ctx, "member@example.com", "hash", GlobalRoleMember); err != nil {
+		t.Fatalf("create member: %v", err)
+	}
+
+	owner, err := s.FirstAdmin(ctx)
+	if err != nil || owner == nil {
+		t.Fatalf("FirstAdmin = (%v, %v), want the superadmin", owner, err)
+	}
+	if owner.ID != want.ID || owner.Role != GlobalRoleSuperadmin {
+		t.Fatalf("FirstAdmin = id %d role %q, want id %d role %q",
+			owner.ID, owner.Role, want.ID, GlobalRoleSuperadmin)
+	}
+}
+
 func TestPostgresSkillsSeeded(t *testing.T) {
 	s := newTestPostgres(t)
 	ctx := context.Background()
