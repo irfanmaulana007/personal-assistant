@@ -15,6 +15,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/eval"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/mailer"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/pricing"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/settings"
@@ -42,6 +43,7 @@ type Server struct {
 	composio   *composio.Client
 	calendar   *calendarsvc.Service
 	whatsapp   WhatsAppController
+	mailer     *mailer.Mailer
 	store      store.Store
 	signingKey []byte
 	staticDir  string
@@ -62,6 +64,7 @@ func NewServer(
 	composioClient *composio.Client,
 	calendarSvc *calendarsvc.Service,
 	whatsapp WhatsAppController,
+	mailerSvc *mailer.Mailer,
 	store store.Store,
 	signingKey []byte,
 	staticDir string,
@@ -79,6 +82,7 @@ func NewServer(
 		composio:    composioClient,
 		calendar:    calendarSvc,
 		whatsapp:    whatsapp,
+		mailer:      mailerSvc,
 		store:       store,
 		signingKey:  signingKey,
 		staticDir:   staticDir,
@@ -110,6 +114,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/forgot-password", s.handleForgotPassword)
 
 	// Authenticated (any role)
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))

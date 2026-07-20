@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -264,6 +265,122 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type forgotPasswordReq struct {
+	Email string `json:"email"`
+}
+
+// handleForgotPassword resets the password for the account matching the given
+// email: it generates a new random password, emails the plaintext to the user,
+// and only then persists the new hash. The user signs in with it and changes it
+// from their profile page.
+//
+// For an unknown email it still responds 200 with a generic body, so the
+// endpoint does not reveal whether an account exists for a given address.
+func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req forgotPasswordReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !strings.Contains(email, "@") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid email is required"})
+		return
+	}
+
+	if s.mailer == nil || !s.mailer.Enabled() {
+		s.log.Error("forgot-password requested but SMTP is not configured")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "password reset by email is not available"})
+		return
+	}
+
+	user, err := s.store.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		s.log.Error("forgot-password lookup", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if user == nil {
+		// Unknown email — respond OK without sending, to avoid user enumeration.
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+
+	newPassword, err := generateRandomPassword(16)
+	if err != nil {
+		s.log.Error("generate password", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	// Send the email *before* persisting the new hash: if delivery fails, the
+	// user keeps their old password rather than being locked out of an account
+	// whose password was changed to one they never received.
+	if err := s.sendResetEmail(user, newPassword); err != nil {
+		s.log.Error("send reset email", "error", err, "user", user.ID)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "could not send the reset email, please try again later"})
+		return
+	}
+
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		s.log.Error("hash password", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	if err := s.store.UpdateUserPassword(r.Context(), user.ID, hash); err != nil {
+		s.log.Error("update password", "error", err, "user", user.ID)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset password"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) sendResetEmail(user *store.User, newPassword string) error {
+	name := strings.TrimSpace(user.Name)
+	if name == "" {
+		name = "there"
+	}
+	subject := "Your Personal Assistant password has been reset"
+	body := fmt.Sprintf(`Hi %s,
+
+We received a request to reset your Personal Assistant password.
+
+Your new temporary password is:
+
+    %s
+
+Sign in with it, then change it right away from your profile page.
+
+If you did not request this, you can ignore this email — but consider changing
+your password if you are concerned.
+`, name, newPassword)
+	return s.mailer.Send(user.Email, subject, body)
+}
+
+// passwordAlphabet omits visually ambiguous characters (0/O, 1/l/I) so a
+// password read from an email is easy to transcribe.
+const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+// generateRandomPassword returns a cryptographically random password of n
+// characters drawn from passwordAlphabet.
+func generateRandomPassword(n int) (string, error) {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	for i, b := range buf {
+		buf[i] = passwordAlphabet[int(b)%len(passwordAlphabet)]
+	}
+	return string(buf), nil
 }
 
 func hashPassword(pw string) (string, error) {

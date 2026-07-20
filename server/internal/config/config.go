@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ type Config struct {
 	Google       GoogleConfig       `yaml:"google"`
 	Capabilities CapabilitiesConfig `yaml:"capabilities"`
 	Security     SecurityConfig     `yaml:"security"`
+	SMTP         SMTPConfig         `yaml:"smtp"`
 	Logging      LoggingConfig      `yaml:"logging"`
 }
 
@@ -131,6 +133,19 @@ type SecurityConfig struct {
 	EncryptionKey string `yaml:"encryption_key"`
 }
 
+// SMTPConfig configures the transactional-email transport used for
+// password-reset messages. When Host is empty the feature is disabled and the
+// forgot-password endpoint reports it as unavailable. Credentials are supplied
+// via the SMTP_* env vars (see applyEnvOverrides) rather than committed YAML.
+type SMTPConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	From     string `yaml:"from"`
+	FromName string `yaml:"from_name"`
+}
+
 type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
@@ -203,6 +218,10 @@ func defaults() *Config {
 				MaxNoteLength: 10000,
 			},
 		},
+		SMTP: SMTPConfig{
+			Port:     587,
+			FromName: "Personal Assistant",
+		},
 		Logging: LoggingConfig{
 			Level:  "info",
 			Format: "text",
@@ -234,6 +253,26 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WEB_PASSWORD"); v != "" {
 		cfg.Web.Password = v
+	}
+	if v := os.Getenv("SMTP_HOST"); v != "" {
+		cfg.SMTP.Host = v
+	}
+	if v := os.Getenv("SMTP_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			cfg.SMTP.Port = p
+		}
+	}
+	if v := os.Getenv("SMTP_USER"); v != "" {
+		cfg.SMTP.Username = v
+	}
+	if v := os.Getenv("SMTP_PASSWORD"); v != "" {
+		cfg.SMTP.Password = v
+	}
+	if v := os.Getenv("SMTP_FROM_ADDRESS"); v != "" {
+		cfg.SMTP.From = v
+	}
+	if v := os.Getenv("SMTP_FROM_NAME"); v != "" {
+		cfg.SMTP.FromName = v
 	}
 }
 

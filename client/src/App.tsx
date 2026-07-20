@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useProjects } from './contexts/project';
 import { Login } from './components/Login';
+import { ForgotPassword } from './components/ForgotPassword';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { AdminSkills } from './components/AdminSkills';
@@ -108,6 +109,7 @@ function App() {
     setup,
     logout,
   } = useAuth();
+  const [showForgot, setShowForgot] = useState(false);
 
   if (loading) {
     return (
@@ -122,7 +124,18 @@ function App() {
   }
 
   if (!authenticated) {
-    return <Login mode="login" onSubmit={login} error={error} loading={submitting} />;
+    if (showForgot) {
+      return <ForgotPassword onBack={() => setShowForgot(false)} />;
+    }
+    return (
+      <Login
+        mode="login"
+        onSubmit={login}
+        error={error}
+        loading={submitting}
+        onForgot={() => setShowForgot(true)}
+      />
+    );
   }
 
   return (

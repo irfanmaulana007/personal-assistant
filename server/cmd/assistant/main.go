@@ -40,6 +40,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/server/internal/imagegen"
 	googleint "github.com/irfanmaulana007/personal-assistant/server/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/llm"
+	"github.com/irfanmaulana007/personal-assistant/server/internal/mailer"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/persona"
 	"github.com/irfanmaulana007/personal-assistant/server/internal/routine"
@@ -397,6 +398,20 @@ func main() {
 			waCtl = wa
 		}
 
+		mailerSvc := mailer.New(mailer.Config{
+			Host:     cfg.SMTP.Host,
+			Port:     cfg.SMTP.Port,
+			Username: cfg.SMTP.Username,
+			Password: cfg.SMTP.Password,
+			From:     cfg.SMTP.From,
+			FromName: cfg.SMTP.FromName,
+		})
+		if mailerSvc.Enabled() {
+			log.Info("email transport enabled", "host", cfg.SMTP.Host, "port", cfg.SMTP.Port)
+		} else {
+			log.Warn("SMTP not configured — password reset by email is disabled")
+		}
+
 		apiServer := api.NewServer(
 			assistant,
 			settingsSvc,
@@ -406,6 +421,7 @@ func main() {
 			composioClient,
 			calSvc,
 			waCtl,
+			mailerSvc,
 			db,
 			signingKey[:],
 			cfg.Web.StaticDir,
