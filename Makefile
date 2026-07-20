@@ -7,9 +7,9 @@ build: build-server build-client
 build-server:
 	$(MAKE) -C app/api build
 
-# The web app is an npm workspace that depends on @personal-assistant/shared;
-# `npm run build --workspace web` (run via app/web/Makefile) resolves it from
-# the root node_modules created by `make deps`.
+# The web app is a pnpm workspace package that depends on @personal-assistant/shared;
+# `pnpm --filter web build` (run via app/web/Makefile) resolves it from the
+# workspace links created by `make deps`.
 build-client:
 	$(MAKE) -C app/web build
 
@@ -33,16 +33,16 @@ lint:
 	$(MAKE) -C app/api lint
 
 lint-client:
-	npm run lint --workspace web
+	pnpm --filter web lint
 
 # Type-check the shared package on its own.
 typecheck-shared:
-	npm run typecheck --workspace @personal-assistant/shared
+	pnpm --filter @personal-assistant/shared typecheck
 
 # Install dependencies: one workspace install at the repo root links the shared
 # package into the client, plus the root dev tooling (husky/eslint/prettier).
 deps:
-	npm install
+	pnpm install
 
 tidy:
 	$(MAKE) -C app/api tidy

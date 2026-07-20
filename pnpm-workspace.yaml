@@ -1,0 +1,6 @@
+# pnpm workspace: the web client and the shared package it depends on.
+# pnpm ignores package.json's npm-style "workspaces" field, so this file is what
+# links @personal-assistant/shared into app/web (resolved locally, not from npm).
+packages:
+  - 'packages/*'
+  - 'app/web'

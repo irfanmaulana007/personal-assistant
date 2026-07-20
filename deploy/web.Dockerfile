@@ -10,21 +10,23 @@
 # it empty to call the backend same-origin (`/api/...`) through the nginx proxy
 # below — which is the model the combined server uses today.
 FROM node:22-alpine AS builder
+RUN corepack enable
 WORKDIR /app
 # Workspace manifests + lockfile first, for cacheable dependency layers.
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY app/web/package.json ./app/web/package.json
-# `npm install` (not ci) so Linux/musl-specific optional native deps resolve even
-# though the committed lockfile is generated on a different platform.
-RUN npm install --no-audit --no-fund
+# pnpm's lockfile records optional native deps for every platform, so a frozen
+# install resolves the Linux/musl-specific binaries even though the lockfile is
+# generated on a different platform.
+RUN pnpm install --frozen-lockfile
 # Sources for the shared package and the web app.
 COPY packages/ ./packages/
 COPY app/web/ ./app/web/
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 # vite.config.ts reads the app version from the root package.json (already copied).
-RUN npm run build --workspace web
+RUN pnpm --filter web build
 
 FROM nginx:1.27-alpine
 # nginx:alpine runs envsubst over /etc/nginx/templates/*.template on startup,

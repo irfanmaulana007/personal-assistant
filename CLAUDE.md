@@ -22,7 +22,8 @@
 - **Dev client:** `make dev-client`
 - **Test:** `make test`
 - **Lint:** `make lint`
-- **Dependencies:** `make tidy` (Go), `cd client && npm install` (JS)
+- **Dependencies:** `make tidy` (Go), `pnpm install` at the repo root (JS —
+  pnpm workspace; do not use npm/yarn)
 
 ## Conventions
 
