@@ -2,6 +2,10 @@
   "name": "personal-assistant",
   "private": true,
   "version": "1.0.18",
+  "workspaces": [
+    "packages/*",
+    "client"
+  ],
   "scripts": {
     "prepare": "husky"
   },

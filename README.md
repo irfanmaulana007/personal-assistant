@@ -5,9 +5,18 @@ WhatsApp transport. It can manage your calendar, email, reminders, and notes.
 
 ## Stack
 
-- **Server:** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow session) +
-  MongoDB (logs). CGO-free — SQLite has been fully removed — `server/`
-- **Client:** TypeScript, React, Vite, Tailwind — `client/`
+An **npm-workspaces monorepo** heading toward three independently-deployed
+services (Backend, Web, and — later — a React Native Mobile app):
+
+- **Server (Backend):** Go 1.25+, PostgreSQL (main data + WhatsApp/whatsmeow
+  session) + MongoDB (logs). CGO-free — SQLite has been fully removed — `server/`
+- **Client (Web):** TypeScript, React, Vite, Tailwind — `client/`
+- **Shared package:** `@personal-assistant/shared` — TypeScript types,
+  framework-agnostic utils, and the platform-agnostic API client, shared by the
+  web app (and the future mobile app) — `packages/shared/`
+
+Each service builds and deploys on its own path-filtered pipeline — see
+[`deploy/README.md`](deploy/README.md).
 
 ## Quick start
 
@@ -47,9 +56,16 @@ Go server on `:8090`).
 | `make dev-server`            | Server with hot reload (air)              |
 | `make dev-client`            | Vite dev client (port 5273)               |
 | `make test` / `make lint`    | Server tests / lint                       |
-| `make deps` / `make tidy`    | Install client deps / tidy Go modules     |
+| `make deps` / `make tidy`    | Install workspace deps / tidy Go modules  |
+| `make lint-client`           | Lint the web workspace (eslint)           |
+| `make typecheck-shared`      | Type-check `@personal-assistant/shared`   |
+| `make docker-build-backend`  | Build the backend-only API image          |
+| `make docker-build-web`      | Build the web-only static (nginx) image   |
 
-Component-specific targets live in `server/Makefile` and `client/Makefile`.
+`make deps` runs a single workspace install at the repo root, which links the
+shared package into the client. Component-specific targets live in
+`server/Makefile` and `client/Makefile`; deployment lives in
+[`deploy/`](deploy/README.md).
 
 ## Docs
 
