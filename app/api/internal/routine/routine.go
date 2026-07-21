@@ -11,7 +11,9 @@
 //     reminders and messages the owner about anything on for today or tomorrow.
 //   - end_of_day: a self-improvement pass that reviews the day's low-quality
 //     conversations and refines the prompts of the skills involved (requires the
-//     Self-Tuning skill to be enabled).
+//     Self-Tuning skill to be enabled). It also tidies the reminder list,
+//     marking any past-due one-time reminder done (disabling it) so spent
+//     reminders don't linger as active.
 //   - nightly_triage: a failure-triage pass that scans the day's unhandled runs,
 //     files a bug card on the Trello Issue board for each recurring pattern
 //     (skipping duplicates), and refines the prompts of the skills that keep
@@ -87,7 +89,7 @@ Reply with ONLY the message to send me — no preamble, no explanation.`,
 	{
 		Key:            "end_of_day",
 		Name:           "End of day",
-		Description:    "An evening run: whatever you tell it to do. The default is a self-improvement pass — it reviews today's low-quality conversations and refines the prompts of the skills involved. Requires the Self-Tuning skill to be enabled.",
+		Description:    "An evening run: whatever you tell it to do. The default is a self-improvement pass — it reviews today's low-quality conversations and refines the prompts of the skills involved (requires the Self-Tuning skill). It also tidies your reminders, marking any past-due one-time reminder as done.",
 		DefaultTime:    "21:00",
 		DefaultEnabled: false,
 		MaxIterations:  12,
@@ -282,6 +284,14 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 	if owner == nil {
 		return false, "", fmt.Errorf("no admin user configured")
 	}
+	// The end-of-day routine also tidies the reminder list: any one-time reminder
+	// whose only scheduled fire is already in the past is marked done (disabled),
+	// so spent reminders don't linger as active. Deterministic upkeep, independent
+	// of the agent's self-tuning pass below.
+	if d.Key == "end_of_day" {
+		s.sweepPastReminders(ctx, owner.ID)
+	}
+
 	uctx := authctx.WithUserID(ctx, owner.ID)
 	// Scope the routine to the owner's default project, mirroring the owner's
 	// unmapped 1:1 WhatsApp chat. Without this the run carries project 0, so its
@@ -314,6 +324,82 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 		return false, reply, fmt.Errorf("send: %w", err)
 	}
 	return true, reply, nil
+}
+
+// sweepPastReminders marks past-due one-time reminders done: it disables every
+// enabled once/specific (or legacy one-shot) reminder whose only scheduled fire
+// is already in the past, so spent reminders stop showing as active on the
+// Reminders page. Recurring reminders (daily/weekly/monthly) never "pass" and
+// are left untouched. It disables across all of the owner's projects (matching
+// the cross-project listing) via an owner-scoped, project-unscoped context.
+// Best-effort: a failure here must not abort the routine.
+func (s *Service) sweepPastReminders(ctx context.Context, ownerID int64) {
+	reminders, err := s.store.ListEnabledForOwner(ctx, ownerID)
+	if err != nil {
+		s.log.Warn("end_of_day: list reminders for sweep", "error", err)
+		return
+	}
+	wctx := authctx.WithProjectID(authctx.WithUserID(ctx, ownerID), 0)
+	now := time.Now().In(s.timezone)
+	marked := 0
+	for _, r := range reminders {
+		if !reminderPassed(r, now, s.timezone) {
+			continue
+		}
+		if err := s.store.SetReminderEnabled(wctx, ownerID, r.ID, false); err != nil {
+			s.log.Warn("end_of_day: mark past reminder done", "id", r.ID, "error", err)
+			continue
+		}
+		marked++
+	}
+	if marked > 0 {
+		s.log.Info("end_of_day: marked past-due reminders done", "count", marked)
+	}
+}
+
+// reminderPassed reports whether a one-time reminder's final scheduled fire is
+// strictly before now (in the app timezone). Only once/specific reminders and
+// legacy one-shots can pass; recurring reminders never do.
+func reminderPassed(r store.Reminder, now time.Time, tz *time.Location) bool {
+	switch r.RepeatMode {
+	case "daily", "weekly", "monthly":
+		return false // recurring — always has a next fire
+	case "specific":
+		// event_at is a local "YYYY-MM-DDTHH:MM" instant.
+		if t, err := time.ParseInLocation("2006-01-02T15:04", r.EventAt, tz); err == nil {
+			return t.Before(now)
+		}
+		return false
+	default: // "once" (recurring-once) or "" (legacy chat one-shot)
+		if len(r.Times) == 0 {
+			// Legacy one-shot: fires once at remind_at (times empty, no once_date).
+			return !r.RemindAt.IsZero() && r.RemindAt.Before(now)
+		}
+		last := lastOnceFire(r.OnceDate, r.Times, tz)
+		return !last.IsZero() && last.Before(now)
+	}
+}
+
+// lastOnceFire returns the instant of a once reminder's latest time-of-day on its
+// scheduled date, or the zero time if the date can't be parsed.
+func lastOnceFire(onceDate string, times []string, tz *time.Location) time.Time {
+	d, err := time.ParseInLocation("2006-01-02", onceDate, tz)
+	if err != nil {
+		return time.Time{}
+	}
+	// Times are stored as zero-padded "HH:MM"; the lexical max is the latest slot.
+	maxHM := ""
+	for _, hm := range times {
+		if hm > maxHM {
+			maxHM = hm
+		}
+	}
+	hh, mm := 0, 0
+	if parts := strings.SplitN(maxHM, ":", 2); len(parts) == 2 {
+		hh, _ = strconv.Atoi(parts[0])
+		mm, _ = strconv.Atoi(parts[1])
+	}
+	return time.Date(d.Year(), d.Month(), d.Day(), hh, mm, 0, 0, tz)
 }
 
 // recordTrace persists one agent run as a trace so scheduled routines show up on
