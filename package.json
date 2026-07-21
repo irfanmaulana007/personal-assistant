@@ -1,7 +1,7 @@
 {
   "name": "personal-assistant",
   "private": true,
-  "version": "1.0.21",
+  "version": "1.0.22",
   "packageManager": "pnpm@10.29.2",
   "scripts": {
     "prepare": "husky"
