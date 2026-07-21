@@ -523,13 +523,19 @@ func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User
 	}
 
 	ctx = authctx.WithUserID(ctx, userID)
-	// Unmapped personal chat: default to the owner's first/personal project so the
-	// owner's private channel still works. Unmapped groups get no project scope.
-	if !msg.IsGroup {
-		if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-			ctx = authctx.WithProjectID(ctx, summaries[0].ID)
-			ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+	// Unmapped chat: default to the owner's first/personal project so the owner's
+	// private channel still works and nothing is written to the unscoped project 0
+	// (which is orphaned from every per-project view and never cleaned up, and
+	// whose reads leak across all projects via the "project 0 matches any row"
+	// predicate). A group never confers superadmin, so its role is clamped just
+	// like a mapped group.
+	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
+		role := summaries[0].Role
+		if msg.IsGroup && role == store.GlobalRoleSuperadmin {
+			role = store.ProjectRoleAdmin
 		}
+		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
+		ctx = authctx.WithProjectRole(ctx, role)
 	}
 	return ctx, userID
 }
