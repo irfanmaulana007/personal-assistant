@@ -19,13 +19,24 @@ var testTZ = time.FixedZone("WIB", 7*3600) // UTC+7, no DST
 // other Store call panics (nil embedded interface), surfacing unexpected usage.
 type fakeStore struct {
 	store.Store
-	kv     map[string][]byte
-	admin  *store.User
-	traces []store.Trace
+	kv       map[string][]byte
+	admin    *store.User
+	traces   []store.Trace
+	projects []store.ProjectSummary
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{kv: map[string][]byte{}, admin: &store.User{ID: 1}}
+	return &fakeStore{
+		kv:    map[string][]byte{},
+		admin: &store.User{ID: 1},
+		// One default project so a routine run is scoped to it (mirrors the owner's
+		// unmapped 1:1 chat) instead of the unscoped project 0.
+		projects: []store.ProjectSummary{{Project: store.Project{ID: 1}, Role: store.GlobalRoleSuperadmin}},
+	}
+}
+
+func (f *fakeStore) ListProjectsForUser(_ context.Context, _ int64) ([]store.ProjectSummary, error) {
+	return f.projects, nil
 }
 
 func (f *fakeStore) GetSetting(_ context.Context, key string) ([]byte, error) { return f.kv[key], nil }

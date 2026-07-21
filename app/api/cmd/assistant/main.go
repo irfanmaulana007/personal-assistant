@@ -245,7 +245,7 @@ func main() {
 			}
 
 			// Recent conversation history for context (before logging this message).
-			history := recentAgentHistory(ctx, db, userID, msg.Platform, 20)
+			history := recentAgentHistory(uctx, db, userID, msg.Platform, 20)
 
 			// Log incoming message. Note when a photo is attached so image-only
 			// messages don't show up as empty in the logs.
@@ -257,7 +257,7 @@ func main() {
 					logBody += " [image]"
 				}
 			}
-			_ = db.LogMessage(ctx, &store.MessageLog{
+			_ = db.LogMessage(uctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
@@ -313,7 +313,7 @@ func main() {
 			}
 
 			// Log outgoing message (chat history)
-			_ = db.LogMessage(ctx, &store.MessageLog{
+			_ = db.LogMessage(uctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "out",
@@ -322,7 +322,9 @@ func main() {
 				Intent:    "agent",
 			})
 
-			// Record the trace (dashboard + logs).
+			// Record the trace (dashboard + logs). Use the scoped context so the
+			// trace is attributed to the WhatsApp run's project; otherwise it lands
+			// under project 0 and is filtered out of the project-scoped Logs page.
 			trace := &store.Trace{UserID: userID, Platform: msg.Platform, Input: msg.Text, LatencyMs: latencyMs}
 			if err != nil {
 				trace.Status = "error"
@@ -337,7 +339,7 @@ func main() {
 				trace.Skills = res.Skills
 				for _, tool := range res.Tools {
 					trace.Tools = append(trace.Tools, store.ToolInvocation{Name: tool.Name, Arguments: tool.Arguments, Result: tool.Result, LatencyMs: tool.LatencyMs})
-					_ = db.LogToolUsage(ctx, userID, tool.Name, msg.Platform)
+					_ = db.LogToolUsage(uctx, userID, tool.Name, msg.Platform)
 				}
 				for _, st := range res.Steps {
 					trace.Steps = append(trace.Steps, store.LLMCall{
@@ -347,9 +349,9 @@ func main() {
 					})
 				}
 			}
-			traceID, _ := db.CreateTrace(ctx, trace)
+			traceID, _ := db.CreateTrace(uctx, trace)
 			// Judge a sampled fraction of live replies out of band.
-			evalJudge.JudgeInline(ctx, traceID)
+			evalJudge.JudgeInline(uctx, traceID)
 		})
 
 		// Proactive messages (reminders + daily routines) are delivered to the
@@ -521,13 +523,19 @@ func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User
 	}
 
 	ctx = authctx.WithUserID(ctx, userID)
-	// Unmapped personal chat: default to the owner's first/personal project so the
-	// owner's private channel still works. Unmapped groups get no project scope.
-	if !msg.IsGroup {
-		if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-			ctx = authctx.WithProjectID(ctx, summaries[0].ID)
-			ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+	// Unmapped chat: default to the owner's first/personal project so the owner's
+	// private channel still works and nothing is written to the unscoped project 0
+	// (which is orphaned from every per-project view and never cleaned up, and
+	// whose reads leak across all projects via the "project 0 matches any row"
+	// predicate). A group never confers superadmin, so its role is clamped just
+	// like a mapped group.
+	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
+		role := summaries[0].Role
+		if msg.IsGroup && role == store.GlobalRoleSuperadmin {
+			role = store.ProjectRoleAdmin
 		}
+		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
+		ctx = authctx.WithProjectRole(ctx, role)
 	}
 	return ctx, userID
 }
