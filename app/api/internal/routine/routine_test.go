@@ -19,10 +19,11 @@ var testTZ = time.FixedZone("WIB", 7*3600) // UTC+7, no DST
 // other Store call panics (nil embedded interface), surfacing unexpected usage.
 type fakeStore struct {
 	store.Store
-	kv       map[string][]byte
-	admin    *store.User
-	traces   []store.Trace
-	projects []store.ProjectSummary
+	kv        map[string][]byte
+	admin     *store.User
+	traces    []store.Trace
+	projects  []store.ProjectSummary
+	reminders []store.Reminder
 }
 
 func newFakeStore() *fakeStore {
@@ -48,6 +49,26 @@ func (f *fakeStore) FirstAdmin(_ context.Context) (*store.User, error) { return 
 func (f *fakeStore) CreateTrace(_ context.Context, t *store.Trace) (int64, error) {
 	f.traces = append(f.traces, *t)
 	return int64(len(f.traces)), nil
+}
+
+func (f *fakeStore) ListEnabledForOwner(_ context.Context, ownerID int64) ([]store.Reminder, error) {
+	var out []store.Reminder
+	for _, r := range f.reminders {
+		if r.UserID == ownerID && r.Enabled && !r.Cancelled {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) SetReminderEnabled(_ context.Context, userID, id int64, enabled bool) error {
+	for i := range f.reminders {
+		if f.reminders[i].ID == id && f.reminders[i].UserID == userID {
+			f.reminders[i].Enabled = enabled
+			return nil
+		}
+	}
+	return nil
 }
 
 // fakeAgent records its calls and returns a canned reply/error.
@@ -248,6 +269,80 @@ func TestMaybeRun_DisabledDoesNothing(t *testing.T) {
 	svc.maybeRun(context.Background(), Catalog[0], at(7, 5))
 	if ag.calls != 0 {
 		t.Errorf("disabled routine must not run, got %d calls", ag.calls)
+	}
+}
+
+// Far-past / far-future dates keep the sweep tests deterministic even though the
+// sweep reads the real wall clock (like the rest of the routine run does).
+func pastReminder(id int64, r store.Reminder) store.Reminder {
+	r.ID, r.UserID, r.Enabled = id, 1, true
+	return r
+}
+func TestRunNow_EndOfDay_MarksPastRemindersDone(t *testing.T) {
+	ag := &fakeAgent{reply: Sentinel} // self-tuning pass has nothing to report
+	svc, fs, sent := newSvc(t, ag)
+	fs.reminders = []store.Reminder{
+		pastReminder(1, store.Reminder{RepeatMode: "once", OnceDate: "2000-01-02", Times: []string{"09:00"}}),      // past one-off → done
+		pastReminder(2, store.Reminder{RepeatMode: "once", OnceDate: "2999-01-02", Times: []string{"09:00"}}),      // future one-off → kept
+		pastReminder(3, store.Reminder{RepeatMode: "daily", Times: []string{"09:00"}}),                             // recurring → kept
+		pastReminder(4, store.Reminder{RepeatMode: "specific", EventAt: "2000-01-02T09:00"}),                       // past event → done
+		pastReminder(5, store.Reminder{RepeatMode: "once", RemindAt: time.Date(2000, 1, 2, 9, 0, 0, 0, time.UTC)}), // legacy past one-shot → done
+		pastReminder(6, store.Reminder{RepeatMode: "weekly", Weekdays: []int{1}, Times: []string{"09:00"}}),        // recurring → kept
+		pastReminder(7, store.Reminder{RepeatMode: "monthly", DayOfMonth: 5, Times: []string{"09:00"}}),            // recurring → kept
+	}
+	if _, _, err := svc.RunNow(context.Background(), "end_of_day"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(*sent) != 0 {
+		t.Errorf("sentinel reply should send nothing, got %v", *sent)
+	}
+	want := map[int64]bool{1: false, 2: true, 3: true, 4: false, 5: false, 6: true, 7: true}
+	for _, r := range fs.reminders {
+		if r.Enabled != want[r.ID] {
+			t.Errorf("reminder %d: enabled=%v, want %v", r.ID, r.Enabled, want[r.ID])
+		}
+	}
+}
+
+// The sweep is scoped to the end_of_day routine; other routines must not touch
+// reminders even when a past-due one exists.
+func TestRunNow_StartOfDay_DoesNotSweepReminders(t *testing.T) {
+	svc, fs, _ := newSvc(t, &fakeAgent{reply: "morning"})
+	fs.reminders = []store.Reminder{
+		pastReminder(1, store.Reminder{RepeatMode: "once", OnceDate: "2000-01-02", Times: []string{"09:00"}}),
+	}
+	if _, _, err := svc.RunNow(context.Background(), "start_of_day"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !fs.reminders[0].Enabled {
+		t.Error("start_of_day must not disable a past-due reminder")
+	}
+}
+
+func TestReminderPassed(t *testing.T) {
+	now := time.Date(2026, time.July, 21, 12, 0, 0, 0, testTZ)
+	cases := []struct {
+		name string
+		r    store.Reminder
+		want bool
+	}{
+		{"once earlier today", store.Reminder{RepeatMode: "once", OnceDate: "2026-07-21", Times: []string{"08:00"}}, true},
+		{"once later today", store.Reminder{RepeatMode: "once", OnceDate: "2026-07-21", Times: []string{"20:00"}}, false},
+		{"once uses latest time", store.Reminder{RepeatMode: "once", OnceDate: "2026-07-21", Times: []string{"08:00", "20:00"}}, false},
+		{"once past date", store.Reminder{RepeatMode: "once", OnceDate: "2026-07-20", Times: []string{"20:00"}}, true},
+		{"specific past", store.Reminder{RepeatMode: "specific", EventAt: "2026-07-21T11:59"}, true},
+		{"specific future", store.Reminder{RepeatMode: "specific", EventAt: "2026-07-21T12:01"}, false},
+		{"legacy one-shot past", store.Reminder{RepeatMode: "once", RemindAt: now.Add(-time.Hour)}, true},
+		{"legacy one-shot future", store.Reminder{RepeatMode: "once", RemindAt: now.Add(time.Hour)}, false},
+		{"daily never passes", store.Reminder{RepeatMode: "daily", Times: []string{"08:00"}}, false},
+		{"weekly never passes", store.Reminder{RepeatMode: "weekly", Weekdays: []int{1}, Times: []string{"08:00"}}, false},
+		{"monthly never passes", store.Reminder{RepeatMode: "monthly", DayOfMonth: 1, Times: []string{"08:00"}}, false},
+		{"unparseable once date", store.Reminder{RepeatMode: "once", OnceDate: "bogus", Times: []string{"08:00"}}, false},
+	}
+	for _, c := range cases {
+		if got := reminderPassed(c.r, now, testTZ); got != c.want {
+			t.Errorf("%s: reminderPassed=%v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
