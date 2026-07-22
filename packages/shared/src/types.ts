@@ -399,6 +399,49 @@ export interface BucketItemPayload {
   category: BucketCategory;
 }
 
+// A logged hiking trip, joined with the names it references so the UI never has
+// to resolve ids. `hiked_on` is a plain "YYYY-MM-DD" date; an empty up/down
+// track (id 0, name '') means no trail was recorded for that direction.
+export interface Hike {
+  id: number;
+  mountain_id: number;
+  mountain: string;
+  camped: boolean;
+  up_track_id: number;
+  up_track: string;
+  down_track_id: number;
+  down_track: string;
+  days: number;
+  nights: number;
+  hiked_on: string; // "YYYY-MM-DD"
+  participants: string[];
+}
+
+// Create/update payload. Mountain, trails, and participants are sent by name;
+// the server resolves each to an existing canonical record or creates one.
+export interface HikePayload {
+  mountain: string;
+  up_track: string;
+  down_track: string;
+  camped: boolean;
+  days: number;
+  nights: number;
+  hiked_on: string; // "YYYY-MM-DD"
+  participants: string[];
+}
+
+// A canonical name suggestion (mountain / participant / trail) for the hike
+// form's autocomplete lists.
+export interface HikeNameOption {
+  id: number;
+  name: string;
+}
+
+export interface HikeOptions {
+  mountains: HikeNameOption[];
+  hikers: HikeNameOption[];
+}
+
 /** A single message channel. Filters select any subset — [] means "all". */
 export type ChannelValue = 'web' | 'whatsapp';
 

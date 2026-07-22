@@ -772,7 +772,10 @@ type DataStore interface {
 	CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error)
 	GetHike(ctx context.Context, userID, id int64) (*HikeDetail, error)
 	AddHikeParticipant(ctx context.Context, hikeID, hikerID int64) error
+	ClearHikeParticipants(ctx context.Context, hikeID int64) error
 	ListHikes(ctx context.Context, userID int64, limit int) ([]HikeDetail, error)
+	UpdateHike(ctx context.Context, userID, id int64, h *Hike) error
+	DeleteHike(ctx context.Context, userID, id int64) error
 
 	// Travel (scoped to a user)
 	CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error)
