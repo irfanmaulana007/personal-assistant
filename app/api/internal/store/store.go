@@ -327,10 +327,13 @@ type HikeTrack struct {
 	Name       string
 }
 
-// Hiker is a canonical hiking participant, scoped to a user.
+// Hiker is a canonical hiking participant, scoped to a user. Name is the
+// participant's full name (nama panjang); Nicknames holds alternate spellings
+// and aliases (panggilan) that also resolve to this same person.
 type Hiker struct {
-	ID   int64
-	Name string
+	ID        int64
+	Name      string
+	Nicknames []string
 }
 
 // Hike is a logged hiking trip.
@@ -769,10 +772,21 @@ type DataStore interface {
 	CreateTrack(ctx context.Context, userID, mountainID int64, name string) (*HikeTrack, error)
 	ListHikers(ctx context.Context, userID int64) ([]Hiker, error)
 	CreateHiker(ctx context.Context, userID int64, name string) (*Hiker, error)
+	// UpdateHiker sets a participant's canonical name and nicknames directly (no
+	// auto-matching). Returns (nil, nil) when no participant matches.
+	UpdateHiker(ctx context.Context, userID, id int64, name string, nicknames []string) (*Hiker, error)
+	// MergeHikers folds the source participant into the target: every hike the
+	// source is on is reattributed to the target, the source's name and nicknames
+	// become nicknames of the target, and the source record is deleted. Returns
+	// the surviving target participant.
+	MergeHikers(ctx context.Context, userID, targetID, sourceID int64) (*Hiker, error)
 	CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error)
 	GetHike(ctx context.Context, userID, id int64) (*HikeDetail, error)
 	AddHikeParticipant(ctx context.Context, hikeID, hikerID int64) error
+	ClearHikeParticipants(ctx context.Context, hikeID int64) error
 	ListHikes(ctx context.Context, userID int64, limit int) ([]HikeDetail, error)
+	UpdateHike(ctx context.Context, userID, id int64, h *Hike) error
+	DeleteHike(ctx context.Context, userID, id int64) error
 
 	// Travel (scoped to a user)
 	CreateTrip(ctx context.Context, userID int64, name, destination, currency string, budget float64) (*Trip, error)

@@ -12,6 +12,10 @@ import type {
   ModelPrice,
   BucketItem,
   BucketItemPayload,
+  Hike,
+  HikePayload,
+  HikeOptions,
+  HikeNameOption,
   Skill,
   AdminSkill,
   Role,
@@ -323,6 +327,34 @@ export async function setBucketItemResolution(
 
 export async function deleteBucketItem(id: number): Promise<void> {
   await request(`/api/bucket-list/${id}`, { method: 'DELETE' });
+}
+
+export async function listHikes(): Promise<Hike[]> {
+  return request<Hike[]>('/api/hikes');
+}
+
+// Canonical mountains + participants for the hike form's autocomplete, so a user
+// reuses existing names rather than creating near-duplicates.
+export async function getHikeOptions(): Promise<HikeOptions> {
+  return request<HikeOptions>('/api/hikes/options');
+}
+
+// Known trails on a mountain (by id), for the up/down trail suggestions once a
+// known mountain is chosen.
+export async function listHikeTracks(mountainId: number): Promise<HikeNameOption[]> {
+  return request<HikeNameOption[]>(`/api/hikes/tracks?mountain_id=${mountainId}`);
+}
+
+export async function createHike(h: HikePayload): Promise<Hike> {
+  return request<Hike>('/api/hikes', { method: 'POST', body: JSON.stringify(h) });
+}
+
+export async function updateHike(id: number, h: HikePayload): Promise<Hike> {
+  return request<Hike>(`/api/hikes/${id}`, { method: 'PUT', body: JSON.stringify(h) });
+}
+
+export async function deleteHike(id: number): Promise<void> {
+  await request(`/api/hikes/${id}`, { method: 'DELETE' });
 }
 
 export async function getPricing(): Promise<ModelPrice[]> {

@@ -171,6 +171,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/bucket-list/{id}/done", project(s.handleSetBucketItemDone))
 	mux.Handle("PUT /api/bucket-list/{id}/resolution", project(s.handleSetBucketItemResolution))
 	mux.Handle("DELETE /api/bucket-list/{id}", project(s.handleDeleteBucketItem))
+	mux.Handle("GET /api/hikes", project(s.handleListHikes))
+	mux.Handle("GET /api/hikes/options", project(s.handleHikeOptions))
+	mux.Handle("GET /api/hikes/tracks", project(s.handleListHikeTracks))
+	mux.Handle("POST /api/hikes", project(s.handleCreateHike))
+	mux.Handle("PUT /api/hikes/{id}", project(s.handleUpdateHike))
+	mux.Handle("DELETE /api/hikes/{id}", project(s.handleDeleteHike))
 
 	// LLM model settings are project-scoped: a project admin configures their
 	// own project's provider/model/key (a superadmin manages any via the
