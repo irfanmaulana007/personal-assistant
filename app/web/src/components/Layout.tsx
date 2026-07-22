@@ -158,6 +158,19 @@ const navItems: NavLeaf[] = [
     ),
   },
   {
+    to: '/hikes',
+    label: 'Hikes',
+    feature: 'hiking',
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 20h18L15 8l-3 5-2-3-7 10zM17 6a2 2 0 11-4 0 2 2 0 014 0z"
+      />
+    ),
+  },
+  {
     to: '/workflow',
     label: 'Workflow',
     gate: 'superadmin',

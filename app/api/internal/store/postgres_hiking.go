@@ -215,6 +215,49 @@ func (s *PostgresStore) AddHikeParticipant(ctx context.Context, hikeID, hikerID 
 	return err
 }
 
+// ClearHikeParticipants removes every participant link from a hike, so the UI
+// can re-attach the edited set on an update.
+func (s *PostgresStore) ClearHikeParticipants(ctx context.Context, hikeID int64) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM hike_hikers WHERE hike_id = $1`, hikeID)
+	return err
+}
+
+// UpdateHike edits a logged hike's core fields (participants are re-synced
+// separately via ClearHikeParticipants + AddHikeParticipant). Scoped to the
+// owning user and active project so one project can't edit another's hike.
+func (s *PostgresStore) UpdateHike(ctx context.Context, userID, id int64, h *Hike) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE hikes SET mountain_id = $1, camped = $2, up_track_id = $3, down_track_id = $4,
+		        days = $5, nights = $6, hiked_on = $7
+		 WHERE id = $8 AND user_id = $9 AND ($10 = 0 OR project_id = $10)`,
+		h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, h.HikedOn.UTC(),
+		id, userID, authctx.ProjectID(ctx))
+	if err != nil {
+		return fmt.Errorf("update hike: %w", err)
+	}
+	return nil
+}
+
+// DeleteHike removes a logged hike (and its participant links) for the owning
+// user and active project. The participant links are cleared only after the
+// project-scoped hike row is confirmed deleted, so a caller can never strand
+// another project's junction rows.
+func (s *PostgresStore) DeleteHike(ctx context.Context, userID, id int64) error {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM hikes WHERE id = $1 AND user_id = $2 AND ($3 = 0 OR project_id = $3)`,
+		id, userID, authctx.ProjectID(ctx))
+	if err != nil {
+		return fmt.Errorf("delete hike: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil
+	}
+	if _, err := s.pool.Exec(ctx, `DELETE FROM hike_hikers WHERE hike_id = $1`, id); err != nil {
+		return fmt.Errorf("delete hike participants: %w", err)
+	}
+	return nil
+}
+
 // GetHike returns one of the user's logged hikes by id (with mountain, track,
 // and participant detail), or (nil, nil) when no row matches. Used to confirm a
 // just-logged hike actually persisted.
