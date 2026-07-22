@@ -41,8 +41,14 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return h.logHike(ctx, result)
 	case intent.ActionHikeSummary:
 		return h.summary(ctx, result)
+	case intent.ActionHikeParticipants:
+		return h.listParticipants(ctx, result)
+	case intent.ActionHikeParticipantUpdate:
+		return h.updateParticipant(ctx, result)
+	case intent.ActionHikeParticipantMerge:
+		return h.mergeParticipants(ctx, result)
 	default:
-		return "I can log a hike or summarize your hiking trips.", nil
+		return "I can log a hike, summarize your trips, or manage your hiking participants (rename or merge them).", nil
 	}
 }
 
@@ -252,28 +258,171 @@ func (h *Handler) resolveTrack(ctx context.Context, userID, mountainID int64, na
 	return t.ID, t.Name, false, nil
 }
 
-// resolveHiker returns the user's existing participant matching name, or creates one.
+// resolveHiker returns the user's existing participant whose canonical name or
+// one of whose nicknames exactly matches name (case/whitespace-insensitive), or
+// creates a new participant with the name saved exactly as given.
+//
+// Unlike mountains and trails, participant names are never fuzzy-folded: two
+// different people can have near-identical names ("Ali" vs "Abi"), so the
+// auto-matcher must not silently remap one onto the other. Intentional aliases
+// are captured as nicknames (set via update, or added when merging duplicates)
+// so a known alias still resolves to the right person. reused is true when an
+// existing record was matched.
 func (h *Handler) resolveHiker(ctx context.Context, userID int64, name string) (*store.Hiker, bool, error) {
 	existing, err := h.store.ListHikers(ctx, userID)
 	if err != nil {
 		return nil, false, fmt.Errorf("list hikers: %w", err)
 	}
-	names := make([]string, len(existing))
-	for i, p := range existing {
-		names[i] = p.Name
-	}
-	if match := bestMatch(names, name); match != "" {
-		for _, p := range existing {
-			if p.Name == match {
-				return &p, true, nil
-			}
-		}
+	if p := matchHiker(existing, name); p != nil {
+		return p, true, nil
 	}
 	p, err := h.store.CreateHiker(ctx, userID, strings.TrimSpace(name))
 	return p, false, err
 }
 
+// matchHiker returns the participant whose canonical name or one of whose
+// nicknames equals name after normalization, or nil. Exact (normalized) match
+// only — no fuzzy edit-distance folding.
+func matchHiker(existing []store.Hiker, name string) *store.Hiker {
+	for i := range existing {
+		p := &existing[i]
+		if equalName(p.Name, name) {
+			return p
+		}
+		for _, nick := range p.Nicknames {
+			if equalName(nick, name) {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+// listParticipants shows the user's saved participants and their nicknames.
+func (h *Handler) listParticipants(ctx context.Context, _ *intent.ParseResult) (string, error) {
+	hikers, err := h.store.ListHikers(ctx, authctx.UserID(ctx))
+	if err != nil {
+		return "", fmt.Errorf("list hikers: %w", err)
+	}
+	if len(hikers) == 0 {
+		return "You haven't logged any hiking participants yet.", nil
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("*Hiking participants* (%d):", len(hikers)))
+	for _, p := range hikers {
+		sb.WriteString("\n• " + p.Name)
+		if len(p.Nicknames) > 0 {
+			sb.WriteString(" _(aka " + strings.Join(p.Nicknames, ", ") + ")_")
+		}
+	}
+	return sb.String(), nil
+}
+
+// updateParticipant renames a participant and/or sets their nicknames. The new
+// name is stored exactly as given — no auto-matching is applied to it — so this
+// is how a wrongly-recorded name gets corrected.
+func (h *Handler) updateParticipant(ctx context.Context, result *intent.ParseResult) (string, error) {
+	userID := authctx.UserID(ctx)
+	e := result.Entities
+	who := strings.TrimSpace(e["name"])
+	if who == "" {
+		return "Which participant should I update? Tell me their current name.", nil
+	}
+	existing, err := h.store.ListHikers(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("list hikers: %w", err)
+	}
+	target := matchHiker(existing, who)
+	if target == nil {
+		return fmt.Sprintf("I couldn't find a hiking participant matching %q.", who), nil
+	}
+
+	newName := target.Name
+	if n := strings.TrimSpace(e["new_name"]); n != "" {
+		newName = n
+	}
+	nicknames := target.Nicknames
+	if _, ok := e["nicknames"]; ok {
+		nicknames = splitList(e["nicknames"])
+	}
+	// A participant is never a nickname of itself.
+	nicknames = dropEqual(nicknames, newName)
+
+	updated, err := h.store.UpdateHiker(ctx, userID, target.ID, newName, nicknames)
+	if err != nil {
+		return "", fmt.Errorf("update hiker: %w", err)
+	}
+	if updated == nil {
+		return fmt.Sprintf("I couldn't find a hiking participant matching %q.", who), nil
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Updated participant *%s*.", updated.Name))
+	if len(updated.Nicknames) > 0 {
+		sb.WriteString(" Nicknames: " + strings.Join(updated.Nicknames, ", ") + ".")
+	}
+	return sb.String(), nil
+}
+
+// mergeParticipants folds a duplicate participant into the one to keep,
+// reattributing every hike and preserving the absorbed name as a nickname.
+func (h *Handler) mergeParticipants(ctx context.Context, result *intent.ParseResult) (string, error) {
+	userID := authctx.UserID(ctx)
+	e := result.Entities
+	fromName := strings.TrimSpace(e["from"])
+	intoName := strings.TrimSpace(e["into"])
+	if fromName == "" || intoName == "" {
+		return "To merge, tell me which participant to merge *from* (the duplicate) and *into* (the one to keep).", nil
+	}
+	existing, err := h.store.ListHikers(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("list hikers: %w", err)
+	}
+	source := matchHiker(existing, fromName)
+	target := matchHiker(existing, intoName)
+	if source == nil {
+		return fmt.Sprintf("I couldn't find a participant matching %q to merge.", fromName), nil
+	}
+	if target == nil {
+		return fmt.Sprintf("I couldn't find a participant matching %q to merge into.", intoName), nil
+	}
+	if source.ID == target.ID {
+		return fmt.Sprintf("%q and %q are already the same participant.", fromName, intoName), nil
+	}
+	merged, err := h.store.MergeHikers(ctx, userID, target.ID, source.ID)
+	if err != nil {
+		return "", fmt.Errorf("merge hikers: %w", err)
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Merged *%s* into *%s*.", source.Name, merged.Name))
+	if len(merged.Nicknames) > 0 {
+		sb.WriteString(" Nicknames: " + strings.Join(merged.Nicknames, ", ") + ".")
+	}
+	return sb.String(), nil
+}
+
 func equalName(a, b string) bool { return normalize(a) == normalize(b) }
+
+// splitList parses a comma-separated string into trimmed, non-empty items.
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// dropEqual removes any item equal (normalized) to name.
+func dropEqual(items []string, name string) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if !equalName(it, name) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
 
 func parseBool(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
