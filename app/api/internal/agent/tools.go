@@ -273,6 +273,13 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
 		},
 		{
+			name:        "hike_delete",
+			description: "Delete one or more logged hikes by their number (the #id shown by hike_summary). Use this to remove duplicate or wrongly-logged hikes. Pass a single number, or several as a comma-separated list (e.g. \"12, 15, 18\") to clear multiple duplicates at once. Always run hike_summary first so you delete the right entries by their #id.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeDelete,
+			parameters:  `{"type":"object","properties":{"id":{"type":"string","description":"Hike number(s) to delete, from the #id shown in hike_summary. One number, or several comma-separated (e.g. '12, 15, 18')."}},"required":["id"]}`,
+		},
+		{
 			name:        "hike_participant_list",
 			description: "List the user's saved hiking participants and their nicknames/aliases. Use this before renaming or merging so you refer to the right person.",
 			capability:  intent.CapabilityHiking,
