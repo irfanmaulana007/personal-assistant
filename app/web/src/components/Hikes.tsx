@@ -212,11 +212,18 @@ export function Hikes() {
         deleting={detail != null && busyId === detail.id}
       />
 
-      {/* Filter toolbar: date range (optional, clearable) + free-text search.
-          The range drives both the analytics and the list below. */}
+      {/* Analytics: at-a-glance totals plus varied charts across the selected range */}
+      {!loading && hasHikes && ranged.length > 0 && (
+        <div className="mt-4">
+          <HikeAnalytics hikes={ranged} />
+        </div>
+      )}
+
+      {/* Filter toolbar: date range (optional, clearable) + free-text search, right-aligned.
+          The range drives both the analytics above and the list below. */}
       {!loading && hasHikes && (
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[16rem] flex-1 sm:max-w-sm">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+          <div className="relative w-full min-w-[16rem] sm:w-auto sm:max-w-sm">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
               fill="none"
@@ -244,13 +251,6 @@ export function Hikes() {
             placeholder="All dates"
             onChange={(f, t) => patchParams({ from: f, to: t })}
           />
-        </div>
-      )}
-
-      {/* Analytics: at-a-glance totals plus varied charts across the selected range */}
-      {!loading && hasHikes && ranged.length > 0 && (
-        <div className="mt-4">
-          <HikeAnalytics hikes={ranged} />
         </div>
       )}
 
