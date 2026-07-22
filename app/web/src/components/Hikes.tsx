@@ -212,6 +212,20 @@ export function Hikes() {
         deleting={detail != null && busyId === detail.id}
       />
 
+      {/* Date range (optional, clearable), above the metrics: it drives both the
+          analytics below and the list further down. */}
+      {!loading && hasHikes && (
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+          <DateRangePicker
+            from={from}
+            to={to}
+            clearable
+            placeholder="All dates"
+            onChange={(f, t) => patchParams({ from: f, to: t })}
+          />
+        </div>
+      )}
+
       {/* Analytics: at-a-glance totals plus varied charts across the selected range */}
       {!loading && hasHikes && ranged.length > 0 && (
         <div className="mt-4">
@@ -219,8 +233,8 @@ export function Hikes() {
         </div>
       )}
 
-      {/* Filter toolbar: date range (optional, clearable) + free-text search, right-aligned.
-          The range drives both the analytics above and the list below. */}
+      {/* Free-text search, below the metrics: it narrows only the list, so the
+          analytics numbers stay on the whole selected period. */}
       {!loading && hasHikes && (
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
           <div className="relative w-full min-w-[16rem] sm:w-auto sm:max-w-sm">
@@ -244,13 +258,6 @@ export function Hikes() {
               className={`${inputClass} pl-9`}
             />
           </div>
-          <DateRangePicker
-            from={from}
-            to={to}
-            clearable
-            placeholder="All dates"
-            onChange={(f, t) => patchParams({ from: f, to: t })}
-          />
         </div>
       )}
 
@@ -278,7 +285,7 @@ export function Hikes() {
               key={h.id}
               type="button"
               onClick={() => setDetail(h)}
-              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500/60"
+              className="flex w-full cursor-pointer items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-500/60"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
