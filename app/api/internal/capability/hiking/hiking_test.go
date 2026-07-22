@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -274,6 +275,94 @@ func TestParticipantNameSystem(t *testing.T) {
 		t.Errorf("expected Rama on 2 hikes after merge, got %d", ramaHikes)
 	}
 }
+
+// TestHikeDelete covers removing logged hikes by their #id: the summary now
+// exposes the id, a single delete removes one, a comma-separated list clears
+// several duplicates at once, unknown ids are reported without failing the
+// deletion of valid ones, and a user can never delete another user's hike.
+func TestHikeDelete(t *testing.T) {
+	db := storetest.New(t)
+	h := New(db, time.UTC, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := authctx.WithUserID(context.Background(), 21)
+
+	do := func(action intent.Action, entities map[string]string) string {
+		t.Helper()
+		out, err := h.Handle(ctx, &intent.ParseResult{
+			Capability: intent.CapabilityHiking, Action: action, Entities: entities,
+		})
+		if err != nil {
+			t.Fatalf("%s %+v: %v", action, entities, err)
+		}
+		return out
+	}
+
+	// Log three hikes; two of them are duplicates of the same trip.
+	do(intent.ActionHikeLog, map[string]string{"mountain": "Gede", "date": "Jul 1"})
+	do(intent.ActionHikeLog, map[string]string{"mountain": "Gede", "date": "Jul 1"})
+	do(intent.ActionHikeLog, map[string]string{"mountain": "Prau", "date": "Jul 2"})
+
+	hikes, _ := db.ListHikes(ctx, 21, 50)
+	if len(hikes) != 3 {
+		t.Fatalf("expected 3 hikes, got %d", len(hikes))
+	}
+
+	// The summary now surfaces each hike's #id so the model can reference it.
+	sum := do(intent.ActionHikeSummary, map[string]string{})
+	if !strings.Contains(sum, "#"+itoa(hikes[0].ID)) {
+		t.Errorf("summary should show hike #id, got: %q", sum)
+	}
+
+	// Delete a single hike by id.
+	out := do(intent.ActionHikeDelete, map[string]string{"id": itoa(hikes[0].ID)})
+	if !strings.Contains(out, "Deleted hike") {
+		t.Errorf("single delete wording wrong: %q", out)
+	}
+	if left, _ := db.ListHikes(ctx, 21, 50); len(left) != 2 {
+		t.Fatalf("expected 2 hikes after single delete, got %d", len(left))
+	}
+
+	// Bulk-delete the remaining two by a comma-separated list (with a stray '#'
+	// and an unknown id mixed in) — valid ones go, the unknown is reported.
+	out = do(intent.ActionHikeDelete, map[string]string{
+		"id": "#" + itoa(hikes[1].ID) + ", " + itoa(hikes[2].ID) + ", 99999",
+	})
+	if !strings.Contains(out, "Deleted 2 hikes") {
+		t.Errorf("bulk delete wording wrong: %q", out)
+	}
+	if !strings.Contains(out, "#99999") {
+		t.Errorf("expected unknown id to be reported, got: %q", out)
+	}
+	if left, _ := db.ListHikes(ctx, 21, 50); len(left) != 0 {
+		t.Fatalf("expected 0 hikes after bulk delete, got %d", len(left))
+	}
+
+	// User isolation: user 22 logs a hike; user 21 cannot delete it by id.
+	otherCtx := authctx.WithUserID(context.Background(), 22)
+	if _, err := h.Handle(otherCtx, &intent.ParseResult{
+		Capability: intent.CapabilityHiking, Action: intent.ActionHikeLog,
+		Entities: map[string]string{"mountain": "Merbabu"},
+	}); err != nil {
+		t.Fatalf("other user log: %v", err)
+	}
+	otherHikes, _ := db.ListHikes(otherCtx, 22, 50)
+	if len(otherHikes) != 1 {
+		t.Fatalf("expected other user to have 1 hike, got %d", len(otherHikes))
+	}
+	out = do(intent.ActionHikeDelete, map[string]string{"id": itoa(otherHikes[0].ID)})
+	if !strings.Contains(out, "No hike found") {
+		t.Errorf("expected cross-user delete to find nothing, got: %q", out)
+	}
+	if left, _ := db.ListHikes(otherCtx, 22, 50); len(left) != 1 {
+		t.Errorf("another user's hike must survive, got %d remaining", len(left))
+	}
+
+	// Empty id asks for a number rather than deleting anything.
+	if out := do(intent.ActionHikeDelete, map[string]string{}); !strings.Contains(out, "Which hike") {
+		t.Errorf("empty id should prompt for a number, got: %q", out)
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 func containsFold(items []string, want string) bool {
 	for _, it := range items {

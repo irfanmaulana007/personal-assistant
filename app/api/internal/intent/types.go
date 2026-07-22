@@ -103,6 +103,7 @@ const (
 const (
 	ActionHikeLog               Action = "hike.log"
 	ActionHikeSummary           Action = "hike.summary"
+	ActionHikeDelete            Action = "hike.delete"
 	ActionHikeParticipants      Action = "hike.participants"
 	ActionHikeParticipantUpdate Action = "hike.participant_update"
 	ActionHikeParticipantMerge  Action = "hike.participant_merge"

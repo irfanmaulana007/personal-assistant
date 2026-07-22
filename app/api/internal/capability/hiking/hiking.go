@@ -41,6 +41,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return h.logHike(ctx, result)
 	case intent.ActionHikeSummary:
 		return h.summary(ctx, result)
+	case intent.ActionHikeDelete:
+		return h.deleteHike(ctx, result)
 	case intent.ActionHikeParticipants:
 		return h.listParticipants(ctx, result)
 	case intent.ActionHikeParticipantUpdate:
@@ -48,7 +50,7 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	case intent.ActionHikeParticipantMerge:
 		return h.mergeParticipants(ctx, result)
 	default:
-		return "I can log a hike, summarize your trips, or manage your hiking participants (rename or merge them).", nil
+		return "I can log a hike, summarize your trips, delete a hike by its number, or manage your hiking participants (rename or merge them).", nil
 	}
 }
 
@@ -190,7 +192,7 @@ func (h *Handler) summary(ctx context.Context, result *intent.ParseResult) (stri
 	for _, hk := range hikes {
 		nights += hk.Nights
 		mountains[hk.Mountain] = true
-		sb.WriteString(fmt.Sprintf("\n• *%s* — %s", hk.Mountain, hk.HikedOn.In(h.timezone).Format("Jan 2 2006")))
+		sb.WriteString(fmt.Sprintf("\n#%d • *%s* — %s", hk.ID, hk.Mountain, hk.HikedOn.In(h.timezone).Format("Jan 2 2006")))
 		if hk.UpTrack != "" || hk.DownTrack != "" {
 			sb.WriteString(fmt.Sprintf(" (up: %s, down: %s)", orDash(hk.UpTrack), orDash(hk.DownTrack)))
 		}
@@ -205,6 +207,81 @@ func (h *Handler) summary(ctx context.Context, result *intent.ParseResult) (stri
 		}
 	}
 	sb.WriteString(fmt.Sprintf("\n\n%d mountain(s), %d night(s) on the trail.", len(mountains), nights))
+	sb.WriteString("\n\n_Tip: to remove a hike, say \"delete hike\" with its number (e.g. #" + strconv.FormatInt(hikes[0].ID, 10) + ")._")
+	return sb.String(), nil
+}
+
+// deleteHike removes one or more logged hikes by their number (the #id shown in
+// the summary). Accepts a single id or a comma-separated list so several
+// duplicates can be cleared in one go. Each id is verified with GetHike before
+// deletion so the reply can name what was removed and flag any id that didn't
+// match one of the user's hikes.
+func (h *Handler) deleteHike(ctx context.Context, result *intent.ParseResult) (string, error) {
+	userID := authctx.UserID(ctx)
+	raw := strings.TrimSpace(result.Entities["id"])
+	if raw == "" {
+		return "Which hike should I delete? Give me its number from the summary — e.g. _delete hike 42_. Run hike_summary first if you're not sure.", nil
+	}
+
+	// Parse the requested ids, tolerating a leading '#' and repeated entries.
+	var ids []int64
+	seen := map[int64]bool{}
+	var invalid []string
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(part), "#"))
+		if p == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			invalid = append(invalid, part)
+			continue
+		}
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return "Please give me a valid hike number to delete (the # shown in the summary).", nil
+	}
+
+	var deleted []string
+	var notFound []int64
+	for _, id := range ids {
+		hike, err := h.store.GetHike(ctx, userID, id)
+		if err != nil {
+			return "", fmt.Errorf("get hike: %w", err)
+		}
+		if hike == nil {
+			notFound = append(notFound, id)
+			continue
+		}
+		if err := h.store.DeleteHike(ctx, userID, id); err != nil {
+			return "", fmt.Errorf("delete hike: %w", err)
+		}
+		deleted = append(deleted, fmt.Sprintf("#%d *%s* (%s)", id, hike.Mountain, hike.HikedOn.In(h.timezone).Format("Jan 2 2006")))
+	}
+
+	var sb strings.Builder
+	switch len(deleted) {
+	case 0:
+		sb.WriteString("No hikes deleted.")
+	case 1:
+		sb.WriteString("Deleted hike " + deleted[0] + ".")
+	default:
+		sb.WriteString(fmt.Sprintf("Deleted %d hikes:\n• %s", len(deleted), strings.Join(deleted, "\n• ")))
+	}
+	if len(notFound) > 0 {
+		nums := make([]string, len(notFound))
+		for i, id := range notFound {
+			nums[i] = "#" + strconv.FormatInt(id, 10)
+		}
+		sb.WriteString("\n\nNo hike found for: " + strings.Join(nums, ", ") + ".")
+	}
+	if len(invalid) > 0 {
+		sb.WriteString("\n\nIgnored (not a number): " + strings.Join(invalid, ", ") + ".")
+	}
 	return sb.String(), nil
 }
 
