@@ -260,7 +260,7 @@ var skillTools = map[string][]toolSpec{
 	"hiking_tracker": {
 		{
 			name:        "hike_log",
-			description: "Log a hiking trip. Similar existing mountain, trail, and participant names are reused automatically to prevent duplicates.",
+			description: "Log a hiking trip. Similar existing mountain and trail names are reused automatically to prevent typo-duplicates. Participant names are saved exactly as given (never fuzzy-matched onto a different person); a name only reuses an existing participant when it exactly matches that participant's name or a recorded nickname.",
 			capability:  intent.CapabilityHiking,
 			action:      intent.ActionHikeLog,
 			parameters:  `{"type":"object","properties":{"mountain":{"type":"string","description":"Mountain / hiking destination."},"up_track":{"type":"string","description":"Trail used going up."},"down_track":{"type":"string","description":"Trail used going down."},"camped":{"type":"boolean","description":"Whether the user camped overnight."},"days":{"type":"integer","description":"Number of days spent."},"nights":{"type":"integer","description":"Number of nights spent."},"date":{"type":"string","description":"Hiking date, e.g. 'last Saturday', 'Aug 2'."},"participants":{"type":"string","description":"Comma-separated participant names."}},"required":["mountain"]}`,
@@ -271,6 +271,27 @@ var skillTools = map[string][]toolSpec{
 			capability:  intent.CapabilityHiking,
 			action:      intent.ActionHikeSummary,
 			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
+		},
+		{
+			name:        "hike_participant_list",
+			description: "List the user's saved hiking participants and their nicknames/aliases. Use this before renaming or merging so you refer to the right person.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeParticipants,
+			parameters:  `{"type":"object","properties":{}}`,
+		},
+		{
+			name:        "hike_participant_update",
+			description: "Rename a hiking participant and/or set their nicknames. The new name is saved exactly as given — the auto-matcher will NOT remap it — so use this to fix a participant whose name was recorded wrong. 'name' identifies the current participant (by name or a known nickname); 'new_name' is the corrected full name; 'nicknames' (optional) replaces their alias list.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeParticipantUpdate,
+			parameters:  `{"type":"object","properties":{"name":{"type":"string","description":"Current name (or a known nickname) of the participant to update."},"new_name":{"type":"string","description":"Corrected full name (nama panjang). Omit to keep the current name and only change nicknames."},"nicknames":{"type":"string","description":"Comma-separated nicknames/aliases (panggilan) to set for this participant, replacing any existing ones."}},"required":["name"]}`,
+		},
+		{
+			name:        "hike_participant_merge",
+			description: "Merge two duplicate hiking participants (the same person recorded under two different spellings) into one record. Every hike is reattributed from the duplicate to the surviving participant, and the duplicate's name is kept as a nickname. Use this to clean up participants that were wrongly split or auto-mismatched.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeParticipantMerge,
+			parameters:  `{"type":"object","properties":{"from":{"type":"string","description":"Name (or nickname) of the DUPLICATE participant to merge away and remove."},"into":{"type":"string","description":"Name (or nickname) of the surviving participant to keep."}},"required":["from","into"]}`,
 		},
 	},
 	"trello_review": {
