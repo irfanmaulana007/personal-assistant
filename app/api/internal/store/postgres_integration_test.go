@@ -331,7 +331,8 @@ func TestPostgresContactsBucketListTravelHiking(t *testing.T) {
 		t.Fatalf("create mountain: %v", err)
 	}
 	p, _ := s.CreateHiker(ctx, u.ID, "Bob")
-	hikeID, err := s.CreateHike(ctx, u.ID, &Hike{MountainID: m.ID, Camped: true, Days: 3, Nights: 2, HikedOn: time.Now().UTC()})
+	hikedOn := time.Now().UTC()
+	hikeID, err := s.CreateHike(ctx, u.ID, &Hike{MountainID: m.ID, Camped: true, Days: 3, Nights: 2, HikedOn: &hikedOn})
 	if err != nil {
 		t.Fatalf("create hike: %v", err)
 	}

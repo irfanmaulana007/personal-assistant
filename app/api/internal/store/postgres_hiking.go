@@ -196,12 +196,22 @@ func mergeNicknames(targetName string, targetNicks []string, sourceName string, 
 	return out
 }
 
+// utcOrNil normalizes an optional hike date to UTC for storage, passing nil
+// straight through so a dateless hike is written as SQL NULL.
+func utcOrNil(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	return &u
+}
+
 func (s *PostgresStore) CreateHike(ctx context.Context, userID int64, h *Hike) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
 		`INSERT INTO hikes (user_id, project_id, mountain_id, camped, up_track_id, down_track_id, days, nights, hiked_on, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		userID, authctx.ProjectID(ctx), h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, h.HikedOn.UTC(), time.Now().UTC()).Scan(&id)
+		userID, authctx.ProjectID(ctx), h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, utcOrNil(h.HikedOn), time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("create hike: %w", err)
 	}
@@ -230,7 +240,7 @@ func (s *PostgresStore) UpdateHike(ctx context.Context, userID, id int64, h *Hik
 		`UPDATE hikes SET mountain_id = $1, camped = $2, up_track_id = $3, down_track_id = $4,
 		        days = $5, nights = $6, hiked_on = $7
 		 WHERE id = $8 AND user_id = $9 AND ($10 = 0 OR project_id = $10)`,
-		h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, h.HikedOn.UTC(),
+		h.MountainID, h.Camped, h.UpTrackID, h.DownTrackID, h.Days, h.Nights, utcOrNil(h.HikedOn),
 		id, userID, authctx.ProjectID(ctx))
 	if err != nil {
 		return fmt.Errorf("update hike: %w", err)
@@ -304,7 +314,7 @@ func (s *PostgresStore) ListHikes(ctx context.Context, userID int64, limit int) 
 		 LEFT JOIN hike_tracks ut ON ut.id = h.up_track_id
 		 LEFT JOIN hike_tracks dt ON dt.id = h.down_track_id
 		 WHERE h.user_id = $1 AND ($2 = 0 OR h.project_id = $2)
-		 ORDER BY h.hiked_on DESC LIMIT $3`, userID, authctx.ProjectID(ctx), limit)
+		 ORDER BY h.hiked_on DESC NULLS LAST, h.id DESC LIMIT $3`, userID, authctx.ProjectID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list hikes: %w", err)
 	}

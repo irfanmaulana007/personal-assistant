@@ -345,8 +345,11 @@ type Hike struct {
 	DownTrackID int64 // 0 = none
 	Days        int
 	Nights      int
-	HikedOn     time.Time
-	CreatedAt   time.Time
+	// HikedOn is when the trip happened. It is nil when no date was recorded
+	// (e.g. a hike logged from chat without the user saying when) — the
+	// hiked_on column is nullable, so callers must nil-check before formatting.
+	HikedOn   *time.Time
+	CreatedAt time.Time
 }
 
 // HikeDetail is a hike joined with the names it references.

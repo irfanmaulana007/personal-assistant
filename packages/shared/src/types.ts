@@ -413,7 +413,7 @@ export interface Hike {
   down_track: string;
   days: number;
   nights: number;
-  hiked_on: string; // "YYYY-MM-DD"
+  hiked_on: string; // "YYYY-MM-DD", or "" when the hike has no recorded date
   participants: string[];
 }
 
@@ -426,7 +426,7 @@ export interface HikePayload {
   camped: boolean;
   days: number;
   nights: number;
-  hiked_on: string; // "YYYY-MM-DD"
+  hiked_on: string; // "YYYY-MM-DD", or "" when the hike has no recorded date
   participants: string[];
 }
 
