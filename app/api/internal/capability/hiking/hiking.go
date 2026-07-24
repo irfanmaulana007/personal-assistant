@@ -41,6 +41,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return h.logHike(ctx, result)
 	case intent.ActionHikeSummary:
 		return h.summary(ctx, result)
+	case intent.ActionHikeUpdate:
+		return h.updateHike(ctx, result)
 	case intent.ActionHikeDelete:
 		return h.deleteHike(ctx, result)
 	case intent.ActionHikeParticipants:
@@ -50,7 +52,7 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 	case intent.ActionHikeParticipantMerge:
 		return h.mergeParticipants(ctx, result)
 	default:
-		return "I can log a hike, summarize your trips, delete a hike by its number, or manage your hiking participants (rename or merge them).", nil
+		return "I can log a hike, summarize your trips, edit a logged hike (e.g. fix its date), delete a hike by its number, or manage your hiking participants (rename or merge them).", nil
 	}
 }
 
@@ -89,10 +91,12 @@ func (h *Handler) logHike(ctx context.Context, result *intent.ParseResult) (stri
 		notes = append(notes, fmt.Sprintf("reused down trail *%s*", downName))
 	}
 
-	hikedOn := time.Now()
+	// No date given → leave it unrecorded (nil) rather than fabricating today.
+	// The user can fill it in later with hike_update.
+	var hikedOn *time.Time
 	if d := strings.TrimSpace(e["date"]); d != "" {
 		if t, err := capability.ParseTime(d, h.timezone); err == nil {
-			hikedOn = t
+			hikedOn = &t
 		}
 	}
 
@@ -148,9 +152,22 @@ func (h *Handler) logHike(ctx context.Context, result *intent.ParseResult) (stri
 	return h.formatLogged(mountain.Name, upName, downName, hike, people, notes), nil
 }
 
+// hikeDate renders a hike's date in the user's timezone, or a placeholder when
+// the hike has no recorded date (hiked_on is null).
+func (h *Handler) hikeDate(t *time.Time, layout string) string {
+	if t == nil {
+		return "no date set"
+	}
+	return t.In(h.timezone).Format(layout)
+}
+
 func (h *Handler) formatLogged(mountain, up, down string, hike *store.Hike, people []string, notes []string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Logged hike to *%s* on %s.", mountain, hike.HikedOn.In(h.timezone).Format("Mon, Jan 2 2006")))
+	if hike.HikedOn != nil {
+		sb.WriteString(fmt.Sprintf("Logged hike to *%s* on %s.", mountain, hike.HikedOn.In(h.timezone).Format("Mon, Jan 2 2006")))
+	} else {
+		sb.WriteString(fmt.Sprintf("Logged hike to *%s* (no date set — say the date and I'll add it).", mountain))
+	}
 	if up != "" {
 		sb.WriteString("\nUp: " + up)
 	}
@@ -192,7 +209,7 @@ func (h *Handler) summary(ctx context.Context, result *intent.ParseResult) (stri
 	for _, hk := range hikes {
 		nights += hk.Nights
 		mountains[hk.Mountain] = true
-		sb.WriteString(fmt.Sprintf("\n#%d • *%s* — %s", hk.ID, hk.Mountain, hk.HikedOn.In(h.timezone).Format("Jan 2 2006")))
+		sb.WriteString(fmt.Sprintf("\n#%d • *%s* — %s", hk.ID, hk.Mountain, h.hikeDate(hk.HikedOn, "Jan 2 2006")))
 		if hk.UpTrack != "" || hk.DownTrack != "" {
 			sb.WriteString(fmt.Sprintf(" (up: %s, down: %s)", orDash(hk.UpTrack), orDash(hk.DownTrack)))
 		}
@@ -208,6 +225,143 @@ func (h *Handler) summary(ctx context.Context, result *intent.ParseResult) (stri
 	}
 	sb.WriteString(fmt.Sprintf("\n\n%d mountain(s), %d night(s) on the trail.", len(mountains), nights))
 	sb.WriteString("\n\n_Tip: to remove a hike, say \"delete hike\" with its number (e.g. #" + strconv.FormatInt(hikes[0].ID, 10) + ")._")
+	return sb.String(), nil
+}
+
+// updateHike edits an already-logged hike, identified by its #id. Only the
+// fields the caller supplies are changed; every other field keeps its current
+// value (loaded via GetHike), so fixing just the date can't clobber the
+// mountain, trails, duration, or participants. This is the non-destructive
+// alternative to delete + re-log. Participant membership is intentionally out
+// of scope here — that is managed by the participant tools.
+func (h *Handler) updateHike(ctx context.Context, result *intent.ParseResult) (string, error) {
+	userID := authctx.UserID(ctx)
+	e := result.Entities
+
+	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(e["id"]), "#"))
+	if raw == "" {
+		return "Which hike should I edit? Give me its number from the summary — e.g. _update hike 42 to 18 March 2023_. Run hike_summary first if you're not sure.", nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return "Please give me a valid hike number to edit (the # shown in the summary).", nil
+	}
+
+	existing, err := h.store.GetHike(ctx, userID, id)
+	if err != nil {
+		return "", fmt.Errorf("get hike: %w", err)
+	}
+	if existing == nil {
+		return fmt.Sprintf("I couldn't find a hike numbered #%d. Run hike_summary to see your hikes and their numbers.", id), nil
+	}
+
+	// Start from the current values; override only what the caller supplied.
+	updated := existing.Hike
+	var notes []string
+	changed := false
+	touchedDuration := false
+
+	if v, ok := e["mountain"]; ok && strings.TrimSpace(v) != "" {
+		mountain, reused, err := h.resolveMountain(ctx, userID, v)
+		if err != nil {
+			return "", err
+		}
+		if reused && !equalName(mountain.Name, v) {
+			notes = append(notes, fmt.Sprintf("matched %q to your existing mountain *%s*", v, mountain.Name))
+		}
+		updated.MountainID = mountain.ID
+		changed = true
+	}
+
+	if v, ok := e["date"]; ok && strings.TrimSpace(v) != "" {
+		t, err := capability.ParseTime(strings.TrimSpace(v), h.timezone)
+		if err != nil {
+			return fmt.Sprintf("I couldn't understand the date %q. Try something like '18 March 2023', 'Aug 2', or 'last Saturday'.", v), nil
+		}
+		updated.HikedOn = &t
+		changed = true
+	}
+
+	if v, ok := e["up_track"]; ok {
+		tid, tname, reused, err := h.resolveTrack(ctx, userID, updated.MountainID, v)
+		if err != nil {
+			return "", err
+		}
+		if reused {
+			notes = append(notes, fmt.Sprintf("reused up trail *%s*", tname))
+		}
+		updated.UpTrackID = tid
+		changed = true
+	}
+	if v, ok := e["down_track"]; ok {
+		tid, tname, reused, err := h.resolveTrack(ctx, userID, updated.MountainID, v)
+		if err != nil {
+			return "", err
+		}
+		if reused {
+			notes = append(notes, fmt.Sprintf("reused down trail *%s*", tname))
+		}
+		updated.DownTrackID = tid
+		changed = true
+	}
+
+	if v, ok := e["days"]; ok {
+		updated.Days = atoi(v)
+		changed = true
+		touchedDuration = true
+	}
+	if v, ok := e["nights"]; ok {
+		updated.Nights = atoi(v)
+		changed = true
+		touchedDuration = true
+	}
+	if v, ok := e["camped"]; ok {
+		updated.Camped = parseBool(v)
+		changed = true
+	} else if touchedDuration && (updated.Days > 1 || updated.Nights > 0) {
+		// Mirror hike_log: a multi-day/overnight trip implies camping, so infer
+		// it when the duration was edited and camping wasn't given explicitly.
+		updated.Camped = true
+	}
+
+	if !changed {
+		return fmt.Sprintf("Tell me what to change about hike #%d — for example its date, mountain, trails, or duration.", id), nil
+	}
+
+	if err := h.store.UpdateHike(ctx, userID, id, &updated); err != nil {
+		return "", fmt.Errorf("update hike: %w", err)
+	}
+
+	// Read-after-write: confirm the edit persisted before reporting it, and
+	// echo the stored names/participants so the reply reflects the real row.
+	saved, err := h.store.GetHike(ctx, userID, id)
+	if err != nil {
+		return "", fmt.Errorf("verify hike updated: %w", err)
+	}
+	if saved == nil {
+		return "", fmt.Errorf("verify hike updated: hike not found after update")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Updated hike #%d — *%s* (%s).", saved.ID, saved.Mountain, h.hikeDate(saved.HikedOn, "Mon, Jan 2 2006")))
+	if saved.UpTrack != "" {
+		sb.WriteString("\nUp: " + saved.UpTrack)
+	}
+	if saved.DownTrack != "" {
+		sb.WriteString("\nDown: " + saved.DownTrack)
+	}
+	if saved.Days > 0 || saved.Nights > 0 {
+		sb.WriteString(fmt.Sprintf("\nDuration: %dD/%dN", saved.Days, saved.Nights))
+	}
+	if saved.Camped {
+		sb.WriteString("\nCamped: yes")
+	}
+	if len(saved.Participants) > 0 {
+		sb.WriteString("\nWith: " + strings.Join(saved.Participants, ", "))
+	}
+	if len(notes) > 0 {
+		sb.WriteString("\n\n_(" + strings.Join(notes, "; ") + ")_")
+	}
 	return sb.String(), nil
 }
 
@@ -260,7 +414,7 @@ func (h *Handler) deleteHike(ctx context.Context, result *intent.ParseResult) (s
 		if err := h.store.DeleteHike(ctx, userID, id); err != nil {
 			return "", fmt.Errorf("delete hike: %w", err)
 		}
-		deleted = append(deleted, fmt.Sprintf("#%d *%s* (%s)", id, hike.Mountain, hike.HikedOn.In(h.timezone).Format("Jan 2 2006")))
+		deleted = append(deleted, fmt.Sprintf("#%d *%s* (%s)", id, hike.Mountain, h.hikeDate(hike.HikedOn, "Jan 2 2006")))
 	}
 
 	var sb strings.Builder

@@ -362,6 +362,101 @@ func TestHikeDelete(t *testing.T) {
 	}
 }
 
+// TestHikeUpdate covers editing an already-logged hike: a hike logged without a
+// date is stored with no date (hiked_on null) rather than a fabricated one, and
+// hike_update fills in the date (and other core fields) in place while
+// preserving everything the caller didn't touch — including participants.
+func TestHikeUpdate(t *testing.T) {
+	db := storetest.New(t)
+	h := New(db, time.UTC, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := authctx.WithUserID(context.Background(), 31)
+
+	do := func(action intent.Action, entities map[string]string) string {
+		t.Helper()
+		out, err := h.Handle(ctx, &intent.ParseResult{
+			Capability: intent.CapabilityHiking, Action: action, Entities: entities,
+		})
+		if err != nil {
+			t.Fatalf("%s %+v: %v", action, entities, err)
+		}
+		return out
+	}
+
+	// Log a hike with participants but NO date — it must persist without a date
+	// instead of defaulting to today.
+	out := do(intent.ActionHikeLog, map[string]string{"mountain": "Merbabu", "participants": "Selo"})
+	if !strings.Contains(out, "no date set") {
+		t.Errorf("logging without a date should report no date set, got: %q", out)
+	}
+	hikes, _ := db.ListHikes(ctx, 31, 50)
+	if len(hikes) != 1 {
+		t.Fatalf("expected 1 hike, got %d", len(hikes))
+	}
+	if hikes[0].HikedOn != nil {
+		t.Errorf("a dateless hike must store hiked_on as nil, got %v", hikes[0].HikedOn)
+	}
+	id := hikes[0].ID
+
+	// Summary surfaces the missing date rather than a bogus one.
+	if sum := do(intent.ActionHikeSummary, map[string]string{}); !strings.Contains(sum, "no date set") {
+		t.Errorf("summary should show 'no date set' for an undated hike, got: %q", sum)
+	}
+
+	// hike_update fills in the date; the mountain and participants are untouched.
+	out = do(intent.ActionHikeUpdate, map[string]string{"id": itoa(id), "date": "18 March 2023"})
+	if !strings.Contains(out, "Updated hike") || !strings.Contains(out, "Mar 18 2023") {
+		t.Errorf("update wording/date wrong: %q", out)
+	}
+	got, err := db.GetHike(ctx, 31, id)
+	if err != nil || got == nil {
+		t.Fatalf("get hike after update: %v", err)
+	}
+	if got.HikedOn == nil || got.HikedOn.Format("2006-01-02") != "2023-03-18" {
+		t.Errorf("expected hiked_on 2023-03-18, got %v", got.HikedOn)
+	}
+	if !containsFold(got.Participants, "Selo") {
+		t.Errorf("participants must survive a date-only update, got %+v", got.Participants)
+	}
+	if got.Mountain != "Merbabu" {
+		t.Errorf("mountain must survive a date-only update, got %q", got.Mountain)
+	}
+
+	// Editing duration infers camping (mirrors hike_log) and keeps the date.
+	do(intent.ActionHikeUpdate, map[string]string{"id": itoa(id), "days": "3", "nights": "2"})
+	got, _ = db.GetHike(ctx, 31, id)
+	if got.Days != 3 || got.Nights != 2 || !got.Camped {
+		t.Errorf("expected 3D/2N camped after duration edit, got %dD/%dN camped=%v", got.Days, got.Nights, got.Camped)
+	}
+	if got.HikedOn == nil {
+		t.Errorf("date must survive a duration-only update")
+	}
+
+	// A missing id prompts rather than editing anything.
+	if out := do(intent.ActionHikeUpdate, map[string]string{}); !strings.Contains(out, "Which hike") {
+		t.Errorf("empty id should prompt for a number, got: %q", out)
+	}
+	// An unknown id reports not-found.
+	if out := do(intent.ActionHikeUpdate, map[string]string{"id": "999999", "date": "Jan 1 2020"}); !strings.Contains(out, "couldn't find") {
+		t.Errorf("unknown id should report not found, got: %q", out)
+	}
+	// No editable fields → asks what to change.
+	if out := do(intent.ActionHikeUpdate, map[string]string{"id": itoa(id)}); !strings.Contains(out, "what to change") {
+		t.Errorf("id with no fields should ask what to change, got: %q", out)
+	}
+
+	// User isolation: another user cannot edit this hike by id.
+	otherCtx := authctx.WithUserID(context.Background(), 32)
+	if _, err := h.Handle(otherCtx, &intent.ParseResult{
+		Capability: intent.CapabilityHiking, Action: intent.ActionHikeUpdate,
+		Entities: map[string]string{"id": itoa(id), "date": "Jan 1 2000"},
+	}); err != nil {
+		t.Fatalf("cross-user update: %v", err)
+	}
+	if after, _ := db.GetHike(ctx, 31, id); after.HikedOn == nil || after.HikedOn.Format("2006-01-02") != "2023-03-18" {
+		t.Errorf("another user must not change this hike's date, got %v", after.HikedOn)
+	}
+}
+
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 func containsFold(items []string, want string) bool {
