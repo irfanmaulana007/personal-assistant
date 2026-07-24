@@ -14,7 +14,7 @@ import {
 import type { Hike } from '../../types';
 import { Modal } from '../ui/Modal';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const MONTHS = Array.from({ length: 12 }, (_, i) => i);
 
 function currentYear(): number {
@@ -189,8 +189,8 @@ function MonthGrid({
   const first = new Date(year, month, 1);
   const monthStart = startOfMonth(first);
   const monthEnd = endOfMonth(first);
-  const gridStart = startOfWeek(monthStart);
-  const gridEnd = endOfWeek(monthEnd);
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   return (
