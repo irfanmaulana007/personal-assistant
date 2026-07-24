@@ -16,6 +16,7 @@ import { DatePicker } from './DatePicker';
 import { DateRangePicker } from './DateRangePicker';
 import { HikeAnalytics } from './hikes/HikeAnalytics';
 import { HikeDetailModal } from './hikes/HikeDetailModal';
+import { HikeCalendarModal } from './hikes/HikeCalendarModal';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-indigo-500/30';
@@ -82,6 +83,7 @@ export function Hikes() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ id: number | null; form: HikePayload } | null>(null);
   const [detail, setDetail] = useState<Hike | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   // Persist the search term and date range in the URL so they survive reloads
   // and are shareable, matching the Reminders/Logs filter convention.
@@ -173,6 +175,27 @@ export function Hikes() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
+            onClick={() => setShowCalendar(true)}
+            disabled={!hasHikes}
+            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8 2v3M16 2v3M3.5 9h17M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
+              />
+            </svg>
+            Calendar view
+          </button>
+          <button
+            type="button"
             onClick={() => setEditing({ id: null, form: emptyForm() })}
             className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
           >
@@ -212,6 +235,16 @@ export function Hikes() {
         }}
         onDelete={remove}
         deleting={detail != null && busyId === detail.id}
+      />
+
+      <HikeCalendarModal
+        open={showCalendar}
+        hikes={hikes}
+        onClose={() => setShowCalendar(false)}
+        onSelectHike={(h) => {
+          setShowCalendar(false);
+          setDetail(h);
+        }}
       />
 
       {/* Date range (optional, clearable), above the metrics: it drives both the
