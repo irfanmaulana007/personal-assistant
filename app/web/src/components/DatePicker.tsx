@@ -99,6 +99,7 @@ export function DatePicker({
           <div className="p-3 text-gray-700 dark:text-gray-200">
             <DayPicker
               mode="single"
+              weekStartsOn={1}
               selected={selected}
               onSelect={handleSelect}
               disabled={disabled.length ? disabled : undefined}
