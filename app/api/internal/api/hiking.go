@@ -64,9 +64,18 @@ func toHikeResp(d store.HikeDetail) hikeResp {
 		DownTrack:    d.DownTrack,
 		Days:         d.Days,
 		Nights:       d.Nights,
-		HikedOn:      d.HikedOn.UTC().Format("2006-01-02"),
+		HikedOn:      hikedOnStr(d.HikedOn),
 		Participants: parts,
 	}
+}
+
+// hikedOnStr renders a hike date as "YYYY-MM-DD" for the UI, or "" when the
+// hike has no recorded date (hiked_on is null).
+func hikedOnStr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02")
 }
 
 // handleListHikes returns the current user's logged hikes for the active
@@ -271,13 +280,17 @@ func (s *Server) buildHike(r *http.Request, userID int64, req hikeReq) (*store.H
 	if mountainName == "" {
 		return nil, "mountain is required", nil
 	}
-	hikedOn := time.Now().UTC()
+	// An empty date leaves the hike undated (nil) rather than defaulting to
+	// today, so the UI can clear a date and the chat flow's dateless hikes round
+	// -trip through an edit unchanged.
+	var hikedOn *time.Time
 	if raw := strings.TrimSpace(req.HikedOn); raw != "" {
 		t, err := parseDoneAt(raw)
 		if err != nil {
 			return nil, "invalid hiked_on date", nil
 		}
-		hikedOn = t
+		u := t.UTC()
+		hikedOn = &u
 	}
 
 	mountainID, _, err := s.resolveMountainID(r, userID, mountainName)

@@ -52,6 +52,8 @@ function toPayload(h: Hike): HikePayload {
 }
 
 function formatDate(iso: string): string {
+  // An empty hiked_on means the hike was logged without a date.
+  if (!iso) return 'No date';
   const d = new Date(iso + 'T00:00:00');
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

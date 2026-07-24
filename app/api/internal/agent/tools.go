@@ -273,6 +273,13 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"limit":{"type":"integer","description":"How many recent hikes to show. Default 10."}}}`,
 		},
 		{
+			name:        "hike_update",
+			description: "Edit an already-logged hike by its number (the #id shown by hike_summary) — most commonly to fix its date. Only the fields you pass are changed; everything else on the hike stays as it was. Use this instead of deleting and re-logging when just the date, mountain, trails, or duration is wrong, so participants and other details are preserved. Always run hike_summary first to get the right #id. To change who joined the hike, use the participant tools instead.",
+			capability:  intent.CapabilityHiking,
+			action:      intent.ActionHikeUpdate,
+			parameters:  `{"type":"object","properties":{"id":{"type":"integer","description":"Hike number to edit, from the #id shown in hike_summary."},"date":{"type":"string","description":"Corrected hiking date, e.g. '18 March 2023', 'Aug 2', 'last Saturday'."},"mountain":{"type":"string","description":"Corrected mountain / hiking destination. Omit to keep the current one."},"up_track":{"type":"string","description":"Corrected trail used going up. Omit to keep; pass empty to clear."},"down_track":{"type":"string","description":"Corrected trail used going down. Omit to keep; pass empty to clear."},"camped":{"type":"boolean","description":"Whether the user camped overnight."},"days":{"type":"integer","description":"Corrected number of days."},"nights":{"type":"integer","description":"Corrected number of nights."}},"required":["id"]}`,
+		},
+		{
 			name:        "hike_delete",
 			description: "Delete one or more logged hikes by their number (the #id shown by hike_summary). Use this to remove duplicate or wrongly-logged hikes. Pass a single number, or several as a comma-separated list (e.g. \"12, 15, 18\") to clear multiple duplicates at once. Always run hike_summary first so you delete the right entries by their #id.",
 			capability:  intent.CapabilityHiking,
