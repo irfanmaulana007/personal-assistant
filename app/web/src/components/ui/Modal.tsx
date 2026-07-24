@@ -10,12 +10,16 @@ export function Modal({
   title,
   description,
   children,
+  widthClass = 'max-w-lg',
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
   children: ReactNode;
+  // Tailwind max-width class for the panel; defaults to the standard narrow
+  // dialog. Wider views (e.g. the year calendar) can pass max-w-5xl etc.
+  widthClass?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -45,7 +49,9 @@ export function Modal({
       aria-modal="true"
       aria-label={title}
     >
-      <div className="my-8 w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+      <div
+        className={`my-8 w-full ${widthClass} rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800`}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">{title}</h2>
