@@ -4,6 +4,9 @@
 
 **personal-assistant** — A personal assistant application.
 
+- **Default project:** The project with `id = 1` is the default project (my
+  personal project). When a project is not specified, assume `id = 1`.
+
 ## Repository
 
 - **Repo:** https://github.com/irfanmaulana007/personal-assistant

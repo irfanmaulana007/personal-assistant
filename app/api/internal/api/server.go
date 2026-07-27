@@ -171,6 +171,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/bucket-list/{id}/done", project(s.handleSetBucketItemDone))
 	mux.Handle("PUT /api/bucket-list/{id}/resolution", project(s.handleSetBucketItemResolution))
 	mux.Handle("DELETE /api/bucket-list/{id}", project(s.handleDeleteBucketItem))
+
+	mux.Handle("GET /api/wishlist", project(s.handleListWishItems))
+	mux.Handle("POST /api/wishlist", project(s.handleCreateWishItem))
+	mux.Handle("PUT /api/wishlist/{id}", project(s.handleUpdateWishItem))
+	mux.Handle("PUT /api/wishlist/{id}/done", project(s.handleSetWishItemDone))
+	mux.Handle("DELETE /api/wishlist/{id}", project(s.handleDeleteWishItem))
 	mux.Handle("GET /api/hikes", project(s.handleListHikes))
 	mux.Handle("GET /api/hikes/options", project(s.handleHikeOptions))
 	mux.Handle("GET /api/hikes/tracks", project(s.handleListHikeTracks))

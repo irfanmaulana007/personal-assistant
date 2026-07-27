@@ -9,6 +9,7 @@ import { Chat } from './components/Chat';
 import { AdminSkills } from './components/AdminSkills';
 import { Reminders } from './components/Reminders';
 import { BucketList } from './components/BucketList';
+import { Wishlist } from './components/Wishlist';
 import { Hikes } from './components/Hikes';
 import { Projects } from './components/Projects';
 import { Settings } from './components/Settings';
@@ -72,6 +73,7 @@ const LEGACY_PROJECT_PREFIXES = new Set([
   'chat',
   'reminders',
   'bucket-list',
+  'wishlist',
   'hikes',
   'profile',
   'integrations',
@@ -202,6 +204,7 @@ function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="reminders" element={<Reminders isAdmin={isAdmin} />} />
             <Route path="bucket-list" element={<BucketList />} />
+            <Route path="wishlist" element={<Wishlist />} />
             <Route path="hikes" element={<Hikes />} />
             {/* The project skills surface now lives under project settings; keep
                 old /:slug/skills bookmarks working by redirecting there. */}

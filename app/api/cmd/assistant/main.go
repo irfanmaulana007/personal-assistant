@@ -32,6 +32,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/capability/travel"
 	trellocap "github.com/irfanmaulana007/personal-assistant/app/api/internal/capability/trello"
 	websearchcap "github.com/irfanmaulana007/personal-assistant/app/api/internal/capability/websearch"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/capability/wishlist"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/composio"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/composiotools"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/config"
@@ -158,6 +159,7 @@ func main() {
 	// registered so the router can serve them when the skill is enabled).
 	handlers = append(handlers, contacts.New(db, log))
 	handlers = append(handlers, bucketlist.New(db, log))
+	handlers = append(handlers, wishlist.New(db, log))
 	handlers = append(handlers, activity.New(db, timezone, log))
 	handlers = append(handlers, travel.New(db, timezone, log))
 	handlers = append(handlers, hiking.New(db, timezone, log))

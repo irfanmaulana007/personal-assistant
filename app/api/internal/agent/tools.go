@@ -193,6 +193,43 @@ var skillTools = map[string][]toolSpec{
 			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its title."}},"required":["item"]}`,
 		},
 	},
+	"wishlist": {
+		{
+			name:        "wishlist_add",
+			description: "Add an item to the user's wishlist — something they plan to BUY (e.g. 'a pegboard', 'a shower head', a marketplace item). Use this when the user says they want to buy/get something and mentions a price, a month to buy it, or a link.",
+			capability:  intent.CapabilityWishlist,
+			action:      intent.ActionWishlistAdd,
+			parameters:  `{"type":"object","properties":{"name":{"type":"string","description":"Short name of the item to buy (e.g. 'Pegboard', 'Rain Shower Head')."},"estimated_price":{"type":"string","description":"Estimated price as a plain number in the user's currency (IDR). Accepts shorthands like '300k' or '1.5jt'. Omit if unknown."},"buy_month":{"type":"string","description":"Target month to buy, as 'YYYY-MM' (e.g. '2026-09'). Convert relative phrases like 'next month' or 'September' to this form. Omit if undecided."},"priority":{"type":"string","enum":["low","medium","high"],"description":"How urgent the purchase is. Default 'medium'."},"link":{"type":"string","description":"A reference or marketplace product URL, if the user gave one."},"note":{"type":"string","description":"Any short extra detail, optional (e.g. 'white, 60cm')."}},"required":["name"]}`,
+		},
+		{
+			name:        "wishlist_list",
+			description: "List the user's wishlist — the things they plan to buy, grouped by target month, with estimated prices and which are already bought.",
+			capability:  intent.CapabilityWishlist,
+			action:      intent.ActionWishlistList,
+			parameters:  `{"type":"object","properties":{}}`,
+		},
+		{
+			name:        "wishlist_update",
+			description: "Update an existing wishlist item's fields (price, target month, priority, link, note, or name). Identify it by its number from the last listing or by its name. Only pass the fields that change.",
+			capability:  intent.CapabilityWishlist,
+			action:      intent.ActionWishlistUpdate,
+			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its name."},"name":{"type":"string","description":"New name."},"estimated_price":{"type":"string","description":"New estimated price (accepts '300k'/'1.5jt')."},"buy_month":{"type":"string","description":"New target month as 'YYYY-MM'. Pass an empty string to clear it."},"priority":{"type":"string","enum":["low","medium","high"],"description":"New priority."},"link":{"type":"string","description":"New reference/marketplace URL."},"note":{"type":"string","description":"New note."}},"required":["item"]}`,
+		},
+		{
+			name:        "wishlist_check",
+			description: "Mark a wishlist item as bought/checked out. Identify it by its number from the last listing or by its name.",
+			capability:  intent.CapabilityWishlist,
+			action:      intent.ActionWishlistCheck,
+			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its name."}},"required":["item"]}`,
+		},
+		{
+			name:        "wishlist_delete",
+			description: "Remove an item from the user's wishlist. Identify it by its number from the last listing or by its name.",
+			capability:  intent.CapabilityWishlist,
+			action:      intent.ActionWishlistDelete,
+			parameters:  `{"type":"object","properties":{"item":{"type":"string","description":"The item's number from the list, or (part of) its name."}},"required":["item"]}`,
+		},
+	},
 	"activity_summary": {
 		{
 			name:        "activity_log",

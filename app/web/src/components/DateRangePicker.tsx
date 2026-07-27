@@ -177,6 +177,7 @@ export function DateRangePicker({
             <div className="p-3 text-gray-700 dark:text-gray-200">
               <DayPicker
                 mode="range"
+                weekStartsOn={1}
                 selected={draft}
                 onSelect={setDraft}
                 numberOfMonths={2}
