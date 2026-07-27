@@ -12,6 +12,8 @@ import type {
   ModelPrice,
   BucketItem,
   BucketItemPayload,
+  WishItem,
+  WishItemPayload,
   Hike,
   HikePayload,
   HikeOptions,
@@ -327,6 +329,35 @@ export async function setBucketItemResolution(
 
 export async function deleteBucketItem(id: number): Promise<void> {
   await request(`/api/bucket-list/${id}`, { method: 'DELETE' });
+}
+
+export async function listWishItems(): Promise<WishItem[]> {
+  return request<WishItem[]>('/api/wishlist');
+}
+
+export async function createWishItem(w: WishItemPayload): Promise<WishItem> {
+  return request<WishItem>('/api/wishlist', { method: 'POST', body: JSON.stringify(w) });
+}
+
+export async function updateWishItem(id: number, w: WishItemPayload): Promise<WishItem> {
+  return request<WishItem>(`/api/wishlist/${id}`, { method: 'PUT', body: JSON.stringify(w) });
+}
+
+// Mark an item bought/unbought. When checking, an optional `doneAt` (RFC3339 or
+// "YYYY-MM-DD") records the exact purchase date; omit it to default to now.
+export async function setWishItemDone(
+  id: number,
+  done: boolean,
+  doneAt?: string,
+): Promise<WishItem> {
+  return request<WishItem>(`/api/wishlist/${id}/done`, {
+    method: 'PUT',
+    body: JSON.stringify({ done, done_at: done ? doneAt : undefined }),
+  });
+}
+
+export async function deleteWishItem(id: number): Promise<void> {
+  await request(`/api/wishlist/${id}`, { method: 'DELETE' });
 }
 
 export async function listHikes(): Promise<Hike[]> {

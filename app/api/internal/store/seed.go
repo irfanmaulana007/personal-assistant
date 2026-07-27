@@ -27,6 +27,7 @@ func DefaultSkillPrompt(key string) string {
 var featureSeed = []Feature{
 	{Key: "chat", Name: "Chat", SortOrder: 1, DefaultEnabled: true, Description: "The core conversational assistant."},
 	{Key: "bucket_list", Name: "Bucket List", SortOrder: 2, DefaultEnabled: true, Description: "A categorized life checklist."},
+	{Key: "wishlist", Name: "Wishlist", SortOrder: 2, DefaultEnabled: true, Description: "A buy/shopping list grouped by target month."},
 	{Key: "reminders", Name: "Reminders", SortOrder: 3, DefaultEnabled: true, Description: "Scheduled reminders and their calendar mirror."},
 	{Key: "notes", Name: "Notes", SortOrder: 4, DefaultEnabled: true, Description: "Saved notes and knowledge base."},
 	{Key: "contacts", Name: "Contacts", SortOrder: 5, DefaultEnabled: true, Description: "Saved contacts lookup."},
@@ -46,6 +47,7 @@ var featureSeed = []Feature{
 // boot from code, so it always reflects the current catalog.
 var featureSkillSeed = map[string][]string{
 	"bucket_list":   {"bucket_list"},
+	"wishlist":      {"wishlist"},
 	"contacts":      {"ask_about_contact"},
 	"travel":        {"travel_control"},
 	"hiking":        {"hiking_tracker"},
@@ -76,6 +78,15 @@ var skillSeed = []Skill{
 		SortOrder:      1,
 		Description:    "Keep a bucket list of things you want to do in life — \"take a swimming course\", \"visit Japan\", \"climb Rinjani\" — sorted into categories. Add them just by mentioning them, ask to see your list, and check them off as you go. Also manageable from the Bucket List page, where you can flag items as this year's resolutions.",
 		Prompt:         "The user keeps a bucket list — a categorized checklist of things they want to do in life. Use bucketlist_add when they mention wanting to do or achieve something someday, inferring the category (self_improvement, learning, hiking, country, local, other). Use bucketlist_list to show the list and its progress, bucketlist_check to mark an item done when they've achieved it, and bucketlist_delete to remove one. Identify an item to check or delete by its number from the last listing or by its title. You MUST call bucketlist_add (or bucketlist_check) to change the list — only confirm an item after the tool call returns successfully, and never claim you added or checked off something without actually calling the tool. Be encouraging when they complete something.",
+	},
+	{
+		Key:            "wishlist",
+		Name:           "Wishlist",
+		Category:       "Personal",
+		DefaultEnabled: true,
+		SortOrder:      2,
+		Description:    "Keep a wishlist of things you plan to buy — \"a pegboard\", \"a rain shower head\", a marketplace item — with an estimated price, which month you want to buy it, a priority, and a reference link. Add them just by mentioning them, ask to see your list grouped by month, and check them off after you buy. Also manageable from the Wishlist page, where you can plan your spending around payroll.",
+		Prompt:         "The user keeps a wishlist — a shopping list of things they plan to buy, grouped by the month they intend to purchase each one (so they can check out after payroll). Use wishlist_add when they mention wanting to buy/get an item, capturing the name plus any estimated price, target month, priority, or link they gave. Convert prices like '300k' or '1.5jt' and relative months like 'next month' or 'September' into the tool's formats (a plain number and 'YYYY-MM'). Use wishlist_list to show the list grouped by month with estimated totals, wishlist_update to change an item's price/month/priority/link/note, wishlist_check to mark an item bought, and wishlist_delete to remove one. Identify an item to update, check, or delete by its number from the last listing or by its name. You MUST call wishlist_add (or the other tools) to change the list — only confirm after the tool call returns successfully, and never claim you added, updated, or bought something without actually calling the tool.",
 	},
 	{
 		Key:            "travel_control",

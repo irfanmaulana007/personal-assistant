@@ -12,6 +12,7 @@ const (
 	CapabilityMemory     Capability = "memory"
 	CapabilityContact    Capability = "contact"
 	CapabilityBucketList Capability = "bucket_list"
+	CapabilityWishlist   Capability = "wishlist"
 	CapabilityActivity   Capability = "activity"
 	CapabilityTravel     Capability = "travel"
 	CapabilityHiking     Capability = "hiking"
@@ -84,6 +85,15 @@ const (
 	ActionBucketListList   Action = "bucket_list.list"
 	ActionBucketListCheck  Action = "bucket_list.check"
 	ActionBucketListDelete Action = "bucket_list.delete"
+)
+
+// Wishlist actions (a buy/shopping list grouped by target month)
+const (
+	ActionWishlistAdd    Action = "wishlist.add"
+	ActionWishlistList   Action = "wishlist.list"
+	ActionWishlistUpdate Action = "wishlist.update"
+	ActionWishlistCheck  Action = "wishlist.check"
+	ActionWishlistDelete Action = "wishlist.delete"
 )
 
 // Activity actions

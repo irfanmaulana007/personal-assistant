@@ -399,6 +399,35 @@ export interface BucketItemPayload {
   category: BucketCategory;
 }
 
+// Wishlist priority keys, mirrored from the server. Unknown values are stored
+// as 'medium'.
+export type WishPriority = 'low' | 'medium' | 'high';
+
+// A wishlist item — something the user plans to buy, with an estimated price, a
+// target month to buy (grouped so purchases can be planned around payroll), a
+// priority, and a reference/marketplace link.
+export interface WishItem {
+  id: number;
+  name: string;
+  estimated_price: number; // whole currency units (e.g. IDR)
+  buy_month: string; // target month "YYYY-MM", or '' when undecided
+  priority: WishPriority;
+  link: string;
+  note: string;
+  done: boolean; // true once bought / checked out
+  done_at: string; // RFC3339, or '' when not done
+  created_at: string;
+}
+
+export interface WishItemPayload {
+  name: string;
+  estimated_price: number;
+  buy_month: string;
+  priority: WishPriority;
+  link: string;
+  note: string;
+}
+
 // A logged hiking trip, joined with the names it references so the UI never has
 // to resolve ids. `hiked_on` is a plain "YYYY-MM-DD" date; an empty up/down
 // track (id 0, name '') means no trail was recorded for that direction.
