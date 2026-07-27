@@ -282,6 +282,49 @@ func NormalizeCategory(c string) string {
 	return CategoryOther
 }
 
+// WishItem is a single entry on the user's wishlist — something they plan to
+// buy (a shower, a pegboard, a marketplace item). It carries an estimated
+// price, a target month to buy (so purchases can be grouped and checked out
+// after payroll), a priority, and a reference/marketplace link. Scoped to a
+// user.
+type WishItem struct {
+	ID             int64
+	Name           string
+	EstimatedPrice int64  // estimated price in whole currency units (e.g. IDR)
+	BuyMonth       string // target month to buy, "YYYY-MM"; empty when undecided
+	Priority       string // one of the known priority keys; defaults to PriorityMedium
+	Link           string // reference or marketplace item URL
+	Note           string // a short, optional user annotation
+	Done           bool   // true once purchased/checked out
+	CreatedAt      time.Time
+	DoneAt         *time.Time // set when Done, nil otherwise
+}
+
+// Wishlist priority keys. Stored verbatim in the priority column; unknown
+// values normalize to PriorityMedium.
+const (
+	PriorityLow    = "low"
+	PriorityMedium = "medium"
+	PriorityHigh   = "high"
+)
+
+// wishPriorities is the set of recognized priority keys.
+var wishPriorities = map[string]bool{
+	PriorityLow:    true,
+	PriorityMedium: true,
+	PriorityHigh:   true,
+}
+
+// NormalizeWishPriority lower-cases a priority and falls back to PriorityMedium
+// for anything unrecognized, so the stored value is always a known key.
+func NormalizeWishPriority(p string) string {
+	p = strings.ToLower(strings.TrimSpace(p))
+	if wishPriorities[p] {
+		return p
+	}
+	return PriorityMedium
+}
+
 // Activity is a logged sport/workout session, scoped to a user.
 type Activity struct {
 	ID          int64
@@ -767,6 +810,14 @@ type DataStore interface {
 	SetBucketItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error
 	SetBucketItemResolution(ctx context.Context, userID, id int64, year *int) error
 	DeleteBucketItem(ctx context.Context, userID, id int64) error
+
+	// Wishlist (a buy/shopping list grouped by target month, scoped to a user)
+	CreateWishItem(ctx context.Context, userID int64, name string, estimatedPrice int64, buyMonth, priority, link, note string) (*WishItem, error)
+	ListWishItems(ctx context.Context, userID int64) ([]WishItem, error)
+	GetWishItem(ctx context.Context, userID, id int64) (*WishItem, error)
+	UpdateWishItem(ctx context.Context, userID, id int64, name string, estimatedPrice int64, buyMonth, priority, link, note string) error
+	SetWishItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error
+	DeleteWishItem(ctx context.Context, userID, id int64) error
 
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)

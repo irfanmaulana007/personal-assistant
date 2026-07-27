@@ -106,6 +106,10 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 
 const bucketItemCols = "id, title, description, note, category, resolution_year, done, created_at, done_at"
 
+// --- Wishlist ---
+
+const wishItemCols = "id, name, estimated_price, buy_month, priority, link, note, done, created_at, done_at"
+
 // --- Memories ---
 
 func scanMemories(rows interface {
