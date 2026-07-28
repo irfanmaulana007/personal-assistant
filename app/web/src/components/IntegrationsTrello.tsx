@@ -187,9 +187,10 @@ type WorkspaceGroup = { ws: TrelloWorkspaceLink; boards: TrelloBoardLink[] };
 
 // TrelloWorkspacesCard manages this project's Trello links: a project can link
 // many workspaces, and each workspace many boards, all chosen live from the
-// Trello API. One board is marked "Active" — the single board the Trello skills
-// read and write (persisted via the legacy workspace/board mapping so existing
-// skills keep working).
+// Trello API. The assistant reads and writes across all linked boards (asking
+// which to use when several are linked). One board is marked "Active" — the
+// default board for automated bug triage — persisted via the legacy
+// workspace/board mapping.
 function TrelloWorkspacesCard({
   credsConfigured,
   activeBoardId,
@@ -346,10 +347,12 @@ function TrelloWorkspacesCard({
       </div>
       <p className="mb-4 text-xs text-gray-400 dark:text-gray-500">
         Link one or more Trello workspaces to this project, and any number of boards under each. The
-        board marked <span className="font-medium">Active</span> is the one the Trello skills read
-        and write — tasks land on its <span className="font-medium">Backlog/Todo</span> list, bugs
-        on its <span className="font-medium">Bug</span> list, ideas on its{' '}
-        <span className="font-medium">Ideas</span> list (matched by name).
+        assistant reads and files across <span className="font-medium">all</span> linked boards —
+        tasks land on a board's <span className="font-medium">Backlog/Todo</span> list, bugs on its{' '}
+        <span className="font-medium">Bug</span> list, ideas on its{' '}
+        <span className="font-medium">Ideas</span> list (matched by name); when several boards are
+        linked it asks which to use. The board marked <span className="font-medium">Active</span> is
+        the default target for automated bug triage.
       </p>
 
       {!credsConfigured ? (

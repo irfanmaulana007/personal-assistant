@@ -166,7 +166,7 @@ func main() {
 	handlers = append(handlers, hiking.New(db, timezone, log))
 	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
 	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
-	handlers = append(handlers, trellocap.New(trello.New(), settingsSvc, log))
+	handlers = append(handlers, trellocap.New(trello.New(), db, settingsSvc, log))
 	handlers = append(handlers, selftune.New(db, log))
 	handlers = append(handlers, autotriage.New(db, trello.New(), settingsSvc, log))
 

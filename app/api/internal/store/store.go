@@ -851,6 +851,9 @@ type DataStore interface {
 	AttachTrelloWorkspace(ctx context.Context, trelloID, name, url string) (*TrelloWorkspaceLink, error)
 	DeleteTrelloWorkspace(ctx context.Context, id int64) error
 	ListTrelloBoards(ctx context.Context, workspaceID int64) ([]TrelloBoardLink, error)
+	// ListLinkedTrelloBoards returns every board linked to the active project,
+	// across all of its linked workspaces (for skills that act on all boards).
+	ListLinkedTrelloBoards(ctx context.Context) ([]TrelloBoardLink, error)
 	AttachTrelloBoard(ctx context.Context, workspaceID int64, trelloID, name, url string) (*TrelloBoardLink, error)
 	DeleteTrelloBoard(ctx context.Context, id int64) error
 
