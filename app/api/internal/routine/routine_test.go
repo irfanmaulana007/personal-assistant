@@ -40,6 +40,12 @@ func (f *fakeStore) ListProjectsForUser(_ context.Context, _ int64) ([]store.Pro
 	return f.projects, nil
 }
 
+// EnsureDefaultProject returns a fixed General project so a routine run is
+// scoped to it (mirrors the owner's unmapped 1:1 chat) instead of project 0.
+func (f *fakeStore) EnsureDefaultProject(_ context.Context, _ int64) (*store.Project, error) {
+	return &store.Project{ID: 1, Name: "General", IsDefault: true}, nil
+}
+
 func (f *fakeStore) GetSetting(_ context.Context, key string) ([]byte, error) { return f.kv[key], nil }
 func (f *fakeStore) SetSetting(_ context.Context, key string, val []byte) error {
 	f.kv[key] = val

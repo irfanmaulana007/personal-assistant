@@ -6,10 +6,11 @@
 // question "which project am I acting as in THIS group?" and lets the owner
 // self-assign one. Once a group is bound to a project, every downstream
 // capability (memory, skills, reminders, notes, …) is scoped to that project by
-// the existing whatsapp_mappings → authctx machinery; a group that is not yet
-// bound stays inert — the assistant refuses to act and prompts the owner to
-// pick a project rather than silently falling back to a default (which would
-// leak across projects via the unscoped "project 0" path).
+// the existing whatsapp_mappings → authctx machinery. A group that is not yet
+// bound defaults to the General project (resolved upstream in
+// resolveWhatsAppScope), so ordinary chat is answered as the General assistant;
+// this service only intercepts explicit, owner-issued binding commands, and a
+// binding overrides the General default.
 //
 // Like the `/t` group translator, this is a deterministic pre-agent handler: a
 // binding command is a self-contained config request, so it short-circuits the
@@ -56,52 +57,42 @@ func New(s projectStore, log *slog.Logger) *Service {
 // sender is the account owner (only the owner may change the binding).
 //
 // It returns (reply, true) when the message is fully handled here — the caller
-// sends reply and must NOT run the agent. It returns ("", false) only when the
-// group is already bound and the message is ordinary chat (or a binding attempt
-// by a non-owner), so the caller proceeds to the scoped agent. For an UNBOUND
-// group it always returns handled=true: an unbound group must never reach the
-// agent, because there is no project to scope it to.
+// sends reply and must NOT run the agent. It returns ("", false) for ordinary
+// chat (or a binding attempt by a non-owner), so the caller proceeds to the
+// scoped agent: the bound project when the group is bound, or the General
+// default when it is not. Only explicit, owner-issued binding commands are
+// intercepted, in bound and unbound groups alike.
 func (s *Service) Handle(ctx context.Context, chatJID, rawText string, ownerID int64, assigned, isOwner bool) (string, bool) {
 	cmd := classify(rawText)
 
-	if assigned {
-		// A bound group runs the normal scoped agent for everything except an
-		// explicit, owner-issued binding change. Ordinary chat — including "which
-		// project are you?" — flows to the agent, which knows the bound project
-		// from its system prompt and answers naturally.
-		switch cmd.kind {
-		case cmdAssign, cmdAssignBare, cmdUnassign, cmdList:
-			if !isOwner {
-				// Don't hijack a non-owner's message on a coincidental keyword match;
-				// let the agent handle it.
-				return "", false
-			}
-			return s.handleOwnerCommand(ctx, chatJID, ownerID, cmd, true)
-		default:
-			return "", false
-		}
-	}
-
-	// Unbound group: nothing is scoped, so the agent must not run. Every path
-	// below returns handled=true.
 	switch cmd.kind {
 	case cmdAssign, cmdAssignBare, cmdUnassign, cmdList:
+		// A binding command. Only the owner may run one.
 		if !isOwner {
+			if assigned {
+				// Bound group: don't hijack a member's message on a coincidental
+				// keyword match — let the agent handle it.
+				return "", false
+			}
+			// Unbound group: a non-owner cannot bind and must not see the owner's
+			// project names — refuse deterministically.
 			return notOwnerReply(), true
 		}
-		reply, _ := s.handleOwnerCommand(ctx, chatJID, ownerID, cmd, false)
-		return reply, true
+		return s.handleOwnerCommand(ctx, chatJID, ownerID, cmd, assigned)
 	default:
-		return s.unassignedPrompt(ctx, ownerID, isOwner), true
+		// Ordinary chat — including "which project are you?" — flows to the agent,
+		// which knows its project (the bound one, or the General default for an
+		// unbound group) from its system prompt and answers naturally.
+		return "", false
 	}
 }
 
 // handleOwnerCommand executes an owner-issued binding command. bound reports
 // whether the group is currently bound (controls a couple of replies). The
 // second return is the handled flag: it is false only when an assignBare target
-// does not resolve to a real project in an already-bound group — there the
-// message was probably ordinary chat that merely began with "project", so we let
-// the agent handle it instead of erroring.
+// does not resolve to a real project — there the message was probably ordinary
+// chat that merely began with "project", so we let the agent handle it (in the
+// bound project, or the General default) instead of erroring.
 func (s *Service) handleOwnerCommand(ctx context.Context, chatJID string, ownerID int64, cmd command, bound bool) (string, bool) {
 	switch cmd.kind {
 	case cmdList:
@@ -116,9 +107,11 @@ func (s *Service) handleOwnerCommand(ctx context.Context, chatJID string, ownerI
 	case cmdAssign, cmdAssignBare:
 		p := s.resolveProject(ctx, ownerID, cmd.target)
 		if p == nil {
-			// A bare "project <text>" that names nothing real inside an already-bound
-			// group is almost certainly normal chat — defer to the agent.
-			if cmd.kind == cmdAssignBare && bound {
+			// A bare "project <text>" that names nothing real is almost certainly
+			// normal chat — defer to the agent, which always has a scope now (the
+			// bound project, or the General default). An explicit "assign to
+			// project X" that names nothing real still gets a corrective reply.
+			if cmd.kind == cmdAssignBare {
 				return "", false
 			}
 			return s.cantFindReply(ctx, chatJID, ownerID, cmd.target), true
@@ -210,29 +203,6 @@ func (s *Service) cantFindReply(ctx context.Context, chatJID string, ownerID int
 	b.WriteString(fmt.Sprintf("🤔 I couldn't find a project called %q. Your projects:\n", strings.TrimSpace(target)))
 	b.WriteString(bulletList(projects, currentID))
 	b.WriteString("\nTry `project <name>` with one of these.")
-	return b.String()
-}
-
-// unassignedPrompt is the reply for any message in an unbound group. The owner
-// gets an actionable prompt listing the projects; anyone else is told to ask the
-// owner (project names are not leaked to non-owners).
-func (s *Service) unassignedPrompt(ctx context.Context, ownerID int64, isOwner bool) string {
-	if !isOwner {
-		return "👋 I'm not assigned to a project in this group yet, so I can't help here until the owner picks one. Please ask the group owner to assign me to a project."
-	}
-	projects := s.ownerProjects(ctx, ownerID)
-	var b strings.Builder
-	b.WriteString("👋 I'm not assigned to a project in this group yet, so I can't help here until you choose one.\n\n")
-	b.WriteString("Assign me (only you, the owner, can):\n")
-	b.WriteString("• `project <name>` — e.g. `project Personal`\n")
-	b.WriteString("• or `assign to project <name>`\n")
-	if len(projects) > 0 {
-		b.WriteString("\nYour projects:\n")
-		b.WriteString(bulletList(projects, 0))
-		b.WriteString("\nSee them anytime with `list projects`.")
-	} else {
-		b.WriteString("\nYou don't have any projects yet — create one in the web app first.")
-	}
 	return b.String()
 }
 

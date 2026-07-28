@@ -76,8 +76,18 @@ export function Projects({ isAdmin }: { isAdmin: boolean }) {
                   {(p.name || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-50">
-                    {p.name}
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-gray-900 dark:text-gray-50">
+                      {p.name}
+                    </span>
+                    {p.is_default && (
+                      <span
+                        title="The default project used by the WhatsApp assistant when a chat has no specific mapping"
+                        className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                      >
+                        Default
+                      </span>
+                    )}
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <span className="capitalize">{p.role}</span>

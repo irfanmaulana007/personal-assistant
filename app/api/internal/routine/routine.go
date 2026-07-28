@@ -293,14 +293,16 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 	}
 
 	uctx := authctx.WithUserID(ctx, owner.ID)
-	// Scope the routine to the owner's default project, mirroring the owner's
+	// Scope the routine to the General default project, mirroring the owner's
 	// unmapped 1:1 WhatsApp chat. Without this the run carries project 0, so its
 	// trace is invisible on the per-project Logs/dashboards and any data it writes
 	// is orphaned in the unscoped project. It also keeps the routine's brief scoped
 	// to the same project the owner sees in a manual chat.
-	if summaries, err := s.store.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-		uctx = authctx.WithProjectID(uctx, summaries[0].ID)
-		uctx = authctx.WithProjectRole(uctx, summaries[0].Role)
+	if gen, err := s.store.EnsureDefaultProject(ctx, owner.ID); err == nil && gen != nil {
+		uctx = authctx.WithProjectID(uctx, gen.ID)
+		uctx = authctx.WithProjectRole(uctx, store.ProjectRoleAdmin)
+	} else if err != nil {
+		s.log.Error("routine: resolve general default project", "error", err)
 	}
 	if d.MaxIterations > 0 {
 		uctx = agent.WithMaxIterations(uctx, d.MaxIterations)

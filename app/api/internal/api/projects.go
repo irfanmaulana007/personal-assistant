@@ -21,6 +21,7 @@ type projectResp struct {
 	OwnerUserID int64  `json:"owner_user_id"`
 	Role        string `json:"role"`
 	MemberCount int    `json:"member_count"`
+	IsDefault   bool   `json:"is_default"` // the platform default ("General") project
 	CreatedAt   string `json:"created_at"`
 }
 
@@ -117,7 +118,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 			out = append(out, projectResp{
 				ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID,
 				Role: store.GlobalRoleSuperadmin, MemberCount: len(members),
-				CreatedAt: p.CreatedAt.Format(time.RFC3339),
+				IsDefault: p.IsDefault, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 			})
 		}
 	} else {
@@ -129,7 +130,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		for _, p := range summaries {
 			out = append(out, projectResp{
 				ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: p.Role,
-				MemberCount: p.MemberCount, CreatedAt: p.CreatedAt.Format(time.RFC3339),
+				MemberCount: p.MemberCount, IsDefault: p.IsDefault, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 			})
 		}
 	}
@@ -187,7 +188,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	members, _ := s.store.ListProjectMembers(ctx, p.ID)
 	writeJSON(w, http.StatusOK, projectResp{
 		ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: store.GlobalRoleSuperadmin,
-		MemberCount: len(members), CreatedAt: p.CreatedAt.Format(time.RFC3339),
+		MemberCount: len(members), IsDefault: p.IsDefault, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -204,7 +205,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	members, _ := s.store.ListProjectMembers(r.Context(), pid)
 	writeJSON(w, http.StatusOK, projectResp{
 		ID: p.ID, Name: p.Name, Slug: p.Slug, OwnerUserID: p.OwnerUserID, Role: role,
-		MemberCount: len(members), CreatedAt: p.CreatedAt.Format(time.RFC3339),
+		MemberCount: len(members), IsDefault: p.IsDefault, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	})
 }
 

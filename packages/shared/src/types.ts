@@ -45,6 +45,7 @@ export interface Project {
   owner_user_id: number;
   role: ProjectRole | 'superadmin'; // caller's effective role in this project
   member_count: number;
+  is_default: boolean; // the platform default ("General") project — the WhatsApp/routine fallback scope
   created_at: string;
 }
 
