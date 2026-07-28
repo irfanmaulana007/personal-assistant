@@ -6,11 +6,11 @@
 // underperforming.
 //
 // It is meant to run unattended from the nightly triage routine, but every step
-// is an ordinary tool the agent can also invoke on request. The Trello Issue
-// board / Bug list ids are fixed to the user's "Personal Assistant" workspace,
-// mirroring the trello capability; credentials are resolved per call from
-// encrypted settings, and a missing credential is reported back as plain text so
-// the model can tell the user to configure it.
+// is an ordinary tool the agent can also invoke on request. Bug cards are filed
+// on the project's own Trello board (resolved per call, mirroring the trello
+// capability), on its Bug list; credentials are resolved per call from encrypted
+// settings, and a missing credential — or a project with no board configured —
+// is reported back as plain text so the model can tell the user to configure it.
 package autotriage
 
 import (
@@ -29,14 +29,6 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/trello"
 )
 
-// Fixed ids for the "Personal Assistant" workspace Issue board and its Bug list —
-// the same ids the trello capability files bug reports on. Auto-triage files its
-// bug cards here.
-const (
-	boardIssue = "6a54edaae21957ab935c81f6"
-	listBug    = "6a54edaae21957ab935c820f"
-)
-
 const (
 	defaultHours = 24
 	scanLimit    = 100
@@ -53,6 +45,8 @@ const (
 )
 
 const notConfiguredMsg = "Trello is not configured — no Trello API key/token has been set. Ask the user to add their Trello API key and token on the Integrations page."
+
+const boardNotConfiguredMsg = "This project has no Trello board configured, so I can't file a bug for it. Ask the user to set the project's Trello workspace and board on the Integrations → Trello page."
 
 // routineSources are excluded from the scan so triage never triages its own
 // scheduled runs (or the self-tuner's / morning briefing's).
@@ -92,7 +86,14 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		if apiKey == "" || token == "" {
 			return notConfiguredMsg, nil
 		}
-		return h.fileBug(ctx, apiKey, token, result.Entities)
+		_, boardID, err := h.settings.TrelloBoard(ctx)
+		if err != nil {
+			return "", fmt.Errorf("resolve trello board: %w", err)
+		}
+		if boardID == "" {
+			return boardNotConfiguredMsg, nil
+		}
+		return h.fileBug(ctx, apiKey, token, boardID, result.Entities)
 	default:
 		return "I can scan recent failures, file a bug for one, or improve a skill's prompt.", nil
 	}
@@ -285,10 +286,10 @@ func normalizeError(s string) string {
 
 // --- file_bug ---
 
-func (h *Handler) fileBug(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+func (h *Handler) fileBug(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	title := strings.TrimSpace(e["title"])
 	if title == "" {
-		return "What's the bug? I need a short title to file it on the Issue board.", nil
+		return "What's the bug? I need a short title to file it on the board.", nil
 	}
 	sig := strings.TrimSpace(e["signature"])
 	if sig == "" {
@@ -296,13 +297,25 @@ func (h *Handler) fileBug(ctx context.Context, apiKey, token string, e map[strin
 	}
 	desc := strings.TrimSpace(e["description"])
 
-	// Duplicate detection: look at the open cards on the Issue board. Re-use an
-	// existing card if it carries the same triage signature, or if its title
-	// matches — then comment on it instead of filing a duplicate.
-	cards, err := h.client.BoardCards(ctx, apiKey, token, boardIssue)
+	// Resolve the board's Bug list (falling back to its first list when there's no
+	// dedicated Bug column), so triage files onto whatever board the project maps to.
+	lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list lists failed", "error", err)
+		return fmt.Sprintf("Couldn't read the board's lists to file the bug: %v", err), nil
+	}
+	listBug, bugListName := trello.PickList(lists, "bug", "bugs", "issue", "issues")
+	if listBug == "" {
+		return "The configured Trello board has no lists to file a bug on.", nil
+	}
+
+	// Duplicate detection: look at the open cards on the board. Re-use an existing
+	// card if it carries the same triage signature, or if its title matches — then
+	// comment on it instead of filing a duplicate.
+	cards, err := h.client.BoardCards(ctx, apiKey, token, boardID)
 	if err != nil {
 		h.log.Warn("trello list issue cards failed", "error", err)
-		return fmt.Sprintf("Couldn't read the Issue board to check for duplicates: %v", err), nil
+		return fmt.Sprintf("Couldn't read the board to check for duplicates: %v", err), nil
 	}
 	marker := signatureTag + sig
 	for _, c := range cards {
@@ -343,7 +356,7 @@ func (h *Handler) fileBug(ctx context.Context, apiKey, token string, e map[strin
 		return "I tried to file the bug card but couldn't verify it saved on Trello: the card didn't land on the Bug list.", nil
 	}
 	h.log.Info("auto-triage filed bug", "title", title, "signature", sig, "card", card.ID)
-	return fmt.Sprintf("Filed bug %q on the Issue → Bug list.\n%s\nTell the user in their language.", title, card.ShortURL), nil
+	return fmt.Sprintf("Filed bug %q on the %q list.\n%s\nTell the user in their language.", title, bugListName, card.ShortURL), nil
 }
 
 // --- improve_prompt ---

@@ -232,6 +232,11 @@ export interface Integrations {
   trello_configured: boolean;
   trello_key_mask: string;
   trello_token_mask: string;
+  // Per-project Trello workspace/board mapping. The Trello skills only act on the
+  // board this project is mapped to; empty board id ⇒ skills disabled here.
+  trello_board_configured: boolean;
+  trello_workspace_id: string;
+  trello_board_id: string;
 }
 
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';

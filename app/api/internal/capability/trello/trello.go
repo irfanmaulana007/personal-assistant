@@ -1,14 +1,17 @@
 // Package trello implements the Trello skills: one that reviews every task and
-// bug across the user's project boards, one that files a new card — a task on
-// the Task Management "Backlog" or a bug report on the Issue "Bug" list — and
-// one that captures an enriched game idea on the "Games" board's Ideas list.
+// bug on the project's board, one that files a new card (a task or a bug
+// report), one that edits an existing card, and one that captures an enriched
+// game idea.
 //
-// The workspace/board/list/label ids below are fixed to the user's Trello
-// workspaces ("Personal Assistant" for tasks/bugs, "Games" for game ideas). The
-// handler only reads and writes; credentials
-// (API key + token) are resolved per call from encrypted settings, and a missing
-// credential is reported back to the model as plain text so it can tell the user
-// to configure it on the Integrations page.
+// Every project maps to a single Trello workspace + board (stored per project in
+// settings); the handler resolves that board per call and operates only within
+// it. Tasks, bugs, and ideas are routed to a sensible column by list name
+// (Backlog/Todo, Bug, Ideas — see trello.PickList), and task-type labels are
+// resolved by name against the board's own labels, so the same skills work on
+// whatever board a project points at. Credentials (API key + token) are resolved
+// per call from encrypted settings. A missing credential — or a project with no
+// board configured — is reported back to the model as plain text so it can tell
+// the user to configure it on the Integrations → Trello page.
 package trello
 
 import (
@@ -22,31 +25,11 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/trello"
 )
 
-// Fixed ids for the "Personal Assistant" workspace boards and lists.
-const (
-	boardTaskManagement = "6a54dd8eecaab3bd510528ba"
-	listBacklog         = "6a54dda0cf5b49c7fb6f8b15"
-
-	boardIssue = "6a54edaae21957ab935c81f6"
-	listBug    = "6a54edaae21957ab935c820f"
-
-	// The "Games" workspace board and its Ideas list — where captured game
-	// ideas are filed.
-	listGameIdeas = "6a5a453925d775e49d6972d7"
-)
-
-// backlogLabels maps a task type to its Trello label id on the Task Management
-// board. The model picks one of these keys when filing a task.
-var backlogLabels = map[string]string{
-	"feature":     "6a54dd8eecaab3bd510528d4",
-	"improvement": "6a54dd8eecaab3bd510528d7",
-	"chore":       "6a54dd8eecaab3bd510528d6",
-	"refactor":    "6a54dd8eecaab3bd510528d5",
-}
-
 const notConfiguredMsg = "Trello is not configured — no Trello API key/token has been set. Ask the user to add their Trello API key and token on the Integrations page."
 
-// Handler answers Trello tool calls (review boards, file a task, report a bug).
+const boardNotConfiguredMsg = "This project has no Trello board configured, so I can't read or file cards for it. Ask the user to set the project's Trello workspace and board on the Integrations → Trello page."
+
+// Handler answers Trello tool calls (review the board, file a task, report a bug).
 type Handler struct {
 	client   *trello.Client
 	settings *settings.Service
@@ -73,71 +56,73 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return notConfiguredMsg, nil
 	}
 
+	// Resolve the board this project is mapped to. Boards are per-project, so an
+	// unconfigured project has no board and the skills stay disabled for it.
+	_, boardID, err := h.settings.TrelloBoard(ctx)
+	if err != nil {
+		return "", fmt.Errorf("resolve trello board: %w", err)
+	}
+	if boardID == "" {
+		return boardNotConfiguredMsg, nil
+	}
+
 	switch result.Action {
 	case intent.ActionTrelloReview:
-		return h.review(ctx, apiKey, token)
+		return h.review(ctx, apiKey, token, boardID)
 	case intent.ActionTrelloCreateTask:
-		return h.createTask(ctx, apiKey, token, result.Entities)
+		return h.createTask(ctx, apiKey, token, boardID, result.Entities)
 	case intent.ActionTrelloReportBug:
-		return h.reportBug(ctx, apiKey, token, result.Entities)
+		return h.reportBug(ctx, apiKey, token, boardID, result.Entities)
 	case intent.ActionTrelloUpdateCard:
-		return h.updateCard(ctx, apiKey, token, result.Entities)
+		return h.updateCard(ctx, apiKey, token, boardID, result.Entities)
 	case intent.ActionTrelloGameIdea:
-		return h.createGameIdea(ctx, apiKey, token, result.Entities)
+		return h.createGameIdea(ctx, apiKey, token, boardID, result.Entities)
 	default:
 		return "I understood a Trello request but not which action to take.", nil
 	}
 }
 
-// review lists every card on both boards, grouped by board and list.
-func (h *Handler) review(ctx context.Context, apiKey, token string) (string, error) {
-	var b strings.Builder
-	for _, board := range []struct{ name, id string }{
-		{"Task Management", boardTaskManagement},
-		{"Issue", boardIssue},
-	} {
-		lists, err := h.client.BoardLists(ctx, apiKey, token, board.id)
-		if err != nil {
-			h.log.Warn("trello list lists failed", "board", board.name, "error", err)
-			return fmt.Sprintf("Couldn't read the %s board: %v", board.name, err), nil
-		}
-		cards, err := h.client.BoardCards(ctx, apiKey, token, board.id)
-		if err != nil {
-			h.log.Warn("trello list cards failed", "board", board.name, "error", err)
-			return fmt.Sprintf("Couldn't read the %s board: %v", board.name, err), nil
-		}
-		byList := map[string][]trello.Card{}
-		for _, c := range cards {
-			byList[c.IDList] = append(byList[c.IDList], c)
-		}
+// review lists every card on the project's board, grouped by list.
+func (h *Handler) review(ctx context.Context, apiKey, token, boardID string) (string, error) {
+	lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list lists failed", "error", err)
+		return fmt.Sprintf("Couldn't read the Trello board: %v", err), nil
+	}
+	cards, err := h.client.BoardCards(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list cards failed", "error", err)
+		return fmt.Sprintf("Couldn't read the Trello board: %v", err), nil
+	}
+	byList := map[string][]trello.Card{}
+	for _, c := range cards {
+		byList[c.IDList] = append(byList[c.IDList], c)
+	}
 
-		if b.Len() > 0 {
-			b.WriteString("\n")
+	var b strings.Builder
+	b.WriteString("# Trello board\n")
+	for _, l := range lists {
+		items := byList[l.ID]
+		b.WriteString(fmt.Sprintf("\n## %s (%d)\n", l.Name, len(items)))
+		if len(items) == 0 {
+			b.WriteString("_(empty)_\n")
+			continue
 		}
-		b.WriteString(fmt.Sprintf("# %s board\n", board.name))
-		for _, l := range lists {
-			items := byList[l.ID]
-			b.WriteString(fmt.Sprintf("\n## %s (%d)\n", l.Name, len(items)))
-			if len(items) == 0 {
-				b.WriteString("_(empty)_\n")
-				continue
+		for _, c := range items {
+			b.WriteString("- " + strings.TrimSpace(c.Name))
+			if labels := labelNames(c.Labels); labels != "" {
+				b.WriteString(" [" + labels + "]")
 			}
-			for _, c := range items {
-				b.WriteString("- " + strings.TrimSpace(c.Name))
-				if labels := labelNames(c.Labels); labels != "" {
-					b.WriteString(" [" + labels + "]")
-				}
-				b.WriteString("\n")
-			}
+			b.WriteString("\n")
 		}
 	}
 	b.WriteString("\nSummarize this for the user in their language: how many open tasks and bugs, and anything currently in progress. Don't invent cards beyond this list.")
 	return b.String(), nil
 }
 
-// createTask files a task on the Task Management → Backlog list, with a chosen
-// label and an "Acceptance Criteria" checklist.
-func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+// createTask files a task on the board's Backlog/Todo list, with a chosen label
+// and an "Acceptance Criteria" checklist.
+func (h *Handler) createTask(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	title := strings.TrimSpace(e["title"])
 	if title == "" {
 		return "What's the task? I need a short title to add it to the backlog.", nil
@@ -156,11 +141,26 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 		}
 	}
 
-	in := trello.CreateCardInput{ListID: listBacklog, Name: title, Desc: body}
+	lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list lists failed", "error", err)
+		return fmt.Sprintf("Couldn't read the board's lists to add the task: %v", err), nil
+	}
+	listID, listName := trello.PickList(lists, "backlog", "todo", "to do")
+	if listID == "" {
+		return "The configured Trello board has no lists to add a task to.", nil
+	}
+
+	in := trello.CreateCardInput{ListID: listID, Name: title, Desc: body}
 	labelKey := strings.ToLower(strings.TrimSpace(e["label"]))
-	labelID, labelOK := backlogLabels[labelKey]
-	if labelOK {
-		in.LabelIDs = []string{labelID}
+	labelNote := "no label"
+	if labelKey != "" {
+		if id, _, err := h.matchBoardLabel(ctx, apiKey, token, boardID, labelKey); err != nil {
+			h.log.Warn("trello resolve label failed", "label", labelKey, "error", err)
+		} else if id != "" {
+			in.LabelIDs = []string{id}
+			labelNote = labelKey
+		}
 	}
 
 	card, err := h.client.CreateCard(ctx, apiKey, token, in)
@@ -170,9 +170,9 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 	}
 
 	// Read-after-write: confirm the card actually persisted — that it exists, sits
-	// on the Backlog list we filed it to, and isn't archived — before telling the
-	// user it was filed.
-	if err := h.verifyCard(ctx, apiKey, token, card.ID, listBacklog); err != nil {
+	// on the list we filed it to, and isn't archived — before telling the user it
+	// was filed.
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listID); err != nil {
 		h.log.Warn("trello verify task failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to create the task card but couldn't verify it saved on Trello: %v", err), nil
 	}
@@ -190,11 +190,7 @@ func (h *Handler) createTask(ctx context.Context, apiKey, token string, e map[st
 		}
 	}
 
-	labelNote := "no label"
-	if labelOK {
-		labelNote = labelKey
-	}
-	return fmt.Sprintf("Added task %q to the Task Management → Backlog list (label: %s).\n%s\nConfirm this to the user in their language.", title, labelNote, card.ShortURL), nil
+	return fmt.Sprintf("Added task %q to the %q list (label: %s).\n%s\nConfirm this to the user in their language.", title, listName, labelNote, card.ShortURL), nil
 }
 
 // verifyCard is the read-after-write check behind every create and update: it
@@ -228,11 +224,12 @@ func checkPersisted(got *trello.Card, wantList string) error {
 	return nil
 }
 
-// reportBug files a bug on the Issue → Bug list, with Actual/Expected sections.
-func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+// reportBug files a bug on the board's Bug list (falling back to the first list
+// when the board has no dedicated Bug column), with Actual/Expected sections.
+func (h *Handler) reportBug(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	title := strings.TrimSpace(e["title"])
 	if title == "" {
-		return "What's the bug? I need a short title to file it on the Issue board.", nil
+		return "What's the bug? I need a short title to file it on the board.", nil
 	}
 	desc := strings.TrimSpace(e["description"])
 	actual := strings.TrimSpace(e["actual_result"])
@@ -250,7 +247,17 @@ func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[str
 	}
 	body := strings.Join(parts, "\n\n")
 
-	card, err := h.client.CreateCard(ctx, apiKey, token, trello.CreateCardInput{ListID: listBug, Name: title, Desc: body})
+	lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list lists failed", "error", err)
+		return fmt.Sprintf("Couldn't read the board's lists to file the bug: %v", err), nil
+	}
+	listID, listName := trello.PickList(lists, "bug", "bugs", "issue", "issues")
+	if listID == "" {
+		return "The configured Trello board has no lists to file a bug on.", nil
+	}
+
+	card, err := h.client.CreateCard(ctx, apiKey, token, trello.CreateCardInput{ListID: listID, Name: title, Desc: body})
 	if err != nil {
 		h.log.Warn("trello report bug failed", "error", err)
 		return fmt.Sprintf("Couldn't file the bug card: %v", err), nil
@@ -258,37 +265,37 @@ func (h *Handler) reportBug(ctx context.Context, apiKey, token string, e map[str
 
 	// Read-after-write: confirm the card actually persisted on the Bug list before
 	// telling the user it was filed.
-	if err := h.verifyCard(ctx, apiKey, token, card.ID, listBug); err != nil {
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listID); err != nil {
 		h.log.Warn("trello verify bug failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to file the bug card but couldn't verify it saved on Trello: %v", err), nil
 	}
-	return fmt.Sprintf("Filed bug %q on the Issue → Bug list.\n%s\nConfirm this to the user in their language.", title, card.ShortURL), nil
+	return fmt.Sprintf("Filed bug %q on the %q list.\n%s\nConfirm this to the user in their language.", title, listName, card.ShortURL), nil
 }
 
 // acceptanceHeader is the Markdown heading under which a task card's acceptance
 // criteria live in its description body (matching how createTask writes them).
 const acceptanceHeader = "## Acceptance Criteria"
 
-// updateCard edits an existing task card on the Task Management board — its
-// title, description, acceptance criteria, type label, or the list it sits in.
-// The card is identified by (part of) its current title, since the review tool
-// surfaces titles rather than ids. Only the fields the model actually supplied
-// are changed; everything else is left untouched.
-func (h *Handler) updateCard(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+// updateCard edits an existing task card on the project's board — its title,
+// description, acceptance criteria, type label, or the list it sits in. The card
+// is identified by (part of) its current title, since the review tool surfaces
+// titles rather than ids. Only the fields the model actually supplied are
+// changed; everything else is left untouched.
+func (h *Handler) updateCard(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	query := strings.TrimSpace(e["card"])
 	if query == "" {
 		return "Which card should I update? Tell me its title (or part of it).", nil
 	}
 
-	cards, err := h.client.BoardCards(ctx, apiKey, token, boardTaskManagement)
+	cards, err := h.client.BoardCards(ctx, apiKey, token, boardID)
 	if err != nil {
 		h.log.Warn("trello list cards failed", "error", err)
-		return fmt.Sprintf("Couldn't read the Task Management board to find that card: %v", err), nil
+		return fmt.Sprintf("Couldn't read the Trello board to find that card: %v", err), nil
 	}
 	matches := matchCards(cards, query)
 	switch len(matches) {
 	case 0:
-		return fmt.Sprintf("I couldn't find a card matching %q on the Task Management board. Try the exact title from a board review.", query), nil
+		return fmt.Sprintf("I couldn't find a card matching %q on the Trello board. Try the exact title from a board review.", query), nil
 	case 1:
 		// exactly one — proceed
 	default:
@@ -334,7 +341,8 @@ func (h *Handler) updateCard(ctx context.Context, apiKey, token string, e map[st
 		in.Desc = &body
 	}
 
-	// Label: set a new type label, or clear all labels with "none".
+	// Label: set a new type label (resolved by name against the board's own
+	// labels), or clear all labels with "none".
 	if v, ok := e["label"]; ok {
 		key := strings.ToLower(strings.TrimSpace(v))
 		switch {
@@ -343,9 +351,17 @@ func (h *Handler) updateCard(ctx context.Context, apiKey, token string, e map[st
 			in.LabelIDs = &empty
 			changed = append(changed, "label (removed)")
 		default:
-			id, valid := backlogLabels[key]
-			if !valid {
-				return fmt.Sprintf("%q isn't a valid label. Use one of: feature, improvement, chore, refactor (or none to clear).", v), nil
+			id, available, err := h.matchBoardLabel(ctx, apiKey, token, boardID, key)
+			if err != nil {
+				h.log.Warn("trello resolve label failed", "label", key, "error", err)
+				return fmt.Sprintf("Couldn't read the board's labels to set that label: %v", err), nil
+			}
+			if id == "" {
+				hint := strings.Join(available, ", ")
+				if hint == "" {
+					hint = "(this board has no named labels)"
+				}
+				return fmt.Sprintf("%q isn't a label on this board. Available labels: %s (or 'none' to clear).", v, hint), nil
 			}
 			ids := []string{id}
 			in.LabelIDs = &ids
@@ -356,14 +372,14 @@ func (h *Handler) updateCard(ctx context.Context, apiKey, token string, e map[st
 	// Move to a different list on the same board (e.g. Backlog → In Progress).
 	if v, ok := e["list"]; ok {
 		if name := strings.TrimSpace(v); name != "" {
-			lists, err := h.client.BoardLists(ctx, apiKey, token, boardTaskManagement)
+			lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
 			if err != nil {
 				h.log.Warn("trello list lists failed", "error", err)
 				return fmt.Sprintf("Couldn't read the board's lists to move the card: %v", err), nil
 			}
 			listID, listName, found := matchList(lists, name)
 			if !found {
-				return fmt.Sprintf("There's no %q list on the Task Management board. Available lists: %s.", name, listNames(lists)), nil
+				return fmt.Sprintf("There's no %q list on the Trello board. Available lists: %s.", name, listNames(lists)), nil
 			}
 			if listID != card.IDList {
 				in.IDList = &listID
@@ -443,10 +459,11 @@ func (h *Handler) replaceAcceptanceChecklist(ctx context.Context, apiKey, token,
 	}
 }
 
-// createGameIdea files an enriched game-idea card on the "Games" board's Ideas
-// list, composing the concept, genre, core mechanics, references, and notes into
-// a single well-formed brief.
-func (h *Handler) createGameIdea(ctx context.Context, apiKey, token string, e map[string]string) (string, error) {
+// createGameIdea files an enriched game-idea card on the board's Ideas list
+// (falling back to the first list when the board has no Ideas column), composing
+// the concept, genre, core mechanics, references, and notes into a single
+// well-formed brief.
+func (h *Handler) createGameIdea(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	title := strings.TrimSpace(e["title"])
 	if title == "" {
 		return "What's the game idea? I need a short title to add it to your Ideas list.", nil
@@ -475,7 +492,17 @@ func (h *Handler) createGameIdea(ctx context.Context, apiKey, token string, e ma
 	}
 	body := strings.Join(parts, "\n\n")
 
-	card, err := h.client.CreateCard(ctx, apiKey, token, trello.CreateCardInput{ListID: listGameIdeas, Name: title, Desc: body})
+	lists, err := h.client.BoardLists(ctx, apiKey, token, boardID)
+	if err != nil {
+		h.log.Warn("trello list lists failed", "error", err)
+		return fmt.Sprintf("Couldn't read the board's lists to save the idea: %v", err), nil
+	}
+	listID, listName := trello.PickList(lists, "ideas", "idea", "game ideas")
+	if listID == "" {
+		return "The configured Trello board has no lists to save the idea on.", nil
+	}
+
+	card, err := h.client.CreateCard(ctx, apiKey, token, trello.CreateCardInput{ListID: listID, Name: title, Desc: body})
 	if err != nil {
 		h.log.Warn("trello save game idea failed", "error", err)
 		return fmt.Sprintf("Couldn't save the game idea card: %v", err), nil
@@ -483,11 +510,35 @@ func (h *Handler) createGameIdea(ctx context.Context, apiKey, token string, e ma
 
 	// Read-after-write: confirm the card actually persisted on the Ideas list
 	// before telling the user it was saved.
-	if err := h.verifyCard(ctx, apiKey, token, card.ID, listGameIdeas); err != nil {
+	if err := h.verifyCard(ctx, apiKey, token, card.ID, listID); err != nil {
 		h.log.Warn("trello verify game idea failed", "card", card.ID, "error", err)
 		return fmt.Sprintf("I tried to save the game idea but couldn't verify it saved on Trello: %v", err), nil
 	}
-	return fmt.Sprintf("Saved game idea %q to your Games board → Ideas list.\n%s\nConfirm this to the user in their language.", title, card.ShortURL), nil
+	return fmt.Sprintf("Saved game idea %q to the %q list.\n%s\nConfirm this to the user in their language.", title, listName, card.ShortURL), nil
+}
+
+// matchBoardLabel resolves a label name against the board's own labels,
+// returning the matching label id (case-insensitive; "" when none matches) plus
+// the names of every named label on the board (for a helpful error hint). This
+// replaces fixed label ids so task types work on whatever board a project maps
+// to.
+func (h *Handler) matchBoardLabel(ctx context.Context, apiKey, token, boardID, name string) (id string, available []string, err error) {
+	labels, err := h.client.BoardLabels(ctx, apiKey, token, boardID)
+	if err != nil {
+		return "", nil, err
+	}
+	want := strings.ToLower(strings.TrimSpace(name))
+	for _, l := range labels {
+		nm := strings.TrimSpace(l.Name)
+		if nm == "" {
+			continue
+		}
+		available = append(available, nm)
+		if id == "" && strings.ToLower(nm) == want {
+			id = l.ID
+		}
+	}
+	return id, available, nil
 }
 
 // bulletList renders trimmed lines as a Markdown bullet list.
