@@ -11,6 +11,11 @@ import (
 
 // supportedToolkits are the Composio apps this app exposes on the Integrations
 // page. Slugs are Composio toolkit slugs.
+//
+// Trello is intentionally NOT here: it does not use Composio at all. It has its
+// own API key + token (TrelloCreds) and per-project board mapping, surfaced by a
+// dedicated Trello card on the Integrations page (see TrelloCard in the web app).
+// Listing it here too would render a second, redundant Composio-style card.
 var supportedToolkits = []struct {
 	Slug string
 	Name string
@@ -19,7 +24,6 @@ var supportedToolkits = []struct {
 	{"googlecalendar", "Google Calendar"},
 	{"github", "GitHub"},
 	{"sentry", "Sentry"},
-	{"trello", "Trello"},
 }
 
 func toolkitName(slug string) (string, bool) {
