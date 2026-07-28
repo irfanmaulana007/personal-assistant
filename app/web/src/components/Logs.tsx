@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getLogs, getLog } from '../api/client';
 import { DateRangePicker } from './DateRangePicker';
@@ -143,6 +144,13 @@ function buildDebugText(t: Trace): string {
   L.push(t.output || '(none)');
 
   return L.join('\n');
+}
+
+// buildEnvIdText renders just the deployment environment and the run id — the
+// minimum needed to look the run up in the right MongoDB (which is chosen by
+// environment). Paste-ready for asking Claude Code to pull the raw run.
+function buildEnvIdText(t: Trace): string {
+  return [`Environment: ${t.environment || '(none)'}`, `Run ID: ${t.id}`].join('\n');
 }
 
 const channelBadge: Record<string, string> = {
@@ -508,6 +516,29 @@ export function Logs() {
                   Run detail
                 </h2>
                 <div className="flex items-center gap-1">
+                  {/* Copies just the environment + run id (both present on the
+                      lightweight list-row trace, so this needn't wait for the
+                      full detail load) — enough to look the run up in the right
+                      MongoDB when debugging. */}
+                  <CopyButton
+                    getText={() => buildEnvIdText(selected)}
+                    label="Copy environment + run ID"
+                    idleIcon={
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"
+                        />
+                      </svg>
+                    }
+                  />
                   {/* Gate the copy until the full trace has loaded: the drawer
                       first shows the lightweight list-row trace, which carries
                       no tool calls, LLM calls, or skills. Copying then would
@@ -923,10 +954,16 @@ function CopyButton({
   getText,
   disabled = false,
   disabledTitle,
+  label = 'Copy debug details',
+  idleIcon,
 }: {
   getText: () => string;
   disabled?: boolean;
   disabledTitle?: string;
+  /** Accessible label / tooltip for the idle button (defaults to the debug-dump copy). */
+  label?: string;
+  /** Custom idle-state icon; falls back to the copy glyph when omitted. */
+  idleIcon?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -958,14 +995,8 @@ function CopyButton({
     <button
       onClick={copy}
       disabled={disabled}
-      aria-label={copied ? 'Copied' : 'Copy debug details'}
-      title={
-        disabled
-          ? (disabledTitle ?? 'Copy debug details')
-          : copied
-            ? 'Copied!'
-            : 'Copy debug details'
-      }
+      aria-label={copied ? 'Copied' : label}
+      title={disabled ? (disabledTitle ?? label) : copied ? 'Copied!' : label}
       className={`rounded-lg p-1.5 transition ${
         disabled
           ? 'cursor-not-allowed text-gray-300 dark:text-gray-600'
@@ -979,15 +1010,17 @@ function CopyButton({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
         </svg>
       ) : (
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="9" y="9" width="11" height="11" rx="2" strokeWidth={2} />
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M5 15V5a2 2 0 012-2h10"
-          />
-        </svg>
+        (idleIcon ?? (
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="9" y="9" width="11" height="11" rx="2" strokeWidth={2} />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 15V5a2 2 0 012-2h10"
+            />
+          </svg>
+        ))
       )}
     </button>
   );
