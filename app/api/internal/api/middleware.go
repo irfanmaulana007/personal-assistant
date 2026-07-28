@@ -124,15 +124,22 @@ func (s *Server) withProject(next http.HandlerFunc) http.HandlerFunc {
 // X-Project-Id: their first membership, or (for a superadmin with none) the
 // first project overall. Returns (0, "") when there is none.
 func (s *Server) defaultProject(ctx context.Context, claims *jwtClaims) (int64, string) {
-	summaries, err := s.store.ListProjectsForUser(ctx, claims.UserID())
-	if err == nil && len(summaries) > 0 {
-		return summaries[0].ID, summaries[0].Role
-	}
+	// A superadmin is deliberately a member of no "home" project (see
+	// provisionPersonalProject, which is skipped for superadmins, and promotion
+	// detaching all memberships). Any membership they do hold is incidental — a
+	// project they created adds them as its admin — and must NOT become their
+	// default, or an unscoped request (e.g. a chat sent with no X-Project-Id)
+	// would silently land in the newest project. Resolve a superadmin straight to
+	// the lowest-id project: the platform's default/personal project (id 1).
 	if claims.Role == store.GlobalRoleSuperadmin {
 		projects, err := s.store.ListProjects(ctx)
 		if err == nil && len(projects) > 0 {
 			return projects[0].ID, store.GlobalRoleSuperadmin
 		}
+	}
+	summaries, err := s.store.ListProjectsForUser(ctx, claims.UserID())
+	if err == nil && len(summaries) > 0 {
+		return summaries[0].ID, summaries[0].Role
 	}
 	return 0, ""
 }

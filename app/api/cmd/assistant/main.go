@@ -576,12 +576,15 @@ func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User
 		return ctx, userID, false
 	}
 
-	// An unmapped PERSONAL (1:1) chat falls back to the owner's first/personal
-	// project so the owner's private channel keeps working without touching the
-	// unscoped project 0.
-	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
-		ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+	// An unmapped PERSONAL (1:1) chat falls back to the platform default project
+	// (the lowest-id project, id 1) so the owner's private channel keeps working
+	// without touching the unscoped project 0. The owner is a superadmin and by
+	// design a member of no "home" project, so this must not be derived from their
+	// (incidental) memberships — a project they created would otherwise capture it,
+	// exactly as it did on the web chat path (see defaultProject).
+	if projects, err := db.ListProjects(ctx); err == nil && len(projects) > 0 {
+		ctx = authctx.WithProjectID(ctx, projects[0].ID)
+		ctx = authctx.WithProjectRole(ctx, store.GlobalRoleSuperadmin)
 	}
 	return ctx, userID, true
 }

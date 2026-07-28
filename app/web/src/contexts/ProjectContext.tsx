@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   listProjects,
@@ -50,17 +50,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     projectBySlug ?? projects.find((p) => p.id === activeId) ?? projects[0] ?? null;
   const activeProjectId = activeProject?.id ?? null;
 
-  // Keep the persisted X-Project-Id in sync with the resolved active project.
-  // When the URL points at a different project than the stored header, adopt it
-  // and hard-reload once so every scoped fetch runs under the right project.
+  // Pin the API client's active project (the X-Project-Id it sends) to the
+  // project we just resolved from the URL — before paint, so a chat or any
+  // scoped fetch the user triggers can't race ahead with a stale value left in
+  // localStorage by another tab. When the URL forces a genuinely different
+  // project than was stored, hard-reload once so every already-mounted scoped
+  // view refetches under the right project.
   const bySlugId = projectBySlug?.id ?? null;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (loading || activeProjectId == null) return;
+    const wasForcedBySlug = bySlugId != null && bySlugId === activeProjectId;
     if (getActiveProjectId() !== activeProjectId) {
       setActiveProjectId(activeProjectId);
       // Only the URL forcing a different project warrants a reload; a silent
       // catch-up (no active project stored yet) just persists the id.
-      if (bySlugId != null && bySlugId === activeProjectId) {
+      if (wasForcedBySlug) {
         window.location.reload();
       }
     }
