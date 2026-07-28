@@ -28,6 +28,10 @@ import type {
   LlmTestResult,
   UsageStats,
   Integrations,
+  TrelloWorkspaceLink,
+  TrelloBoardLink,
+  TrelloRemoteWorkspace,
+  TrelloRemoteBoard,
   WhatsAppStatus,
   ChannelValue,
   LogsResponse,
@@ -716,6 +720,57 @@ export async function setTrelloBoard(
     method: 'PUT',
     body: JSON.stringify({ workspace_id: workspaceId, board_id: boardId }),
   });
+}
+
+// --- Trello workspace/board linking (project → many workspaces → many boards) ---
+
+// Live from Trello: workspaces the token can see (for the "add workspace" picker).
+export async function getTrelloAvailableWorkspaces(): Promise<TrelloRemoteWorkspace[]> {
+  return request<TrelloRemoteWorkspace[]>('/api/integrations/trello/available-workspaces');
+}
+
+// Persisted: workspaces linked to the active project.
+export async function getTrelloWorkspaces(): Promise<TrelloWorkspaceLink[]> {
+  return request<TrelloWorkspaceLink[]>('/api/integrations/trello/workspaces');
+}
+
+export async function attachTrelloWorkspace(
+  ws: Pick<TrelloRemoteWorkspace, 'id'> & { name: string; url: string },
+): Promise<TrelloWorkspaceLink> {
+  return request<TrelloWorkspaceLink>('/api/integrations/trello/workspaces', {
+    method: 'POST',
+    body: JSON.stringify({ trello_id: ws.id, name: ws.name, url: ws.url }),
+  });
+}
+
+export async function deleteTrelloWorkspace(id: number): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/integrations/trello/workspaces/${id}`, { method: 'DELETE' });
+}
+
+// Live from Trello: boards in a linked workspace (for the "add board" picker).
+export async function getTrelloAvailableBoards(workspaceId: number): Promise<TrelloRemoteBoard[]> {
+  return request<TrelloRemoteBoard[]>(
+    `/api/integrations/trello/workspaces/${workspaceId}/available-boards`,
+  );
+}
+
+// Persisted: boards linked under a workspace.
+export async function getTrelloBoards(workspaceId: number): Promise<TrelloBoardLink[]> {
+  return request<TrelloBoardLink[]>(`/api/integrations/trello/workspaces/${workspaceId}/boards`);
+}
+
+export async function attachTrelloBoard(
+  workspaceId: number,
+  board: Pick<TrelloRemoteBoard, 'id' | 'name' | 'url'>,
+): Promise<TrelloBoardLink> {
+  return request<TrelloBoardLink>(`/api/integrations/trello/workspaces/${workspaceId}/boards`, {
+    method: 'POST',
+    body: JSON.stringify({ trello_id: board.id, name: board.name, url: board.url }),
+  });
+}
+
+export async function deleteTrelloBoard(id: number): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/integrations/trello/boards/${id}`, { method: 'DELETE' });
 }
 
 export async function connectIntegration(slug: string): Promise<{ redirect_url: string }> {
