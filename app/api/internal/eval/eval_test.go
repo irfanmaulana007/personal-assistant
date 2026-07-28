@@ -70,6 +70,54 @@ func TestJudgePromptsDefaultsToGeneralRubric(t *testing.T) {
 	}
 }
 
+func TestRenderJudgePromptShowsToolResultsAndFlagsCreates(t *testing.T) {
+	tr := &store.Trace{
+		Input:  "add milk to my wishlist",
+		Output: "Done, I've added milk to your wishlist.",
+		Tools: []store.ToolInvocation{
+			{Name: "wishlist_add", Arguments: `{"item":"milk"}`, Result: "Added 'milk' to your wishlist (#12)."},
+		},
+	}
+	user := renderJudgePrompt(tr, "User message:", "Assistant reply:")
+	if !strings.Contains(user, "creates data") {
+		t.Errorf("create tool should be flagged, got:\n%s", user)
+	}
+	if !strings.Contains(user, "result: Added 'milk' to your wishlist (#12).") {
+		t.Errorf("tool result should be shown to the judge, got:\n%s", user)
+	}
+	if !strings.Contains(user, `args={"item":"milk"}`) {
+		t.Errorf("tool arguments should be shown, got:\n%s", user)
+	}
+}
+
+func TestRenderJudgePromptStatesWhenNoToolRan(t *testing.T) {
+	tr := &store.Trace{Input: "remind me to call mom", Output: "Sure, I've set that reminder."}
+	user := renderJudgePrompt(tr, "User message:", "Assistant reply:")
+	if !strings.Contains(user, "Tools the assistant called: none") {
+		t.Errorf("absence of tools should be stated so fabricated actions are detectable, got:\n%s", user)
+	}
+}
+
+func TestRenderJudgePromptMarksMissingResult(t *testing.T) {
+	tr := &store.Trace{
+		Input:  "add milk to my wishlist",
+		Output: "Added.",
+		Tools:  []store.ToolInvocation{{Name: "wishlist_add", Arguments: `{"item":"milk"}`, Result: "  "}},
+	}
+	user := renderJudgePrompt(tr, "User message:", "Assistant reply:")
+	if !strings.Contains(user, "result: (no result returned)") {
+		t.Errorf("blank tool result should be surfaced explicitly, got:\n%s", user)
+	}
+}
+
+func TestJudgeSystemPromptCoversToolExpectationAndVerification(t *testing.T) {
+	for _, want := range []string{"FABRICATED action", "read-back confirmation", "was expected to CALL"} {
+		if !strings.Contains(judgeSystemPrompt, want) {
+			t.Errorf("judge system prompt should cover %q", want)
+		}
+	}
+}
+
 func TestClamp15(t *testing.T) {
 	for in, want := range map[int]int{-3: 1, 0: 1, 1: 1, 3: 3, 5: 5, 9: 5} {
 		if got := clamp15(in); got != want {

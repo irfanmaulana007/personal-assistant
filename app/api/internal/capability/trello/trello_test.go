@@ -86,23 +86,25 @@ func TestBuildTaskBodyRoundTrip(t *testing.T) {
 // checkPersisted is the read-after-write gate: a card only counts as saved if it
 // was read back, isn't archived, and sits on the list we filed it to.
 func TestCheckPersisted(t *testing.T) {
+	const wantList = "list1"
+
 	// Happy path: live card on the expected list.
-	if err := checkPersisted(&trello.Card{ID: "c1", IDList: listBacklog}, listBacklog); err != nil {
+	if err := checkPersisted(&trello.Card{ID: "c1", IDList: wantList}, wantList); err != nil {
 		t.Errorf("live card on expected list should pass, got %v", err)
 	}
 
 	// Nil card (create returned nothing readable) → not persisted.
-	if err := checkPersisted(nil, listBacklog); err == nil {
+	if err := checkPersisted(nil, wantList); err == nil {
 		t.Error("nil card should fail verification")
 	}
 
 	// Archived card → not persisted, even though it exists.
-	if err := checkPersisted(&trello.Card{ID: "c1", IDList: listBacklog, Closed: true}, listBacklog); err == nil {
+	if err := checkPersisted(&trello.Card{ID: "c1", IDList: wantList, Closed: true}, wantList); err == nil {
 		t.Error("archived card should fail verification")
 	}
 
 	// Card landed on a different list (e.g. wrong board/creds) → not persisted.
-	if err := checkPersisted(&trello.Card{ID: "c1", IDList: "someOtherList"}, listBacklog); err == nil {
+	if err := checkPersisted(&trello.Card{ID: "c1", IDList: "someOtherList"}, wantList); err == nil {
 		t.Error("card on the wrong list should fail verification")
 	}
 

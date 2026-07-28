@@ -254,7 +254,7 @@ func (a *Agent) run(ctx context.Context, userMessage string, history []Message, 
 		personaPrompt = a.persona.Prompt(ctx, userID)
 	}
 
-	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills, memories, personaPrompt)}}
+	messages := []llm.Message{{Role: "system", Content: a.systemPrompt(enabledSkills, memories, personaPrompt, authctx.ProjectName(ctx))}}
 	for _, m := range history {
 		messages = append(messages, llm.Message{Role: m.Role, Content: m.Content})
 	}
@@ -436,7 +436,7 @@ func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) string {
 	return a.router.Route(ctx, result)
 }
 
-func (a *Agent) systemPrompt(enabledSkills []store.Skill, memories []store.Memory, personaPrompt string) string {
+func (a *Agent) systemPrompt(enabledSkills []store.Skill, memories []store.Memory, personaPrompt, groupProjectName string) string {
 	loc := a.owner.Location()
 	now := time.Now().In(loc)
 	name := a.owner.Name
@@ -475,6 +475,14 @@ Reminders & events (you MUST call a tool to save anything — never claim you di
 
 	var b strings.Builder
 	b.WriteString(base)
+
+	// In a WhatsApp group bound to a project, tell the model which project it acts
+	// as so it can answer "which project are you here?" directly and knows that
+	// everything it does is scoped to that project. Only set for bound group
+	// chats; empty (and omitted) on the web channel and in unbound groups.
+	if groupProjectName != "" {
+		b.WriteString(fmt.Sprintf("\n\nYou are operating inside a WhatsApp group that is assigned to the %q project. Everything you do here — your memory, skills, reminders, notes, and data — is scoped to the %q project only. If anyone asks which project you're acting as in this group, answer plainly that it is %q. Only the group owner can change this, by sending \"assign to project <name>\" (or \"unassign\" to detach).", groupProjectName, groupProjectName, groupProjectName))
+	}
 
 	if len(memories) > 0 {
 		b.WriteString("\n\nRelevant things you remember about the user:")

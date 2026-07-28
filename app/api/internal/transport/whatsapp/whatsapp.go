@@ -37,11 +37,11 @@ type Transport struct {
 	container *sqlstore.Container
 	appCtx    context.Context
 
-	mu       sync.RWMutex
-	client   *whatsmeow.Client
-	status   string
-	qr       string
-	ownerJID string
+	mu          sync.RWMutex
+	client      *whatsmeow.Client
+	status      string
+	qr          string
+	ownerJID    string
 	allowed     map[string]bool // senders permitted to talk to the assistant
 	allowAll    bool            // when true, answer every sender (allowed is ignored)
 	handler     transport.MessageHandler
@@ -453,15 +453,16 @@ func (t *Transport) handleMessage(evt *events.Message) {
 	}
 
 	msg := &transport.Message{
-		ID:        evt.Info.ID,
-		From:      senderJID,
-		Chat:      evt.Info.Chat.ToNonAD().String(),
-		IsGroup:   evt.Info.IsGroup,
-		Text:      text,
-		Image:     imageDataURL,
-		Platform:  "whatsapp",
-		Timestamp: evt.Info.Timestamp.Unix(),
-		Raw:       evt,
+		ID:         evt.Info.ID,
+		From:       senderJID,
+		Candidates: candidates,
+		Chat:       evt.Info.Chat.ToNonAD().String(),
+		IsGroup:    evt.Info.IsGroup,
+		Text:       text,
+		Image:      imageDataURL,
+		Platform:   "whatsapp",
+		Timestamp:  evt.Info.Timestamp.Unix(),
+		Raw:        evt,
 	}
 
 	if handler != nil {

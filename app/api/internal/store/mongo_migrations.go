@@ -33,6 +33,7 @@ type mongoMigration struct {
 // steps to the end; never renumber or remove one that has shipped.
 var mongoMigrationList = []mongoMigration{
 	{name: "0001_backfill_project_id", run: (*MongoStore).backfillProjectID},
+	{name: "0002_backfill_message_log_project_id", run: (*MongoStore).backfillMessageLogProjectID},
 }
 
 // runMigrations applies every not-yet-applied migration in order, recording each
@@ -79,6 +80,25 @@ func (m *MongoStore) backfillProjectID(ctx context.Context) error {
 		if _, err := m.col(coll).UpdateMany(ctx, filter, update); err != nil {
 			return fmt.Errorf("backfill project_id on %s: %w", coll, err)
 		}
+	}
+	return nil
+}
+
+// backfillMessageLogProjectID re-stamps project_id on message_log documents still
+// missing it. After 0001 ran, LogMessage kept writing chat history without a
+// project_id (chat history was not yet project-scoped), so any message logged in
+// that window would drop out of the now project-filtered history view. Those
+// documents predate per-project attribution — the active project was never
+// recorded — so, like the original backfill, they are assigned to the default
+// project rather than lost.
+func (m *MongoStore) backfillMessageLogProjectID(ctx context.Context) error {
+	filter := bson.M{"$or": bson.A{
+		bson.M{"project_id": bson.M{"$exists": false}},
+		bson.M{"project_id": int64(0)},
+	}}
+	update := bson.M{"$set": bson.M{"project_id": defaultProjectID}}
+	if _, err := m.col(colMessageLog).UpdateMany(ctx, filter, update); err != nil {
+		return fmt.Errorf("backfill project_id on %s: %w", colMessageLog, err)
 	}
 	return nil
 }
