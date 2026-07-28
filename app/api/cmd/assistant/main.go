@@ -38,6 +38,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/config"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/crypto"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/eval"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/groupproject"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/imagegen"
 	googleint "github.com/irfanmaulana007/personal-assistant/app/api/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/llm"
@@ -188,6 +189,12 @@ func main() {
 	// and the LLM-as-judge above.
 	groupTranslator := translate.NewGroup(translator, settingsSvc, db, db, evalJudge, log)
 
+	// Group → project binding: lets a WhatsApp group's owner self-assign which
+	// app project the assistant acts as in that group (one project per group). An
+	// unbound group is inert until assigned. Runs before the agent, like the
+	// translator.
+	groupProjectSvc := groupproject.New(db, log)
+
 	// Daily routines ("scheduled skills"): editable start-of-day / end-of-day
 	// prompts run through the agent and delivered over WhatsApp. Supersedes the
 	// old reminder digest — carry its configured time over on first boot.
@@ -227,7 +234,7 @@ func main() {
 			// message came from: a group JID → its mapped project (role clamped, no
 			// superadmin from a group); a personal number → its mapped project + role
 			// (superadmin allowed for 1:1 only), else the owner's personal project.
-			uctx, userID := resolveWhatsAppScope(ctx, db, owner, msg, log)
+			uctx, userID, assigned := resolveWhatsAppScope(ctx, db, owner, msg, log)
 
 			// Group Translator skill: a "/t" command in a group is a
 			// self-contained translate/config request. Handle it directly and
@@ -241,6 +248,26 @@ func main() {
 					}
 					if err := wa.SendMessage(ctx, replyTo, reply); err != nil {
 						log.Error("failed to send translator response", "to", replyTo, "error", err)
+					}
+					return
+				}
+			}
+
+			// Group → project binding. An unbound group is inert: the agent must
+			// not run for it (there is no project to scope it to), so this runs
+			// before the agent. It handles binding commands (owner-only) and, for
+			// an unbound group, prompts the owner to assign a project. Like the
+			// translator, these config exchanges bypass the agent and stay out of
+			// the conversation history.
+			if msg.IsGroup {
+				isOwner := isOwnerSender(uctx, settingsSvc, wa, msg)
+				if reply, handled := groupProjectSvc.Handle(uctx, msg.Chat, msg.Text, owner.ID, assigned, isOwner); handled {
+					replyTo := msg.Chat
+					if replyTo == "" {
+						replyTo = msg.From
+					}
+					if err := wa.SendMessage(ctx, replyTo, reply); err != nil {
+						log.Error("failed to send group-project response", "to", replyTo, "error", err)
 					}
 					return
 				}
@@ -490,16 +517,22 @@ func setupLogger(cfg config.LoggingConfig) *slog.Logger {
 // recentAgentHistory loads the most recent conversation turns for a platform and
 // maps them to agent messages (oldest first), for use as agent context.
 // resolveWhatsAppScope decides which project, role, and user the agent acts as
-// for an inbound WhatsApp message, and returns the context carrying that scope
-// plus the effective user id (used for history/logging).
+// for an inbound WhatsApp message, and returns the context carrying that scope,
+// the effective user id (used for history/logging), and whether the chat is
+// bound to a project.
 //
 //   - Group message: look up the group JID. A mapping scopes the run to its
-//     project; the role is clamped so a group can never confer superadmin.
+//     project (role clamped so a group never confers superadmin) and returns
+//     assigned=true, surfacing the project name to the agent. An UNMAPPED group
+//     is left unscoped and returns assigned=false: the group self-assignment flow
+//     handles it and prompts the owner, and the agent never runs for it — so it
+//     is never executed against the unscoped "project 0".
 //   - Personal (1:1) message: look up the sender's number. A mapping scopes the
 //     run to its project and role (superadmin honoured here only) and, if it
 //     names a user, attributes the chat to that user. Unmapped personal chats
-//     fall back to the owner's personal project so the owner's 1:1 keeps working.
-func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User, msg *transport.Message, log *slog.Logger) (context.Context, int64) {
+//     fall back to the owner's personal project so the owner's 1:1 keeps working;
+//     these always return assigned=true.
+func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User, msg *transport.Message, log *slog.Logger) (context.Context, int64, bool) {
 	userID := owner.ID
 	jid := msg.From
 	if msg.IsGroup {
@@ -521,25 +554,72 @@ func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User
 		ctx = authctx.WithUserID(ctx, userID)
 		ctx = authctx.WithProjectID(ctx, m.ProjectID)
 		ctx = authctx.WithProjectRole(ctx, role)
-		return ctx, userID
+		// Surface the bound project's name to the agent (group chats only) so it can
+		// state which project it is acting as when asked.
+		if msg.IsGroup {
+			if p, _ := db.GetProject(ctx, m.ProjectID); p != nil {
+				ctx = authctx.WithProjectName(ctx, p.Name)
+			}
+		}
+		return ctx, userID, true
 	}
 
 	ctx = authctx.WithUserID(ctx, userID)
-	// Unmapped chat: default to the owner's first/personal project so the owner's
-	// private channel still works and nothing is written to the unscoped project 0
-	// (which is orphaned from every per-project view and never cleaned up, and
-	// whose reads leak across all projects via the "project 0 matches any row"
-	// predicate). A group never confers superadmin, so its role is clamped just
-	// like a mapped group.
-	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-		role := summaries[0].Role
-		if msg.IsGroup && role == store.GlobalRoleSuperadmin {
-			role = store.ProjectRoleAdmin
-		}
-		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
-		ctx = authctx.WithProjectRole(ctx, role)
+
+	// An unmapped GROUP is left unscoped and reported as unassigned. The group
+	// self-assignment flow (groupproject) then prompts the owner to pick a
+	// project, and the agent is never run for it — so nothing is ever written to
+	// or read from the unscoped project 0 (which is orphaned from every per-project
+	// view and whose reads leak across all projects via the "project 0 matches any
+	// row" predicate).
+	if msg.IsGroup {
+		return ctx, userID, false
 	}
-	return ctx, userID
+
+	// An unmapped PERSONAL (1:1) chat falls back to the owner's first/personal
+	// project so the owner's private channel keeps working without touching the
+	// unscoped project 0.
+	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
+		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
+		ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+	}
+	return ctx, userID, true
+}
+
+// isOwnerSender reports whether a WhatsApp message came from the account owner —
+// the only identity allowed to change a group's project binding. The owner is
+// the paired account itself ("message yourself" mode) or any number on the
+// settings allowlist (the owner's configured numbers). Matching spans the
+// sender's identity candidates so it holds whether WhatsApp addressed them by
+// phone number or by LID. It fails closed: an unrecognised sender is not treated
+// as the owner.
+func isOwnerSender(ctx context.Context, settingsSvc *settings.Service, wa *whatsapp.Transport, msg *transport.Message) bool {
+	ids := msg.Candidates
+	if len(ids) == 0 {
+		ids = []string{msg.From}
+	}
+	if paired := wa.OwnerJID(); paired != "" {
+		for _, c := range ids {
+			if c == paired {
+				return true
+			}
+		}
+	}
+	allow := settingsSvc.WhatsAppAllowedJIDs(ctx)
+	if len(allow) == 0 {
+		// "message yourself" mode: only the paired account (handled above) counts.
+		return false
+	}
+	set := make(map[string]bool, len(allow))
+	for _, j := range allow {
+		set[j] = true
+	}
+	for _, c := range ids {
+		if set[c] {
+			return true
+		}
+	}
+	return false
 }
 
 func recentAgentHistory(ctx context.Context, db store.Store, userID int64, platform string, limit int) []agent.Message {
