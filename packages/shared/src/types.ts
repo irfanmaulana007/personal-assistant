@@ -360,6 +360,18 @@ export interface AdminSkill {
   prompt_updated_by?: string;
 }
 
+// AdminFeature is one feature in the platform-wide (superadmin) catalog behind
+// /features: the feature, the keys of the skills it owns, and the projects that
+// effectively enable it (the enabled cells of the comparison matrix).
+export interface AdminFeature {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  skill_keys: string[];
+  projects: SkillProjectRef[];
+}
+
 export interface Preferences {
   timezone: string; // 'UTC' | 'Asia/Jakarta'
   currency: string; // 'USD' | 'IDR'
