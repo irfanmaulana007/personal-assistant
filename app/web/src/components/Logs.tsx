@@ -306,30 +306,71 @@ export function Logs() {
     return () => obs.disconnect();
   }, [loadMore]);
 
+  // Reflect the open run in the URL (?run=<id>) so a run is deep-linkable and
+  // survives a reload; passing null removes it and closes the drawer.
+  const setRunParam = useCallback(
+    (id: number | null) => {
+      setSearchParams(
+        (prev) => {
+          const sp = new URLSearchParams(prev);
+          if (id) sp.set('run', String(id));
+          else sp.delete('run');
+          return sp;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const closeDetail = useCallback(() => {
+    setSelected(null);
+    setRunParam(null);
+  }, [setRunParam]);
+
   // Close the drawer on Escape.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSelected(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeDetail();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [closeDetail]);
 
-  const openDetail = (t: Trace) => {
-    setSelected(t);
+  // Fetch a run's full trace and show it in the drawer. `stub` seeds the drawer
+  // immediately: from the table it's the lightweight list-row trace (real meta,
+  // just missing tool/LLM detail); from the ?run= URL it's a bare { id }, which
+  // TraceDetail renders as a skeleton until getLog lands.
+  const loadDetail = useCallback((stub: Trace) => {
+    setSelected(stub);
     setDetailError('');
     setDetailLoading(true);
-    getLog(t.id)
-      .then((full) => {
-        setSelected(full);
-        setDetailError('');
-      })
+    getLog(stub.id)
+      .then((full) => setSelected(full))
       .catch((e) =>
-        // The list row (t) has no tool calls or LLM steps — those are
-        // detail-only. Surface the failure instead of silently showing a
-        // drawer that looks complete but is missing the tool-call section.
+        // The stub has no tool calls or LLM steps — those are detail-only.
+        // Surface the failure instead of silently showing a drawer that looks
+        // complete but is missing the tool-call section.
         setDetailError(e instanceof Error ? e.message : 'Failed to load full run detail'),
       )
       .finally(() => setDetailLoading(false));
+  }, []);
+
+  const openDetail = (t: Trace) => {
+    loadDetail(t);
+    setRunParam(t.id);
   };
+
+  // Open the run-detail drawer from ?run=<id> — chat reply "Log" links, reloads,
+  // and shared links all land here. Skips when that run is already open so it
+  // doesn't refetch after openDetail sets the param itself.
+  useEffect(() => {
+    const runParam = searchParams.get('run');
+    if (!runParam) return;
+    const id = Number(runParam);
+    if (!id || selected?.id === id) return;
+    // Opening a drawer from a deep link is a legitimate one-time URL→state sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadDetail({ id } as Trace);
+  }, [searchParams, selected?.id, loadDetail]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-100 dark:bg-gray-900">
@@ -507,7 +548,7 @@ export function Logs() {
           <>
             <div
               className="animate-fade-in fixed inset-0 z-40 bg-black/30 dark:bg-black/60"
-              onClick={() => setSelected(null)}
+              onClick={closeDetail}
               aria-hidden
             />
             <div className="animate-slide-in-right fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl flex-col bg-white shadow-xl dark:bg-gray-800">
@@ -553,7 +594,7 @@ export function Logs() {
                     }
                   />
                   <button
-                    onClick={() => setSelected(null)}
+                    onClick={closeDetail}
                     aria-label="Close"
                     className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-50"
                   >
@@ -589,6 +630,27 @@ function TraceDetail({
   detailError?: string;
 }) {
   const { formatDate, formatMoney } = usePreferences();
+
+  // The ?run= URL-open path seeds the drawer with a bare { id } stub before the
+  // full trace arrives (created_at is the tell). Render a skeleton — or the load
+  // error — until then, so we never format undefined fields.
+  if (!trace.created_at) {
+    return (
+      <div className="space-y-3">
+        {detailError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {detailError}
+          </div>
+        ) : (
+          <>
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+          </>
+        )}
+      </div>
+    );
+  }
+
   const hasImage = (trace.image_total_tokens ?? 0) > 0;
   const combinedTokens = trace.combined_total_tokens ?? trace.total_tokens;
   const meta = [

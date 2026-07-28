@@ -578,6 +578,7 @@ export async function sendMessage(
   let buffer = '';
   let response = '';
   let images: string[] | undefined;
+  let runId: number | undefined;
   let errored: string | null = null;
 
   for (;;) {
@@ -599,6 +600,7 @@ export async function sendMessage(
         text?: string;
         response?: string;
         images?: string[];
+        run_id?: number;
         error?: string;
       };
       try {
@@ -612,6 +614,7 @@ export async function sendMessage(
       } else if (evt.type === 'done') {
         if (typeof evt.response === 'string') response = evt.response;
         images = evt.images;
+        runId = evt.run_id;
         handlers?.onDelta?.(response);
       } else if (evt.type === 'error') {
         errored = evt.error ?? 'Streaming failed';
@@ -620,7 +623,7 @@ export async function sendMessage(
   }
 
   if (errored) throw new Error(errored);
-  return { response, images };
+  return { response, images, run_id: runId };
 }
 
 export async function getChatHistory(): Promise<HistoryEntry[]> {

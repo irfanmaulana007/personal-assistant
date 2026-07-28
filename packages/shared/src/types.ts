@@ -5,6 +5,10 @@ export interface ChatMessage {
   timestamp: string;
   image?: string; // data: URL, for user messages with an attached image
   images?: string[]; // data: URLs, for images the assistant generated
+  // Trace/run id of the run that produced this assistant reply, used to deep-link
+  // the bubble to its run detail on the Logs page. Absent on user messages,
+  // error bubbles, and replies logged before run linking existed.
+  runId?: number;
 }
 
 // Global role on the user account. 'superadmin' is unrestricted (all projects +
@@ -108,12 +112,14 @@ export interface MyStats {
 export interface ChatResponse {
   response: string;
   images?: string[]; // data: URLs for images the assistant generated this turn
+  run_id?: number; // trace id of the run that produced this reply
 }
 
 export interface HistoryEntry {
   direction: string;
   body: string;
   timestamp: string;
+  run_id?: number; // trace id linked to an assistant reply (absent otherwise)
 }
 
 export interface LlmProvider {
