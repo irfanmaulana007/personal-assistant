@@ -143,6 +143,16 @@ type ProjectFeature struct {
 	SkillKeys []string
 }
 
+// FeatureWithMapping is a feature plus the projects that effectively enable it,
+// used by the platform-wide (superadmin) features catalog to compare each
+// feature's enablement across every project. A feature disabled everywhere comes
+// back with an empty project list.
+type FeatureWithMapping struct {
+	Feature
+	SkillKeys []string
+	Projects  []SkillProjectRef
+}
+
 // WhatsAppMapping maps a WhatsApp identity (a group JID or a personal
 // phone/JID) to the project and role the agent acts as for messages from it.
 type WhatsAppMapping struct {
@@ -796,6 +806,9 @@ type DataStore interface {
 	GetFeature(ctx context.Context, id int64) (*Feature, error)
 	ListProjectFeatures(ctx context.Context, projectID int64) ([]ProjectFeature, error)
 	SetProjectFeatureEnabled(ctx context.Context, projectID, featureID int64, enabled bool) error
+	// ListFeaturesWithProjectMapping returns every feature with the projects that
+	// effectively enable it, backing the superadmin features comparison matrix.
+	ListFeaturesWithProjectMapping(ctx context.Context) ([]FeatureWithMapping, error)
 
 	// WhatsApp identity → project/role mappings (superadmin-managed)
 	ListWhatsAppMappings(ctx context.Context) ([]WhatsAppMapping, error)

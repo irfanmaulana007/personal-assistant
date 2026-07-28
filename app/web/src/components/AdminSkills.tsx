@@ -11,6 +11,9 @@ import type { AdminSkill, Project, SkillClassification } from '../types';
 import { Toggle } from './ui/Toggle';
 import { Modal } from './ui/Modal';
 import { Skeleton, SkeletonListRow } from './ui/Skeleton';
+import { SegmentedTabs } from './ui/SegmentedTabs';
+import { ProjectMatrixTable, type MatrixRow } from './ui/ProjectMatrixTable';
+import { matrixRowMatches } from '../lib/matrix';
 import { useProjects } from '../contexts/project';
 
 const textareaClass =
@@ -21,6 +24,8 @@ function formatEdited(iso: string): string {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
+
+type ViewKey = 'catalog' | 'comparison';
 
 type FilterKey = 'all' | SkillClassification;
 
@@ -243,6 +248,7 @@ export function AdminSkills() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [view, setView] = useState<ViewKey>('catalog');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [coreBusyId, setCoreBusyId] = useState<number | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
@@ -281,6 +287,25 @@ export function AdminSkills() {
       return true;
     });
   }, [skills, filter, query]);
+
+  // Rows for the projects-comparison matrix. Every skill is included (the
+  // classification filter is a catalog-only concern); a project-owned fork is
+  // locked since it only exists in its one project.
+  const skillRows: MatrixRow[] = useMemo(
+    () =>
+      skills.map((sk) => ({
+        id: sk.id,
+        name: sk.name,
+        subtitle: sk.category,
+        enabledProjectIds: new Set(sk.projects.map((p) => p.id)),
+        locked: sk.scope === 'project',
+        lockedHint:
+          sk.scope === 'project'
+            ? `Project-owned fork in ${sk.projects[0]?.name ?? 'its project'} — managed from that project’s settings.`
+            : undefined,
+      })),
+    [skills],
+  );
 
   const toggleCore = async (sk: AdminSkill) => {
     setCoreBusyId(sk.id);
@@ -353,7 +378,37 @@ export function AdminSkills() {
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
+        <SegmentedTabs
+          tabs={[
+            { key: 'catalog', label: 'Catalog', count: skills.length },
+            { key: 'comparison', label: 'Projects comparison', count: projects.length },
+          ]}
+          active={view}
+          onChange={setView}
+        />
+        <div className="relative sm:w-64">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path strokeLinecap="round" d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search skills…"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
+          />
+        </div>
+      </div>
+
+      {view === 'catalog' && (
+        <div className="mt-3 inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
           {FILTERS.map((f) => (
             <button
               key={f.key}
@@ -378,26 +433,7 @@ export function AdminSkills() {
             </button>
           ))}
         </div>
-        <div className="relative sm:w-64">
-          <svg
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path strokeLinecap="round" d="m21 21-4.3-4.3" />
-          </svg>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search skills…"
-            className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
-          />
-        </div>
-      </div>
+      )}
 
       {loading ? (
         <div className="mt-4 space-y-2">
@@ -405,6 +441,20 @@ export function AdminSkills() {
             <SkeletonListRow key={i} />
           ))}
           <Skeleton className="h-2.5 w-24" />
+        </div>
+      ) : view === 'comparison' ? (
+        <div className="mt-4">
+          <ProjectMatrixTable
+            itemLabel="Skill"
+            rows={skillRows.filter((r) => matrixRowMatches(r, query))}
+            projects={projects}
+            busyKey={projectBusyKey}
+            onToggle={(row, project, enabled) => {
+              const sk = skills.find((s) => s.id === row.id);
+              if (sk) toggleProject(sk, project, enabled);
+            }}
+            emptyLabel="No skills match your search."
+          />
         </div>
       ) : visible.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">

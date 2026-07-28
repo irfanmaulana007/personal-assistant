@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -499,6 +500,50 @@ func (s *PostgresStore) SetProjectFeatureEnabled(ctx context.Context, projectID,
 		projectID, featureID, enabled,
 	)
 	return err
+}
+
+// ListFeaturesWithProjectMapping returns every feature together with the
+// projects that effectively enable it — the matrix the superadmin features
+// comparison uses. Effective-enabled reuses the same per-project rule as
+// ListProjectFeatures: COALESCE(project_features.enabled, features.default_enabled),
+// so an absent override means the feature inherits its catalog default. Skills
+// are aggregated in a lateral subquery to avoid a project×skill cartesian.
+func (s *PostgresStore) ListFeaturesWithProjectMapping(ctx context.Context) ([]FeatureWithMapping, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT f.id, f.key, f.name, f.description, f.sort_order, f.default_enabled,
+		        COALESCE(sk.skill_keys, '{}') AS skill_keys,
+		        COALESCE(
+		          jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name, 'slug', p.slug) ORDER BY p.name)
+		            FILTER (WHERE p.id IS NOT NULL AND COALESCE(pf.enabled, f.default_enabled)),
+		          '[]'::jsonb) AS projects
+		 FROM features f
+		 CROSS JOIN projects p
+		 LEFT JOIN project_features pf ON pf.feature_id = f.id AND pf.project_id = p.id
+		 LEFT JOIN LATERAL (
+		   SELECT array_agg(s.key ORDER BY s.sort_order) AS skill_keys
+		   FROM feature_skills fs JOIN skills s ON s.id = fs.skill_id
+		   WHERE fs.feature_id = f.id
+		 ) sk ON true
+		 GROUP BY f.id, f.key, f.name, f.description, f.sort_order, f.default_enabled, sk.skill_keys
+		 ORDER BY f.sort_order ASC, f.id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list features with project mapping: %w", err)
+	}
+	defer rows.Close()
+
+	var out []FeatureWithMapping
+	for rows.Next() {
+		var fm FeatureWithMapping
+		var projectsJSON []byte
+		if err := rows.Scan(&fm.ID, &fm.Key, &fm.Name, &fm.Description, &fm.SortOrder, &fm.DefaultEnabled, &fm.SkillKeys, &projectsJSON); err != nil {
+			return nil, fmt.Errorf("scan feature mapping: %w", err)
+		}
+		if err := json.Unmarshal(projectsJSON, &fm.Projects); err != nil {
+			return nil, fmt.Errorf("decode feature projects: %w", err)
+		}
+		out = append(out, fm)
+	}
+	return out, rows.Err()
 }
 
 // --- WhatsApp mappings ---

@@ -20,6 +20,7 @@ import type {
   HikeNameOption,
   Skill,
   AdminSkill,
+  AdminFeature,
   Role,
   ChatResponse,
   HistoryEntry,
@@ -513,6 +514,15 @@ export async function resetAdminSkillPrompt(id: number): Promise<AdminSkill[]> {
 // Superadmin only. Clears a global skill's auto-tuned prompt override.
 export async function revertAdminSkillTuned(id: number): Promise<AdminSkill[]> {
   return request<AdminSkill[]>(`/api/admin/skills/${id}/revert-tuned`, { method: 'POST' });
+}
+
+// --- Platform-wide features catalog (superadmin /features page) ---
+
+// Superadmin only. Every feature with the skills it owns and the projects that
+// effectively enable it — the data for the features × projects comparison
+// matrix. Toggling a cell goes through setProjectFeature (path-scoped).
+export async function listAdminFeatures(): Promise<AdminFeature[]> {
+  return request<AdminFeature[]>('/api/admin/features');
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {

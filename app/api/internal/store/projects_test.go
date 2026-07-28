@@ -252,6 +252,61 @@ func TestProjectSkillsAndFeatureCascade(t *testing.T) {
 	}
 }
 
+// TestListFeaturesWithProjectMapping covers the superadmin features × projects
+// matrix: a default-enabled feature maps to every project until an explicit
+// per-project override turns it off, and the mapping carries the feature's skills.
+func TestListFeaturesWithProjectMapping(t *testing.T) {
+	s := newTestPostgres(t)
+	ctx := context.Background()
+	owner, _ := s.CreateUser(ctx, "o@example.com", "h", GlobalRoleSuperadmin)
+	p1, _ := s.CreateProject(ctx, "P1", owner.ID)
+	p2, _ := s.CreateProject(ctx, "P2", owner.ID)
+
+	// A helper returning the mapped feature row by key.
+	feature := func(key string) *FeatureWithMapping {
+		list, err := s.ListFeaturesWithProjectMapping(ctx)
+		if err != nil {
+			t.Fatalf("list features with mapping: %v", err)
+		}
+		for i := range list {
+			if list[i].Key == key {
+				return &list[i]
+			}
+		}
+		t.Fatalf("feature %q missing from mapping", key)
+		return nil
+	}
+
+	enabledIn := func(fm *FeatureWithMapping) map[int64]bool {
+		m := map[int64]bool{}
+		for _, p := range fm.Projects {
+			m[p.ID] = true
+		}
+		return m
+	}
+
+	// bucket_list ships default-enabled, so it maps to BOTH projects with no
+	// explicit override, and carries its attached skill.
+	bl := feature("bucket_list")
+	on := enabledIn(bl)
+	if !on[p1.ID] || !on[p2.ID] {
+		t.Fatalf("bucket_list should map to both projects by default, got %v", bl.Projects)
+	}
+	if len(bl.SkillKeys) != 1 || bl.SkillKeys[0] != "bucket_list" {
+		t.Fatalf("bucket_list skill keys = %v, want [bucket_list]", bl.SkillKeys)
+	}
+
+	// Disable it for p2 only; the matrix must drop p2 but keep p1.
+	blID := findFeatureID(t, s, "bucket_list")
+	if err := s.SetProjectFeatureEnabled(ctx, p2.ID, blID, false); err != nil {
+		t.Fatalf("disable bucket_list for p2: %v", err)
+	}
+	on = enabledIn(feature("bucket_list"))
+	if !on[p1.ID] || on[p2.ID] {
+		t.Fatalf("after override, bucket_list should map to p1 only, got %v", on)
+	}
+}
+
 // TestProjectSkillForks covers project-owned skills: a fork shadows the global
 // skill of the same key for that project (with its own prompt), inherits the
 // global twin's feature gate, drives EnabledProjectSkillKeys, is isolated to its

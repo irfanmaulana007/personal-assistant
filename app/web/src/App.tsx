@@ -7,6 +7,7 @@ import { ForgotPassword } from './components/ForgotPassword';
 import { Layout } from './components/Layout';
 import { Chat } from './components/Chat';
 import { AdminSkills } from './components/AdminSkills';
+import { AdminFeatures } from './components/AdminFeatures';
 import { Reminders } from './components/Reminders';
 import { BucketList } from './components/BucketList';
 import { Wishlist } from './components/Wishlist';
@@ -179,6 +180,14 @@ function App() {
               element={
                 <SuperadminRoute isAdmin={isAdmin}>
                   <AdminSkills />
+                </SuperadminRoute>
+              }
+            />
+            <Route
+              path="features"
+              element={
+                <SuperadminRoute isAdmin={isAdmin}>
+                  <AdminFeatures />
                 </SuperadminRoute>
               }
             />
