@@ -32,7 +32,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     listProjects()
       .then((ps) => {
         if (!active) return;
-        setProjects(ps);
+        // Pin the default ("General") project to the top of the switcher,
+        // preserving the server's id order for the rest.
+        const ordered = [...ps].sort((a, b) => {
+          if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+          return a.id - b.id;
+        });
+        setProjects(ordered);
       })
       .catch(() => {})
       .finally(() => {
