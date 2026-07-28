@@ -197,6 +197,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Platform-wide skills catalog (all skills, classified + project-mapped) and
 	// the core flag: superadmin manages the whole catalog on the global /skills page.
 	mux.Handle("GET /api/admin/skills", superadmin(s.handleAdminListSkills))
+	// Platform-wide features catalog with per-project enablement, backing the
+	// global /features comparison matrix. Toggling still goes through the
+	// path-scoped /api/projects/{id}/features/{featureId}.
+	mux.Handle("GET /api/admin/features", superadmin(s.handleAdminListFeatures))
 	mux.Handle("PUT /api/skills/{id}/core", superadmin(s.handleSetSkillCore))
 	mux.Handle("PUT /api/admin/skills/{id}/prompt", superadmin(s.handleAdminSetSkillPrompt))
 	mux.Handle("POST /api/admin/skills/{id}/revert-tuned", superadmin(s.handleAdminRevertTuned))

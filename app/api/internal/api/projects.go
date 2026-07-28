@@ -528,6 +528,49 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	s.handleListFeatures(w, r)
 }
 
+// --- Admin features catalog (superadmin: features × projects comparison) ---
+
+// adminFeatureResp is one feature in the platform-wide (superadmin) catalog: the
+// feature, the keys of the skills it owns, and the projects that effectively
+// enable it (the enabled cells of the comparison matrix).
+type adminFeatureResp struct {
+	ID          int64             `json:"id"`
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	SkillKeys   []string          `json:"skill_keys"`
+	Projects    []adminProjectRef `json:"projects"`
+}
+
+// handleAdminListFeatures returns the feature catalog with each feature's
+// per-project enablement, backing the superadmin /features comparison matrix.
+// Superadmin-only (behind the `superadmin` middleware).
+func (s *Server) handleAdminListFeatures(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	list, err := s.store.ListFeaturesWithProjectMapping(ctx)
+	if err != nil {
+		s.log.Error("list features with mapping", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load features"})
+		return
+	}
+	out := make([]adminFeatureResp, 0, len(list))
+	for _, fm := range list {
+		projects := make([]adminProjectRef, 0, len(fm.Projects))
+		for _, p := range fm.Projects {
+			projects = append(projects, adminProjectRef{ID: p.ID, Name: p.Name, Slug: p.Slug})
+		}
+		skillKeys := fm.SkillKeys
+		if skillKeys == nil {
+			skillKeys = []string{}
+		}
+		out = append(out, adminFeatureResp{
+			ID: fm.ID, Key: fm.Key, Name: fm.Name, Description: fm.Description,
+			SkillKeys: skillKeys, Projects: projects,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // --- Per-project skills (path-scoped: manage a specific project's skills) ---
 
 type projectSkillResp struct {
