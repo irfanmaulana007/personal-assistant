@@ -77,6 +77,28 @@ func hasSaveIntent(msg string) bool {
 	return saveIntentRE.MatchString(msg)
 }
 
+// lookupIntentRE matches messages that ask about the state or contents of a
+// connected integration — Trello boards/cards, the email inbox, reminders, the
+// agenda, contacts, the bucket list, etc. These are *reads*, but they are just
+// as fabrication-prone as saves: a weak model (e.g. deepseek-v4-flash) will
+// happily "list" boards or emails it never retrieved, or assert an integration
+// is connected without checking. When this matches and tools are available, the
+// first LLM step is forced to call a tool (tool_choice=required) so the answer
+// is grounded in a real tool result instead of the model's imagination — see
+// hasLookupIntent. saveIntentRE already covers the write side.
+//
+// The nouns are matched as whole words to avoid false hits inside longer words,
+// and cover the Indonesian phrasings the assistant actually receives
+// (papan=board, kartu=card, kontak=contact, jadwal/agenda=schedule).
+var lookupIntentRE = regexp.MustCompile(`(?i)\b(trello|kanban|board|boards|papan|card|cards|kartu|inbox|email|emails|reminder|reminders|pengingat|agenda|jadwal|contact|contacts|kontak|bucket ?list)\b`)
+
+// hasLookupIntent reports whether the user message asks to read back data from a
+// connected integration, so the turn should force a tool call rather than accept
+// a text-only (potentially fabricated) listing.
+func hasLookupIntent(msg string) bool {
+	return lookupIntentRE.MatchString(msg)
+}
+
 // ToolProvider supplies extra, dynamically-resolved tools (e.g. connected
 // Composio apps) and executes them. Implementations read the current user from
 // the context (via authctx). All methods must tolerate a nil/empty result.
@@ -278,12 +300,16 @@ func (a *Agent) run(ctx context.Context, userMessage string, history []Message, 
 	if a.provider != nil {
 		tools = append(tools, a.provider.Tools(ctx)...)
 	}
-	// Save-intent turns must not be answered with a fabricated confirmation.
-	// When the user asks to persist something and tools are available, force the
-	// model to call a tool until at least one has run this turn (tool_choice=
-	// "required"); once a tool has executed, later steps fall back to "auto" so
-	// the model can summarize the real result.
-	forceOnSaveIntent := len(tools) > 0 && hasSaveIntent(userMessage)
+	// Fabrication-prone turns must not be answered from the model's imagination.
+	// Two classes qualify: save-intent turns (the user asks to persist something,
+	// and a text-only "done ✅" would be a fabricated confirmation) and
+	// integration-lookup turns (the user asks what's on their Trello / in their
+	// inbox / on their agenda, and a text-only listing would be fabricated data).
+	// When either applies and tools are available, force the model to call a tool
+	// until at least one has run this turn (tool_choice="required"); once a tool
+	// has executed, later steps fall back to "auto" so the model can summarize the
+	// real result.
+	forceToolCall := len(tools) > 0 && (hasSaveIntent(userMessage) || hasLookupIntent(userMessage))
 
 	var total llm.Usage
 	var used []ToolInvocation
@@ -306,9 +332,9 @@ func (a *Agent) run(ctx context.Context, userMessage string, history []Message, 
 		start := time.Now()
 		var res *llm.CompletionResult
 		var err error
-		if forceOnSaveIntent && len(used) == 0 {
-			// Forced save-intent turns must call a tool (no user-facing text), so
-			// they never stream.
+		if forceToolCall && len(used) == 0 {
+			// Forced turns must call a tool (no user-facing text), so they never
+			// stream.
 			res, err = a.client.CompleteRequiringTool(ctx, cfg, messages, tools)
 		} else {
 			res, err = a.completeText(ctx, cfg, messages, tools, onDelta)
@@ -457,6 +483,7 @@ Guidelines:
 - For general questions or small talk, just reply directly without calling any tool.
 - Never claim to have sent an email — the email tool only creates drafts.
 - Never claim you saved something (a reminder, note, bucket-list item, memory, etc.) unless you actually called the tool that saves it and it returned successfully.
+- Never report an integration's connection status or list its data (Trello boards or cards, emails, reminders, calendar events, contacts, etc.) unless a tool returned it in THIS turn. Do not invent board names, card titles, email subjects, or event details, and do not assume something is connected. If the relevant tool is available, call it and answer only from what it returns; if no such tool is available or the tool returns nothing, say plainly that you could not find it / it does not appear connected — never fill the gap from memory.
 
 Memory:
 - You have long-term memory. Call the "remember" tool to save durable facts about the user (plans, budgets, preferences, decisions, ongoing tasks) so you can use them later and in future sessions. Do this proactively when the user shares something worth keeping.
