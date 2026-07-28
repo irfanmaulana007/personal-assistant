@@ -99,6 +99,55 @@ func (c *Client) BoardLists(ctx context.Context, apiKey, token, boardID string) 
 	return lists, nil
 }
 
+// BoardLabels returns the labels defined on a board (id, name, colour). A card
+// can only carry labels that belong to its own board, so callers resolve a label
+// by name against this set rather than a fixed id — which lets the same task
+// types (feature/improvement/chore/refactor) work on whatever board a project
+// is mapped to.
+func (c *Client) BoardLabels(ctx context.Context, apiKey, token, boardID string) ([]Label, error) {
+	q := url.Values{"fields": {"name,color"}, "limit": {"1000"}}
+	var labels []Label
+	if err := c.get(ctx, apiKey, token, "/boards/"+boardID+"/labels", q, &labels); err != nil {
+		return nil, err
+	}
+	return labels, nil
+}
+
+// PickList chooses a list on a board by preference: the first list whose name
+// matches one of preferred (case-insensitive — every exact match is tried
+// before any substring match), falling back to the first list on the board when
+// none of the preferred names are present. Returns empty strings only when the
+// board has no lists at all. This is how the per-project single-board mapping
+// routes tasks/bugs/ideas to a sensible column without pinning list ids.
+func PickList(lists []List, preferred ...string) (id, name string) {
+	for _, p := range preferred {
+		pl := strings.ToLower(strings.TrimSpace(p))
+		if pl == "" {
+			continue
+		}
+		for _, l := range lists {
+			if strings.ToLower(strings.TrimSpace(l.Name)) == pl {
+				return l.ID, l.Name
+			}
+		}
+	}
+	for _, p := range preferred {
+		pl := strings.ToLower(strings.TrimSpace(p))
+		if pl == "" {
+			continue
+		}
+		for _, l := range lists {
+			if strings.Contains(strings.ToLower(l.Name), pl) {
+				return l.ID, l.Name
+			}
+		}
+	}
+	if len(lists) > 0 {
+		return lists[0].ID, lists[0].Name
+	}
+	return "", ""
+}
+
 // BoardCards returns the open cards on a board, each carrying its list id so the
 // caller can group them by column.
 func (c *Client) BoardCards(ctx context.Context, apiKey, token, boardID string) ([]Card, error) {

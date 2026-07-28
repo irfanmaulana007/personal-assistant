@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getIntegrations, setTrelloCreds } from '../api/client';
+import { getIntegrations, setTrelloCreds, setTrelloBoard } from '../api/client';
 import { useProjects } from '../contexts/project';
 import type { Integrations as IntegrationsData } from '../types';
 import { SkeletonFormCard } from './ui/Skeleton';
@@ -164,6 +164,147 @@ function TrelloCredsCard({
   );
 }
 
+// TrelloBoardCard maps this project to a Trello workspace + board. The app is
+// multi-project, so each project pins its own board; the Trello skills only read
+// and write the board configured here. The two ids are pasted manually (not
+// secrets, so shown as plain text). Board id is required; leaving it blank on
+// Clear disables the Trello skills for this project.
+function TrelloBoardCard({
+  configured,
+  workspaceId,
+  boardId,
+  onSave,
+}: {
+  configured: boolean;
+  workspaceId: string;
+  boardId: string;
+  onSave: (workspaceId: string, boardId: string) => Promise<IntegrationsData>;
+}) {
+  const [ws, setWs] = useState(workspaceId);
+  const [board, setBoard] = useState(boardId);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const w = ws.trim();
+    const b = board.trim();
+    if (b === '') {
+      setMsg('Enter the board ID');
+      return;
+    }
+    setBusy(true);
+    setMsg('');
+    try {
+      await onSave(w, b);
+      setMsg('Saved');
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      await onSave('', '');
+      setWs('');
+      setBoard('');
+      setMsg('Cleared');
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed to clear');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <TrelloIcon />
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">
+            Workspace &amp; board
+          </h2>
+        </div>
+        {configured ? (
+          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-300">
+            Configured
+          </span>
+        ) : (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+            Not configured
+          </span>
+        )}
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            Workspace ID
+          </label>
+          <input
+            type="text"
+            value={ws}
+            onChange={(e) => setWs(e.target.value)}
+            placeholder="e.g. 6a54dd8eecaab3bd510528ba"
+            autoComplete="off"
+            spellCheck={false}
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            Board ID
+          </label>
+          <input
+            type="text"
+            value={board}
+            onChange={(e) => setBoard(e.target.value)}
+            placeholder="e.g. 6a54edaae21957ab935c81f6"
+            autoComplete="off"
+            spellCheck={false}
+            className={inputClass}
+          />
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+        This project&apos;s Trello skills only read and write the board set here — tasks land on
+        its <span className="font-medium">Backlog/Todo</span> list, bugs on its{' '}
+        <span className="font-medium">Bug</span> list, ideas on its{' '}
+        <span className="font-medium">Ideas</span> list (matched by name). Find the IDs by opening
+        a board and appending <span className="font-mono">.json</span> to its URL (the workspace is{' '}
+        <span className="font-mono">idOrganization</span>). Until a board is set, Trello skills are
+        disabled for this project.
+      </p>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+        >
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        {configured && (
+          <button
+            type="button"
+            onClick={clear}
+            disabled={busy}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/15"
+          >
+            Clear
+          </button>
+        )}
+        {msg && <span className="text-sm text-gray-500 dark:text-gray-400">{msg}</span>}
+      </div>
+    </form>
+  );
+}
+
 // Trello integration detail page. Mirrors the WhatsApp integration detail page:
 // a back-link to the integrations list, a header, then the credentials card
 // that used to live under Settings → API keys.
@@ -224,16 +365,28 @@ export function IntegrationsTrello() {
         ) : error ? (
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         ) : data ? (
-          <TrelloCredsCard
-            configured={data.trello_configured}
-            keyMask={data.trello_key_mask}
-            tokenMask={data.trello_token_mask}
-            onSave={async (apiKey, token) => {
-              const d = await setTrelloCreds(apiKey, token);
-              setData(d);
-              return d;
-            }}
-          />
+          <>
+            <TrelloCredsCard
+              configured={data.trello_configured}
+              keyMask={data.trello_key_mask}
+              tokenMask={data.trello_token_mask}
+              onSave={async (apiKey, token) => {
+                const d = await setTrelloCreds(apiKey, token);
+                setData(d);
+                return d;
+              }}
+            />
+            <TrelloBoardCard
+              configured={data.trello_board_configured}
+              workspaceId={data.trello_workspace_id}
+              boardId={data.trello_board_id}
+              onSave={async (workspaceId, boardId) => {
+                const d = await setTrelloBoard(workspaceId, boardId);
+                setData(d);
+                return d;
+              }}
+            />
+          </>
         ) : null}
       </div>
     </div>
