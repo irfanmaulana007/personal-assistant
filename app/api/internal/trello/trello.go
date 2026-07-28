@@ -49,6 +49,24 @@ type List struct {
 	Name string `json:"name"`
 }
 
+// Organization is a Trello workspace (the API calls it an "organization"). Name
+// is the immutable short slug; DisplayName is the human label shown in the UI.
+type Organization struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	URL         string `json:"url"`
+}
+
+// Board is the slice of a Trello board needed to list and link it. Closed reports
+// whether the board is archived so archived boards can be filtered out.
+type Board struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Closed bool   `json:"closed"`
+}
+
 // Checklist is a Trello checklist attached to a card (e.g. "Acceptance Criteria").
 type Checklist struct {
 	ID   string `json:"id"`
@@ -97,6 +115,28 @@ func (c *Client) BoardLists(ctx context.Context, apiKey, token, boardID string) 
 		return nil, err
 	}
 	return lists, nil
+}
+
+// Organizations returns the Trello workspaces the token's member belongs to.
+// Used to populate the workspace picker when linking workspaces to a project.
+func (c *Client) Organizations(ctx context.Context, apiKey, token string) ([]Organization, error) {
+	q := url.Values{"fields": {"name,displayName,url"}}
+	var orgs []Organization
+	if err := c.get(ctx, apiKey, token, "/members/me/organizations", q, &orgs); err != nil {
+		return nil, err
+	}
+	return orgs, nil
+}
+
+// OrganizationBoards returns the open (non-archived) boards in a workspace. Used
+// to populate the board picker when linking boards under a workspace.
+func (c *Client) OrganizationBoards(ctx context.Context, apiKey, token, orgID string) ([]Board, error) {
+	q := url.Values{"fields": {"name,url,closed"}, "filter": {"open"}}
+	var boards []Board
+	if err := c.get(ctx, apiKey, token, "/organizations/"+orgID+"/boards", q, &boards); err != nil {
+		return nil, err
+	}
+	return boards, nil
 }
 
 // BoardLabels returns the labels defined on a board (id, name, colour). A card

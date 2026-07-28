@@ -1,8 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getIntegrations, setTrelloCreds, setTrelloBoard } from '../api/client';
+import {
+  getIntegrations,
+  setTrelloCreds,
+  setTrelloBoard,
+  getTrelloWorkspaces,
+  getTrelloBoards,
+  getTrelloAvailableWorkspaces,
+  getTrelloAvailableBoards,
+  attachTrelloWorkspace,
+  attachTrelloBoard,
+  deleteTrelloWorkspace,
+  deleteTrelloBoard,
+} from '../api/client';
 import { useProjects } from '../contexts/project';
-import type { Integrations as IntegrationsData } from '../types';
+import type {
+  Integrations as IntegrationsData,
+  TrelloWorkspaceLink,
+  TrelloBoardLink,
+  TrelloRemoteWorkspace,
+  TrelloRemoteBoard,
+} from '../types';
 import { SkeletonFormCard } from './ui/Skeleton';
 import { useIsDark } from '../lib/useChartTheme';
 
@@ -164,150 +182,345 @@ function TrelloCredsCard({
   );
 }
 
-// TrelloBoardCard maps this project to a Trello workspace + board. The app is
-// multi-project, so each project pins its own board; the Trello skills only read
-// and write the board configured here. The two ids are pasted manually (not
-// secrets, so shown as plain text). Board id is required; leaving it blank on
-// Clear disables the Trello skills for this project.
-function TrelloBoardCard({
-  configured,
-  workspaceId,
-  boardId,
-  onSave,
+// A linked workspace together with its linked boards.
+type WorkspaceGroup = { ws: TrelloWorkspaceLink; boards: TrelloBoardLink[] };
+
+// TrelloWorkspacesCard manages this project's Trello links: a project can link
+// many workspaces, and each workspace many boards, all chosen live from the
+// Trello API. One board is marked "Active" — the single board the Trello skills
+// read and write (persisted via the legacy workspace/board mapping so existing
+// skills keep working).
+function TrelloWorkspacesCard({
+  credsConfigured,
+  activeBoardId,
+  onSetActive,
 }: {
-  configured: boolean;
-  workspaceId: string;
-  boardId: string;
-  onSave: (workspaceId: string, boardId: string) => Promise<IntegrationsData>;
+  credsConfigured: boolean;
+  activeBoardId: string;
+  onSetActive: (workspaceTrelloId: string, boardTrelloId: string) => Promise<void>;
 }) {
-  const [ws, setWs] = useState(workspaceId);
-  const [board, setBoard] = useState(boardId);
-  const [busy, setBusy] = useState(false);
+  const [groups, setGroups] = useState<WorkspaceGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const w = ws.trim();
-    const b = board.trim();
-    if (b === '') {
-      setMsg('Enter the board ID');
-      return;
-    }
-    setBusy(true);
+  // Add-workspace picker.
+  const [wsPickerOpen, setWsPickerOpen] = useState(false);
+  const [availableWs, setAvailableWs] = useState<TrelloRemoteWorkspace[] | null>(null);
+  const [wsBusy, setWsBusy] = useState(false);
+
+  // Add-board picker (at most one open, keyed by the workspace's DB id).
+  const [boardPickerFor, setBoardPickerFor] = useState<number | null>(null);
+  const [availableBoards, setAvailableBoards] = useState<TrelloRemoteBoard[] | null>(null);
+  const [boardBusy, setBoardBusy] = useState(false);
+
+  // Loads (and reloads) the linked workspaces + their boards. Written as a
+  // promise chain (setState only in .then/.catch/.finally callbacks) so it is
+  // safe to call from an effect; `loading` starts true for the initial paint and
+  // is cleared in the finally below.
+  const load = useCallback(() => {
+    return getTrelloWorkspaces()
+      .then((wss) =>
+        Promise.all(wss.map((ws) => getTrelloBoards(ws.id).then((boards) => ({ ws, boards })))),
+      )
+      .then((withBoards) => {
+        setGroups(withBoards);
+        setError('');
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : 'Failed to load Trello workspaces');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const fail = (e: unknown, fallback: string) => setMsg(e instanceof Error ? e.message : fallback);
+
+  // Open the workspace picker, fetching what's available live from Trello.
+  const openWsPicker = async () => {
     setMsg('');
-    try {
-      await onSave(w, b);
-      setMsg('Saved');
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setBusy(false);
+    setWsPickerOpen(true);
+    if (availableWs === null) {
+      try {
+        setAvailableWs(await getTrelloAvailableWorkspaces());
+      } catch (e) {
+        fail(e, 'Failed to load workspaces from Trello');
+        setWsPickerOpen(false);
+      }
     }
   };
 
-  const clear = async () => {
-    setBusy(true);
+  const addWorkspace = async (trelloId: string) => {
+    const remote = (availableWs ?? []).find((w) => w.id === trelloId);
+    if (!remote) return;
+    setWsBusy(true);
     setMsg('');
     try {
-      await onSave('', '');
-      setWs('');
-      setBoard('');
-      setMsg('Cleared');
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Failed to clear');
+      await attachTrelloWorkspace({
+        id: remote.id,
+        name: remote.display_name || remote.name,
+        url: remote.url,
+      });
+      setWsPickerOpen(false);
+      await load();
+    } catch (e) {
+      fail(e, 'Failed to link workspace');
     } finally {
-      setBusy(false);
+      setWsBusy(false);
     }
   };
+
+  const removeWorkspace = async (id: number) => {
+    setMsg('');
+    try {
+      await deleteTrelloWorkspace(id);
+      await load();
+    } catch (e) {
+      fail(e, 'Failed to unlink workspace');
+    }
+  };
+
+  // Open the board picker for a workspace, fetching its boards live from Trello.
+  const openBoardPicker = async (workspaceId: number) => {
+    setMsg('');
+    setBoardPickerFor(workspaceId);
+    setAvailableBoards(null);
+    try {
+      setAvailableBoards(await getTrelloAvailableBoards(workspaceId));
+    } catch (e) {
+      fail(e, 'Failed to load boards from Trello');
+      setBoardPickerFor(null);
+    }
+  };
+
+  const addBoard = async (workspaceId: number, trelloId: string) => {
+    const remote = (availableBoards ?? []).find((b) => b.id === trelloId);
+    if (!remote) return;
+    setBoardBusy(true);
+    setMsg('');
+    try {
+      await attachTrelloBoard(workspaceId, { id: remote.id, name: remote.name, url: remote.url });
+      setBoardPickerFor(null);
+      await load();
+    } catch (e) {
+      fail(e, 'Failed to link board');
+    } finally {
+      setBoardBusy(false);
+    }
+  };
+
+  const removeBoard = async (id: number) => {
+    setMsg('');
+    try {
+      await deleteTrelloBoard(id);
+      await load();
+    } catch (e) {
+      fail(e, 'Failed to unlink board');
+    }
+  };
+
+  const makeActive = async (wsTrelloId: string, boardTrelloId: string) => {
+    setMsg('');
+    try {
+      await onSetActive(wsTrelloId, boardTrelloId);
+    } catch (e) {
+      fail(e, 'Failed to set active board');
+    }
+  };
+
+  const linkedWsIds = new Set(groups.map((g) => g.ws.trello_id));
+  const pickableWs = (availableWs ?? []).filter((w) => !linkedWsIds.has(w.id));
 
   return (
-    <form
-      onSubmit={submit}
-      className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
-    >
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <TrelloIcon />
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">
-            Workspace &amp; board
-          </h2>
-        </div>
-        {configured ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-300">
-            Configured
-          </span>
-        ) : (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-            Not configured
-          </span>
-        )}
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+      <div className="mb-1 flex items-center gap-3">
+        <TrelloIcon />
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-50">
+          Workspaces &amp; boards
+        </h2>
       </div>
-      <div className="space-y-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            Workspace ID
-          </label>
-          <input
-            type="text"
-            value={ws}
-            onChange={(e) => setWs(e.target.value)}
-            placeholder="e.g. 6a54dd8eecaab3bd510528ba"
-            autoComplete="off"
-            spellCheck={false}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            Board ID
-          </label>
-          <input
-            type="text"
-            value={board}
-            onChange={(e) => setBoard(e.target.value)}
-            placeholder="e.g. 6a54edaae21957ab935c81f6"
-            autoComplete="off"
-            spellCheck={false}
-            className={inputClass}
-          />
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-        This project&apos;s Trello skills only read and write the board set here — tasks land on
-        its <span className="font-medium">Backlog/Todo</span> list, bugs on its{' '}
-        <span className="font-medium">Bug</span> list, ideas on its{' '}
-        <span className="font-medium">Ideas</span> list (matched by name). Find the IDs by opening
-        a board and appending <span className="font-mono">.json</span> to its URL (the workspace is{' '}
-        <span className="font-mono">idOrganization</span>). Until a board is set, Trello skills are
-        disabled for this project.
+      <p className="mb-4 text-xs text-gray-400 dark:text-gray-500">
+        Link one or more Trello workspaces to this project, and any number of boards under each. The
+        board marked <span className="font-medium">Active</span> is the one the Trello skills read
+        and write — tasks land on its <span className="font-medium">Backlog/Todo</span> list, bugs
+        on its <span className="font-medium">Bug</span> list, ideas on its{' '}
+        <span className="font-medium">Ideas</span> list (matched by name).
       </p>
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-        >
-          {busy ? 'Saving…' : 'Save'}
-        </button>
-        {configured && (
-          <button
-            type="button"
-            onClick={clear}
-            disabled={busy}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/15"
-          >
-            Clear
-          </button>
-        )}
-        {msg && <span className="text-sm text-gray-500 dark:text-gray-400">{msg}</span>}
-      </div>
-    </form>
+
+      {!credsConfigured ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+          Add your Trello credentials above to link workspaces and boards.
+        </p>
+      ) : loading ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+      ) : error ? (
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      ) : (
+        <div className="space-y-4">
+          {groups.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No workspaces linked yet.</p>
+          )}
+
+          {groups.map(({ ws, boards }) => (
+            <div key={ws.id} className="rounded-xl border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-50">
+                    {ws.name || ws.trello_id}
+                  </p>
+                  <p className="truncate text-xs text-gray-400 dark:text-gray-500">
+                    {boards.length} {boards.length === 1 ? 'board' : 'boards'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeWorkspace(ws.id)}
+                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/15"
+                >
+                  Remove
+                </button>
+              </div>
+
+              <div className="space-y-2 p-4">
+                {boards.length === 0 && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500">No boards linked yet.</p>
+                )}
+                {boards.map((b) => {
+                  const active = b.trello_id === activeBoardId && activeBoardId !== '';
+                  return (
+                    <div
+                      key={b.id}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm text-gray-800 dark:text-gray-200">
+                          {b.name || b.trello_id}
+                        </span>
+                        {active && (
+                          <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!active && (
+                          <button
+                            type="button"
+                            onClick={() => makeActive(ws.trello_id, b.trello_id)}
+                            className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/15"
+                          >
+                            Set active
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeBoard(b.id)}
+                          aria-label="Remove board"
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {boardPickerFor === ws.id ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      autoFocus
+                      disabled={boardBusy || availableBoards === null}
+                      defaultValue=""
+                      onChange={(e) => e.target.value && addBoard(ws.id, e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="" disabled>
+                        {availableBoards === null ? 'Loading boards…' : 'Select a board…'}
+                      </option>
+                      {(availableBoards ?? [])
+                        .filter((rb) => !boards.some((b) => b.trello_id === rb.id))
+                        .map((rb) => (
+                          <option key={rb.id} value={rb.id}>
+                            {rb.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setBoardPickerFor(null)}
+                      className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openBoardPicker(ws.id)}
+                    className="text-sm font-medium text-indigo-700 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  >
+                    + Add board
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {wsPickerOpen ? (
+            <div className="flex items-center gap-2">
+              <select
+                autoFocus
+                disabled={wsBusy || availableWs === null}
+                defaultValue=""
+                onChange={(e) => e.target.value && addWorkspace(e.target.value)}
+                className={inputClass}
+              >
+                <option value="" disabled>
+                  {availableWs === null
+                    ? 'Loading workspaces…'
+                    : pickableWs.length === 0
+                      ? 'All workspaces already linked'
+                      : 'Select a workspace…'}
+                </option>
+                {pickableWs.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.display_name || w.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setWsPickerOpen(false)}
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={openWsPicker}
+              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+            >
+              Link a workspace
+            </button>
+          )}
+
+          {msg && <p className="text-sm text-red-600 dark:text-red-400">{msg}</p>}
+        </div>
+      )}
+    </div>
   );
 }
 
 // Trello integration detail page. Mirrors the WhatsApp integration detail page:
-// a back-link to the integrations list, a header, then the credentials card
-// that used to live under Settings → API keys.
+// a back-link to the integrations list, a header, then the credentials card and
+// the workspace/board manager.
 export function IntegrationsTrello() {
   const { projectPath } = useProjects();
   const [data, setData] = useState<IntegrationsData | null>(null);
@@ -376,14 +589,12 @@ export function IntegrationsTrello() {
                 return d;
               }}
             />
-            <TrelloBoardCard
-              configured={data.trello_board_configured}
-              workspaceId={data.trello_workspace_id}
-              boardId={data.trello_board_id}
-              onSave={async (workspaceId, boardId) => {
+            <TrelloWorkspacesCard
+              credsConfigured={data.trello_configured}
+              activeBoardId={data.trello_board_id}
+              onSetActive={async (workspaceId, boardId) => {
                 const d = await setTrelloBoard(workspaceId, boardId);
                 setData(d);
-                return d;
               }}
             />
           </>
