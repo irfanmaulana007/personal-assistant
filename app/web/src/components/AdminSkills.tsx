@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   listAdminSkills,
   setSkillCore,
+  setProjectSkill,
   setAdminSkillPrompt,
   resetAdminSkillPrompt,
   revertAdminSkillTuned,
 } from '../api/client';
-import type { AdminSkill, SkillClassification } from '../types';
+import type { AdminSkill, Project, SkillClassification } from '../types';
 import { Toggle } from './ui/Toggle';
 import { Modal } from './ui/Modal';
 import { Skeleton, SkeletonListRow } from './ui/Skeleton';
+import { useProjects } from '../contexts/project';
 
 const textareaClass =
   'w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-xs leading-relaxed text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30';
@@ -20,22 +22,13 @@ function formatEdited(iso: string): string {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-const TABS: { key: SkillClassification; label: string; blurb: string }[] = [
-  {
-    key: 'core',
-    label: 'Core',
-    blurb: 'Always available to every project. Toggleable per project by its admins.',
-  },
-  {
-    key: 'global',
-    label: 'Global',
-    blurb: 'Shared skills available to every project.',
-  },
-  {
-    key: 'project',
-    label: 'Project-specific',
-    blurb: 'Skills scoped to a single project — a project fork, or a skill only one project uses.',
-  },
+type FilterKey = 'all' | SkillClassification;
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'core', label: 'Core' },
+  { key: 'global', label: 'Global' },
+  { key: 'project', label: 'Project-specific' },
 ];
 
 // Editor for a global skill's prompt (platform-wide). Remounted per skill via a
@@ -170,37 +163,90 @@ function AdminSkillPromptModal({
   );
 }
 
-// The projects a skill maps to, rendered as a compact wrapped list of chips.
-function ProjectMapping({ skill }: { skill: AdminSkill }) {
-  if (skill.projects.length === 0) {
+// The per-project enablement control for a global skill: one toggle chip per
+// project, filled when the skill is enabled there. Clicking a chip enables or
+// disables the skill for that single project. This is the source of truth the
+// project's own settings/skills page reflects.
+function ProjectEnablement({
+  skill,
+  projects,
+  busyKey,
+  onToggle,
+}: {
+  skill: AdminSkill;
+  projects: Project[];
+  busyKey: string | null;
+  onToggle: (skill: AdminSkill, project: Project, enabled: boolean) => void;
+}) {
+  const enabled = useMemo(() => new Set(skill.projects.map((p) => p.id)), [skill.projects]);
+
+  if (projects.length === 0) {
     return (
-      <span className="text-xs italic text-gray-400 dark:text-gray-500">
-        Not enabled in any project
-      </span>
+      <span className="text-xs italic text-gray-400 dark:text-gray-500">No projects yet.</span>
     );
   }
+
+  const onCount = projects.reduce((n, p) => n + (enabled.has(p.id) ? 1 : 0), 0);
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-xs text-gray-400 dark:text-gray-500">In:</span>
-      {skill.projects.map((p) => (
-        <span
-          key={p.id}
-          className="inline-flex items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-700/60 dark:text-gray-300"
-        >
-          {p.name}
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Enabled in projects
         </span>
-      ))}
+        <span className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+          {onCount}/{projects.length}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {projects.map((p) => {
+          const on = enabled.has(p.id);
+          const busy = busyKey === `${skill.id}:${p.id}`;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={busy}
+              onClick={() => onToggle(skill, p, !on)}
+              title={on ? `Enabled in ${p.name} — click to disable` : `Enable in ${p.name}`}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                on
+                  ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100'
+              }`}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                {on ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 6 9 17l-5-5" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                )}
+              </svg>
+              {p.name}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 export function AdminSkills() {
+  const { projects } = useProjects();
   const [skills, setSkills] = useState<AdminSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<SkillClassification>('core');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('all');
   const [coreBusyId, setCoreBusyId] = useState<number | null>(null);
   const [revertingId, setRevertingId] = useState<number | null>(null);
+  const [projectBusyKey, setProjectBusyKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -221,12 +267,20 @@ export function AdminSkills() {
   }, []);
 
   const counts = useMemo(() => {
-    const c: Record<SkillClassification, number> = { core: 0, global: 0, project: 0 };
+    const c: Record<FilterKey, number> = { all: skills.length, core: 0, global: 0, project: 0 };
     for (const s of skills) c[s.classification] += 1;
     return c;
   }, [skills]);
 
-  const visible = useMemo(() => skills.filter((s) => s.classification === tab), [skills, tab]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return skills.filter((s) => {
+      if (filter !== 'all' && s.classification !== filter) return false;
+      if (q && !`${s.name} ${s.description} ${s.category} ${s.key}`.toLowerCase().includes(q))
+        return false;
+      return true;
+    });
+  }, [skills, filter, query]);
 
   const toggleCore = async (sk: AdminSkill) => {
     setCoreBusyId(sk.id);
@@ -237,6 +291,37 @@ export function AdminSkills() {
       setError(e instanceof Error ? e.message : 'Failed to update skill');
     } finally {
       setCoreBusyId(null);
+    }
+  };
+
+  // Enable or disable a global skill for a single project. The endpoint returns
+  // that project's skill list (not the admin mapping), so we optimistically fold
+  // the change into the skill's `projects` array to keep the chip state live.
+  const toggleProject = async (sk: AdminSkill, project: Project, enabled: boolean) => {
+    setProjectBusyKey(`${sk.id}:${project.id}`);
+    setError('');
+    try {
+      await setProjectSkill(project.id, sk.id, enabled);
+      setSkills((prev) =>
+        prev.map((s) => {
+          if (s.id !== sk.id) return s;
+          const has = s.projects.some((p) => p.id === project.id);
+          if (enabled && !has) {
+            return {
+              ...s,
+              projects: [...s.projects, { id: project.id, name: project.name, slug: project.slug }],
+            };
+          }
+          if (!enabled && has) {
+            return { ...s, projects: s.projects.filter((p) => p.id !== project.id) };
+          }
+          return s;
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update skill');
+    } finally {
+      setProjectBusyKey(null);
     }
   };
 
@@ -253,7 +338,6 @@ export function AdminSkills() {
   };
 
   const editing = editingId != null ? skills.find((s) => s.id === editingId) : undefined;
-  const activeTab = TABS.find((t) => t.key === tab)!;
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-900">
@@ -261,42 +345,59 @@ export function AdminSkills() {
         Skills
       </h1>
       <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-        The platform-wide skill catalog across every project. A skill is core, global, or scoped to
-        a single project depending on how projects use it. Project admins enable and customize the
-        skills available to their project from its settings.
+        The platform-wide skill catalog. Choose which projects each skill is enabled in — a
+        project’s own settings then shows exactly the skills you enable here. Core skills are
+        available to every project automatically.
       </p>
 
       {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      <div className="mt-5">
-        <nav className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
-          {TABS.map((t) => (
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
+          {FILTERS.map((f) => (
             <button
-              key={t.key}
+              key={f.key}
               type="button"
-              onClick={() => setTab(t.key)}
-              className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition ${
-                tab === t.key
-                  ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+              onClick={() => setFilter(f.key)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                filter === f.key
+                  ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
               }`}
             >
-              {t.label}
+              {f.label}
               <span
-                className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
-                  tab === t.key
-                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+                className={`inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+                  filter === f.key
+                    ? 'bg-white/20 text-white'
                     : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                 }`}
               >
-                {counts[t.key]}
+                {counts[f.key]}
               </span>
             </button>
           ))}
-        </nav>
+        </div>
+        <div className="relative sm:w-64">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path strokeLinecap="round" d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search skills…"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
+          />
+        </div>
       </div>
-
-      <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{activeTab.blurb}</p>
 
       {loading ? (
         <div className="mt-4 space-y-2">
@@ -307,7 +408,7 @@ export function AdminSkills() {
         </div>
       ) : visible.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
-          No {activeTab.label.toLowerCase()} skills.
+          {skills.length === 0 ? 'No skills yet.' : 'No skills match your search.'}
         </p>
       ) : (
         <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-700 dark:bg-gray-800">
@@ -323,6 +424,14 @@ export function AdminSkills() {
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                       {sk.category}
                     </span>
+                    {sk.is_core && (
+                      <span
+                        title="A core skill — available to every project automatically."
+                        className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30"
+                      >
+                        Core
+                      </span>
+                    )}
                     {isFork && (
                       <span
                         title="A project-owned fork with a prompt customized for that project."
@@ -343,10 +452,42 @@ export function AdminSkills() {
                   <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                     {sk.description}
                   </p>
-                  <div className="mt-2">
-                    <ProjectMapping skill={sk} />
+
+                  <div className="mt-3">
+                    {sk.is_core ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30">
+                        <svg
+                          className="h-3.5 w-3.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 12h18M12 3c2.5 2.7 3.9 5.8 4 9-.1 3.2-1.5 6.3-4 9-2.5-2.7-3.9-5.8-4-9 .1-3.2 1.5-6.3 4-9Z"
+                          />
+                        </svg>
+                        Available in all projects
+                      </span>
+                    ) : isFork ? (
+                      <span className="text-xs italic text-gray-400 dark:text-gray-500">
+                        Customized in {sk.projects[0]?.name ?? 'its project'} — edit from that
+                        project’s settings.
+                      </span>
+                    ) : (
+                      <ProjectEnablement
+                        skill={sk}
+                        projects={projects}
+                        busyKey={projectBusyKey}
+                        onToggle={toggleProject}
+                      />
+                    )}
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
                     {!isFork && (
                       <button
                         type="button"
@@ -368,12 +509,6 @@ export function AdminSkills() {
                         </svg>
                         Edit prompt
                       </button>
-                    )}
-                    {isFork && (
-                      <span className="text-xs italic text-gray-400 dark:text-gray-500">
-                        Customized in {sk.projects[0]?.name ?? 'its project'} — edit from that
-                        project’s settings.
-                      </span>
                     )}
                     {sk.auto_tuned && (
                       <button

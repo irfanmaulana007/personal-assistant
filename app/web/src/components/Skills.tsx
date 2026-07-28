@@ -258,9 +258,15 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
   const canEditPrompt = (sk: Skill) =>
     (sk.scope === 'global' && isAdmin) || (sk.scope === 'project' && canManageActive);
 
+  // Only surface the skills that are actually active in this project: the ones
+  // enabled for it on the platform Skills page, plus core skills (available to
+  // every project) and this project's own customized forks. Skills left disabled
+  // on the Skills page stay out of the way here.
+  const visible = skills.filter((sk) => sk.enabled || sk.is_core || sk.scope === 'project');
+
   // Group by category, preserving order.
   const groups: { category: string; skills: Skill[] }[] = [];
-  for (const sk of skills) {
+  for (const sk of visible) {
     const cat = sk.category || 'Other';
     let g = groups.find((x) => x.category === cat);
     if (!g) {
@@ -275,7 +281,8 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div>
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        Turn skills on to give the assistant new abilities in this project.
+        The skills active in this project. Which skills are available here is set from the platform
+        Skills page; core skills are always available.
         {!canManageActive && ' Only a project admin can change these.'}
         {canManageActive &&
           ' Customize a skill to give it a prompt that applies to this project only.'}
@@ -296,6 +303,17 @@ export function Skills({ isAdmin }: { isAdmin: boolean }) {
               </div>
             </div>
           ))}
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center dark:border-gray-700 dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No skills are enabled for this project yet.
+          </p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            {isAdmin
+              ? 'Enable skills for this project from the platform Skills page.'
+              : 'Ask a superadmin to enable skills for this project.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
