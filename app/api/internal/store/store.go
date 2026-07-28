@@ -418,6 +418,7 @@ type Note struct {
 type MessageLog struct {
 	ID        int64
 	UserID    int64
+	ProjectID int64
 	Platform  string
 	Direction string // "in" or "out"
 	Sender    string
