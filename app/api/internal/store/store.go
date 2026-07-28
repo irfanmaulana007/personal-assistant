@@ -325,6 +325,31 @@ func NormalizeWishPriority(p string) string {
 	return PriorityMedium
 }
 
+// TrelloWorkspaceLink is a Trello workspace (organization) linked to a project.
+// A project may link many workspaces. TrelloID is the Trello organization id;
+// Name/URL are cached from the Trello API at attach time for display.
+type TrelloWorkspaceLink struct {
+	ID        int64
+	ProjectID int64
+	TrelloID  string
+	Name      string
+	URL       string
+	CreatedAt time.Time
+}
+
+// TrelloBoardLink is a Trello board linked under a linked workspace. A workspace
+// may link many boards. WorkspaceID references the TrelloWorkspaceLink row (not
+// the Trello id); TrelloID is the Trello board id.
+type TrelloBoardLink struct {
+	ID          int64
+	ProjectID   int64
+	WorkspaceID int64
+	TrelloID    string
+	Name        string
+	URL         string
+	CreatedAt   time.Time
+}
+
 // Activity is a logged sport/workout session, scoped to a user.
 type Activity struct {
 	ID          int64
@@ -819,6 +844,15 @@ type DataStore interface {
 	UpdateWishItem(ctx context.Context, userID, id int64, name string, estimatedPrice int64, buyMonth, priority, link, note string) error
 	SetWishItemDone(ctx context.Context, userID, id int64, done bool, doneAt *time.Time) error
 	DeleteWishItem(ctx context.Context, userID, id int64) error
+
+	// Trello workspace/board links (project-scoped). A project links many
+	// workspaces; each linked workspace links many boards.
+	ListTrelloWorkspaces(ctx context.Context) ([]TrelloWorkspaceLink, error)
+	AttachTrelloWorkspace(ctx context.Context, trelloID, name, url string) (*TrelloWorkspaceLink, error)
+	DeleteTrelloWorkspace(ctx context.Context, id int64) error
+	ListTrelloBoards(ctx context.Context, workspaceID int64) ([]TrelloBoardLink, error)
+	AttachTrelloBoard(ctx context.Context, workspaceID int64, trelloID, name, url string) (*TrelloBoardLink, error)
+	DeleteTrelloBoard(ctx context.Context, id int64) error
 
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)

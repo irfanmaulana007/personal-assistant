@@ -239,6 +239,42 @@ export interface Integrations {
   trello_board_id: string;
 }
 
+// A Trello workspace (organization) linked to the active project. `id` is our DB
+// row id; `trello_id` is the Trello organization id.
+export interface TrelloWorkspaceLink {
+  id: number;
+  trello_id: string;
+  name: string;
+  url: string;
+}
+
+// A Trello board linked under a linked workspace. `workspace_id` references the
+// TrelloWorkspaceLink row (not the Trello id).
+export interface TrelloBoardLink {
+  id: number;
+  workspace_id: number;
+  trello_id: string;
+  name: string;
+  url: string;
+}
+
+// A workspace fetched live from Trello for the "add workspace" picker. `id` is
+// the Trello organization id.
+export interface TrelloRemoteWorkspace {
+  id: string;
+  name: string;
+  display_name: string;
+  url: string;
+}
+
+// A board fetched live from Trello for the "add board" picker. `id` is the Trello
+// board id.
+export interface TrelloRemoteBoard {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';
 
 export interface WhatsAppStatus {

@@ -184,3 +184,59 @@ func TestCardChecklistsAndDelete(t *testing.T) {
 		t.Errorf("delete request = %s %s", delMethod, delPath)
 	}
 }
+
+func TestOrganizations(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		_, _ = w.Write([]byte(`[{"id":"o1","name":"acme","displayName":"Acme Inc","url":"https://trello.com/acme"}]`))
+	}))
+	defer srv.Close()
+	orig := base
+	base = srv.URL
+	defer func() { base = orig }()
+
+	orgs, err := New().Organizations(context.Background(), "k", "t")
+	if err != nil {
+		t.Fatalf("Organizations: %v", err)
+	}
+	if gotPath != "/members/me/organizations" {
+		t.Errorf("path = %s", gotPath)
+	}
+	if gotQuery.Get("key") != "k" || gotQuery.Get("token") != "t" {
+		t.Errorf("auth not set: key=%q token=%q", gotQuery.Get("key"), gotQuery.Get("token"))
+	}
+	if len(orgs) != 1 || orgs[0].ID != "o1" || orgs[0].DisplayName != "Acme Inc" {
+		t.Errorf("orgs = %+v", orgs)
+	}
+}
+
+func TestOrganizationBoards(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		_, _ = w.Write([]byte(`[{"id":"b1","name":"Roadmap","url":"https://trello.com/b/b1","closed":false}]`))
+	}))
+	defer srv.Close()
+	orig := base
+	base = srv.URL
+	defer func() { base = orig }()
+
+	boards, err := New().OrganizationBoards(context.Background(), "k", "t", "o1")
+	if err != nil {
+		t.Fatalf("OrganizationBoards: %v", err)
+	}
+	if gotPath != "/organizations/o1/boards" {
+		t.Errorf("path = %s", gotPath)
+	}
+	if gotQuery.Get("filter") != "open" {
+		t.Errorf("filter = %q, want open", gotQuery.Get("filter"))
+	}
+	if len(boards) != 1 || boards[0].ID != "b1" || boards[0].Name != "Roadmap" {
+		t.Errorf("boards = %+v", boards)
+	}
+}
