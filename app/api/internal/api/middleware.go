@@ -121,8 +121,9 @@ func (s *Server) withProject(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // defaultProject picks a fallback active project for a caller who sent no
-// X-Project-Id: their first membership, or (for a superadmin with none) the
-// first project overall. Returns (0, "") when there is none.
+// X-Project-Id: for a superadmin, the lowest-id project overall (the
+// default/personal project); otherwise their first membership. Returns (0, "")
+// when there is none.
 func (s *Server) defaultProject(ctx context.Context, claims *jwtClaims) (int64, string) {
 	// A superadmin is deliberately a member of no "home" project (see
 	// provisionPersonalProject, which is skipped for superadmins, and promotion
