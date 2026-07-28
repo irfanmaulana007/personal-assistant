@@ -20,6 +20,7 @@ export function useChat() {
           direction: entry.direction === 'in' ? 'out' : 'in', // flip: server "in" = user sent, display as "out" (right side)
           body: entry.body,
           timestamp: entry.timestamp,
+          runId: entry.run_id, // present on assistant replies, undefined otherwise
         }));
         setMessages(msgs);
       })
@@ -71,6 +72,7 @@ export function useChat() {
         body: res.response,
         timestamp: new Date().toISOString(),
         images: res.images,
+        runId: res.run_id,
       };
       setMessages((prev) =>
         prev.some((m) => m.id === assistantId)

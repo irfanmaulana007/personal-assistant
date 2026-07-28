@@ -450,6 +450,10 @@ type MessageLog struct {
 	Body      string
 	Intent    string
 	Action    string
+	// TraceID links an outgoing ("out") assistant message to the run trace that
+	// produced it, so the chat UI can deep-link a reply bubble to its run detail.
+	// Zero on incoming messages and on replies logged before this was added.
+	TraceID   int64
 	CreatedAt time.Time
 }
 

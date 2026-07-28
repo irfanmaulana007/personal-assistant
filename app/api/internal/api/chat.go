@@ -24,12 +24,18 @@ type chatResponse struct {
 	// Images are data: URLs for any images the assistant generated this turn
 	// (e.g. via the Image Generator skill). Omitted when there are none.
 	Images []string `json:"images,omitempty"`
+	// RunID is the trace id of the run that produced this reply, letting the chat
+	// UI deep-link the reply bubble to its run detail. Omitted when unavailable.
+	RunID int64 `json:"run_id,omitempty"`
 }
 
 type historyEntry struct {
 	Direction string `json:"direction"`
 	Body      string `json:"body"`
 	Timestamp string `json:"timestamp"`
+	// RunID links an assistant reply to its run trace (0/omitted for user
+	// messages and for replies logged before run linking existed).
+	RunID int64 `json:"run_id,omitempty"`
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -111,8 +117,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	images := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
-	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images})
+	images, runID := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
+	writeJSON(w, http.StatusOK, chatResponse{Response: res.Reply, Images: images, RunID: runID})
 }
 
 // streamChat runs the agent with token-by-token streaming and emits the reply
@@ -165,27 +171,17 @@ func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, userID int64
 		return
 	}
 
-	images := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
-	sendEvent(map[string]any{"type": "done", "response": res.Reply, "images": images})
+	images, runID := s.recordChatOutcome(r.Context(), userID, inputBody, res, latencyMs)
+	sendEvent(map[string]any{"type": "done", "response": res.Reply, "images": images, "run_id": runID})
 }
 
 // recordChatOutcome logs the assistant reply, writes the full trace, records
 // per-tool usage, and kicks off inline eval sampling. It returns the reply's
-// image data URLs (never nil) for the response. Shared by the blocking and
-// streaming paths so their bookkeeping stays identical.
-func (s *Server) recordChatOutcome(ctx context.Context, userID int64, inputBody string, res *agent.Result, latencyMs int) []string {
-	// Log outgoing message (chat history)
-	_ = s.store.LogMessage(ctx, &store.MessageLog{
-		UserID:    userID,
-		Platform:  "web",
-		Direction: "out",
-		Sender:    "assistant",
-		Body:      res.Reply,
-		Intent:    "agent",
-		Action:    res.Model,
-	})
-
-	// Record the full trace (dashboard + logs) and per-tool usage.
+// image data URLs (never nil) and the run's trace id for the response. Shared by
+// the blocking and streaming paths so their bookkeeping stays identical.
+func (s *Server) recordChatOutcome(ctx context.Context, userID int64, inputBody string, res *agent.Result, latencyMs int) ([]string, int64) {
+	// Record the full trace first so its id can be stamped onto the outgoing
+	// message log below — that link lets the chat UI open a reply's run detail.
 	traceID, _ := s.store.CreateTrace(ctx, &store.Trace{
 		UserID:                userID,
 		Platform:              "web",
@@ -206,6 +202,19 @@ func (s *Server) recordChatOutcome(ctx context.Context, userID int64, inputBody 
 		Skills:                res.Skills,
 		Status:                "ok",
 	})
+
+	// Log outgoing message (chat history), linked to the trace above.
+	_ = s.store.LogMessage(ctx, &store.MessageLog{
+		UserID:    userID,
+		Platform:  "web",
+		Direction: "out",
+		Sender:    "assistant",
+		Body:      res.Reply,
+		Intent:    "agent",
+		Action:    res.Model,
+		TraceID:   traceID,
+	})
+
 	for _, tool := range res.Tools {
 		_ = s.store.LogToolUsage(ctx, userID, tool.Name, "web")
 	}
@@ -218,7 +227,7 @@ func (s *Server) recordChatOutcome(ctx context.Context, userID int64, inputBody 
 	for _, img := range res.Images {
 		images = append(images, img.DataURL())
 	}
-	return images
+	return images, traceID
 }
 
 // toStoreTools converts agent tool invocations to the store representation,
@@ -294,6 +303,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 			Direction: l.Direction,
 			Body:      l.Body,
 			Timestamp: l.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			RunID:     l.TraceID,
 		}
 	}
 

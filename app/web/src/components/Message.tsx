@@ -1,4 +1,6 @@
+import { useNavigate } from 'react-router-dom';
 import { usePreferences } from '../contexts/preferences';
+import { useProjects } from '../contexts/project';
 import { Markdown } from './Markdown';
 import type { ChatMessage } from '../types';
 
@@ -14,6 +16,8 @@ function splitGrammar(body: string): { grammar: string | null; reply: string } {
 
 export function Message({ message }: { message: ChatMessage }) {
   const { formatChatTime, assistantName } = usePreferences();
+  const { canManageActive, projectPath } = useProjects();
+  const navigate = useNavigate();
   const isUser = message.direction === 'out';
   const name = isUser ? 'You' : assistantName;
   const time = message.timestamp ? formatChatTime(message.timestamp) : '';
@@ -21,8 +25,13 @@ export function Message({ message }: { message: ChatMessage }) {
     ? { grammar: null, reply: message.body }
     : splitGrammar(message.body);
 
+  // The "Log" affordance links a reply bubble to its run detail. Only shown when
+  // the run is known (assistant replies with a trace id) and the user may visit
+  // the project's Logs page (same gate as the nav item / route guard).
+  const showLog = canManageActive && message.runId != null;
+
   return (
-    <div className={`mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+    <div className={`group mb-5 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
       <div className={`mb-1 flex items-baseline gap-2 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{name}</span>
         {time && <span className="text-xs text-gray-400 dark:text-gray-500">{time}</span>}
@@ -65,6 +74,24 @@ export function Message({ message }: { message: ChatMessage }) {
           </>
         )}
       </div>
+      {showLog && (
+        <button
+          type="button"
+          onClick={() => navigate(`${projectPath('logs')}?run=${message.runId}`)}
+          title="Open this run's log detail"
+          className="mt-1 flex items-center gap-1 rounded px-1 text-xs font-medium text-gray-400 opacity-0 transition hover:text-indigo-700 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:text-gray-500 dark:hover:text-indigo-400"
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+            />
+          </svg>
+          Log
+        </button>
+      )}
     </div>
   );
 }

@@ -25,6 +25,9 @@ type mongoMessageLog struct {
 	Body      string    `bson:"body"`
 	Intent    string    `bson:"intent"`
 	Action    string    `bson:"action"`
+	// TraceID links an "out" message to the run trace that produced it (0 when
+	// absent — incoming messages and pre-existing replies).
+	TraceID   int64     `bson:"trace_id,omitempty"`
 	CreatedAt time.Time `bson:"created_at"`
 }
 
@@ -64,6 +67,7 @@ func (m *MongoStore) LogMessage(ctx context.Context, log *MessageLog) error {
 		Body:      log.Body,
 		Intent:    log.Intent,
 		Action:    log.Action,
+		TraceID:   log.TraceID,
 		CreatedAt: time.Now().UTC(),
 	}
 	if _, err := m.col(colMessageLog).InsertOne(ctx, doc); err != nil {
@@ -108,6 +112,7 @@ func (m *MongoStore) GetMessageHistory(ctx context.Context, userID int64, platfo
 			Body:      d.Body,
 			Intent:    d.Intent,
 			Action:    d.Action,
+			TraceID:   d.TraceID,
 			CreatedAt: d.CreatedAt,
 		})
 	}
