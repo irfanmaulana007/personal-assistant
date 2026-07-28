@@ -98,7 +98,12 @@ type Project struct {
 	Name        string
 	Slug        string // immutable, URL-safe; generated from Name at creation
 	OwnerUserID int64
-	CreatedAt   time.Time
+	// IsDefault marks the single platform-default ("General") project — the scope
+	// the WhatsApp agent and daily routine act in for any chat with no more
+	// specific mapping. Exactly one project has this set (enforced by a partial
+	// unique index); it is reassignable via SetDefaultProject.
+	IsDefault bool
+	CreatedAt time.Time
 }
 
 // ProjectSummary is a project plus the caller's role in it and its member count,
@@ -450,6 +455,10 @@ type MessageLog struct {
 	Body      string
 	Intent    string
 	Action    string
+	// TraceID links an outgoing ("out") assistant message to the run trace that
+	// produced it, so the chat UI can deep-link a reply bubble to its run detail.
+	// Zero on incoming messages and on replies logged before this was added.
+	TraceID   int64
 	CreatedAt time.Time
 }
 
@@ -757,6 +766,11 @@ type DataStore interface {
 	UpdateProjectName(ctx context.Context, id int64, name string) error
 	DeleteProject(ctx context.Context, id int64) error // hard-deletes the project and every row scoped to it
 
+	// Default ("General") project — the WhatsApp/routine fallback scope.
+	GetDefaultProject(ctx context.Context) (*Project, error)                       // the is_default project, or nil if none is set yet
+	SetDefaultProject(ctx context.Context, id int64) error                         // make id the sole default, clearing any previous
+	EnsureDefaultProject(ctx context.Context, ownerUserID int64) (*Project, error) // return the default, creating "General" (owned by ownerUserID) if none exists
+
 	// Project membership & roles
 	ListProjectMembers(ctx context.Context, projectID int64) ([]ProjectMemberDetail, error)
 	GetProjectRole(ctx context.Context, projectID, userID int64) (string, error) // "" if not a member
@@ -851,6 +865,9 @@ type DataStore interface {
 	AttachTrelloWorkspace(ctx context.Context, trelloID, name, url string) (*TrelloWorkspaceLink, error)
 	DeleteTrelloWorkspace(ctx context.Context, id int64) error
 	ListTrelloBoards(ctx context.Context, workspaceID int64) ([]TrelloBoardLink, error)
+	// ListLinkedTrelloBoards returns every board linked to the active project,
+	// across all of its linked workspaces (for skills that act on all boards).
+	ListLinkedTrelloBoards(ctx context.Context) ([]TrelloBoardLink, error)
 	AttachTrelloBoard(ctx context.Context, workspaceID int64, trelloID, name, url string) (*TrelloBoardLink, error)
 	DeleteTrelloBoard(ctx context.Context, id int64) error
 

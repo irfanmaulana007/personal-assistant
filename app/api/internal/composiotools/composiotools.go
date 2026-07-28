@@ -22,17 +22,15 @@ import (
 // Google Calendar is intentionally NOT exposed as raw Composio tools here — the
 // agent uses the higher-level schedule_event / list_calendar tools (backed by
 // internal/calendar), which handle multi-account and the reminder fallback.
+// Trello is likewise NOT exposed here: the raw Composio Trello actions (e.g.
+// TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER) list every board on the account and
+// ignore a project's linked workspace/board, so the agent uses the higher-level
+// trello_* skills (backed by internal/capability/trello), which resolve and act
+// only on the boards linked to the active project.
 var curated = map[string][]string{
 	"gmail":  {"GMAIL_SEND_EMAIL", "GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"},
 	"github": {"GITHUB_CREATE_AN_ISSUE", "GITHUB_LIST_REPOSITORY_ISSUES", "GITHUB_SEARCH_ISSUES"},
 	"sentry": {"SENTRY_LIST_ORGANIZATION_ISSUES", "SENTRY_LIST_PROJECTS"},
-	"trello": {
-		"TRELLO_ADD_CARDS",
-		"TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
-		"TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
-		"TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD",
-		"TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
-	},
 }
 
 const fallbackLimit = 6

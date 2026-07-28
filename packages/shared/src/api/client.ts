@@ -114,18 +114,40 @@ function getToken(): string | null {
 }
 
 // The active project id is sent on every request as X-Project-Id so the server
-// scopes domain data, skills, and chat to it. It is persisted so a reload keeps
-// the same active project.
+// scopes domain data, skills, and chat to it.
+//
+// The source of truth is this in-memory value, which the app keeps pinned to the
+// project the user is actually viewing (the URL) — NOT localStorage. localStorage
+// is shared across tabs, so if it were the source, a second tab switching projects
+// would silently re-scope this tab's requests (and a chat would be logged under
+// the wrong project). localStorage is kept only as a cross-reload seed for the
+// first paint and for global pages that carry no project in the URL.
+let activeProjectId: number | null = null;
+
 export function getActiveProjectId(): number | null {
+  if (activeProjectId != null) return activeProjectId;
   const v = storage().getItem(PROJECT_KEY);
   return v ? Number(v) : null;
 }
 
 export function setActiveProjectId(id: number | null): void {
+  activeProjectId = id;
   if (id == null) {
     storage().removeItem(PROJECT_KEY);
   } else {
     storage().setItem(PROJECT_KEY, String(id));
+  }
+}
+
+// applyProjectHeader stamps the active project onto an outgoing request's headers,
+// unless the caller already set one explicitly. Shared by request() and the
+// streaming chat send so chat is scoped to the active project exactly like every
+// other call — without it, chat carried no X-Project-Id and the server fell back
+// to a default project, mis-attributing chats once a second project existed.
+function applyProjectHeader(headers: Record<string, string>): void {
+  const projectId = getActiveProjectId();
+  if (projectId && !headers['X-Project-Id']) {
+    headers['X-Project-Id'] = String(projectId);
   }
 }
 
@@ -152,10 +174,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const projectId = getActiveProjectId();
-  if (projectId && !headers['X-Project-Id']) {
-    headers['X-Project-Id'] = String(projectId);
-  }
+  applyProjectHeader(headers);
 
   const res = await httpFetch(path, { ...options, headers });
 
@@ -551,6 +570,9 @@ export async function sendMessage(
     Accept: 'text/event-stream',
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Scope the chat to the active project, same as every other call. Missing here,
+  // the server fell back to a default project and logged chats under the wrong one.
+  applyProjectHeader(headers);
 
   const res = await httpFetch('/api/chat', {
     method: 'POST',
@@ -578,6 +600,7 @@ export async function sendMessage(
   let buffer = '';
   let response = '';
   let images: string[] | undefined;
+  let runId: number | undefined;
   let errored: string | null = null;
 
   for (;;) {
@@ -599,6 +622,7 @@ export async function sendMessage(
         text?: string;
         response?: string;
         images?: string[];
+        run_id?: number;
         error?: string;
       };
       try {
@@ -612,6 +636,7 @@ export async function sendMessage(
       } else if (evt.type === 'done') {
         if (typeof evt.response === 'string') response = evt.response;
         images = evt.images;
+        runId = evt.run_id;
         handlers?.onDelta?.(response);
       } else if (evt.type === 'error') {
         errored = evt.error ?? 'Streaming failed';
@@ -620,7 +645,7 @@ export async function sendMessage(
   }
 
   if (errored) throw new Error(errored);
-  return { response, images };
+  return { response, images, run_id: runId };
 }
 
 export async function getChatHistory(): Promise<HistoryEntry[]> {

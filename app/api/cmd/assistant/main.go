@@ -166,7 +166,7 @@ func main() {
 	handlers = append(handlers, hiking.New(db, timezone, log))
 	handlers = append(handlers, websearchcap.New(websearch.New(), settingsSvc, log))
 	handlers = append(handlers, imagegencap.New(imagegen.NewClient(), settingsSvc, log))
-	handlers = append(handlers, trellocap.New(trello.New(), settingsSvc, log))
+	handlers = append(handlers, trellocap.New(trello.New(), db, settingsSvc, log))
 	handlers = append(handlers, selftune.New(db, log))
 	handlers = append(handlers, autotriage.New(db, trello.New(), settingsSvc, log))
 
@@ -253,12 +253,12 @@ func main() {
 				}
 			}
 
-			// Group → project binding. An unbound group is inert: the agent must
-			// not run for it (there is no project to scope it to), so this runs
-			// before the agent. It handles binding commands (owner-only) and, for
-			// an unbound group, prompts the owner to assign a project. Like the
-			// translator, these config exchanges bypass the agent and stay out of
-			// the conversation history.
+			// Group → project binding. Runs before the agent and handles owner-only
+			// binding commands (assign / unassign / list). An unbound group now
+			// defaults to the General project (scoped above), so ordinary chat
+			// falls through to the agent; only explicit binding commands are
+			// intercepted here. Like the translator, those config exchanges bypass
+			// the agent and stay out of the conversation history.
 			if msg.IsGroup {
 				isOwner := isOwnerSender(uctx, settingsSvc, wa, msg)
 				if reply, handled := groupProjectSvc.Handle(uctx, msg.Chat, msg.Text, owner.ID, assigned, isOwner); handled {
@@ -518,31 +518,44 @@ func setupLogger(cfg config.LoggingConfig) *slog.Logger {
 // maps them to agent messages (oldest first), for use as agent context.
 // resolveWhatsAppScope decides which project, role, and user the agent acts as
 // for an inbound WhatsApp message, and returns the context carrying that scope,
-// the effective user id (used for history/logging), and whether the chat is
-// bound to a project.
+// the effective user id (used for history/logging), and whether the chat has an
+// explicit project binding.
 //
-//   - Group message: look up the group JID. A mapping scopes the run to its
-//     project (role clamped so a group never confers superadmin) and returns
-//     assigned=true, surfacing the project name to the agent. An UNMAPPED group
-//     is left unscoped and returns assigned=false: the group self-assignment flow
-//     handles it and prompts the owner, and the agent never runs for it — so it
-//     is never executed against the unscoped "project 0".
-//   - Personal (1:1) message: look up the sender's number. A mapping scopes the
-//     run to its project and role (superadmin honoured here only) and, if it
-//     names a user, attributes the chat to that user. Unmapped personal chats
-//     fall back to the owner's personal project so the owner's 1:1 keeps working;
-//     these always return assigned=true.
+//   - An explicit whatsapp_mapping wins. Groups are keyed by the group JID;
+//     personal chats are matched against every resolved identity of the sender
+//     (phone form and LID→phone form) so a chat that arrives addressed by LID
+//     still finds its phone-form mapping row. A group mapping never confers
+//     superadmin; a personal mapping may, and attributes the named user. A found
+//     mapping returns assigned=true and surfaces the project name to the agent.
+//   - With no mapping, both groups and personal chats fall back to the General
+//     default project (store.EnsureDefaultProject) and return assigned=false. The
+//     agent then acts as the General assistant; for a group the owner can still
+//     bind a specific project via the groupproject flow, which overrides General.
+//     Routing to a real project — never the unscoped "project 0" — keeps traces
+//     on the per-project dashboards and stops reads leaking across projects via
+//     the "project 0 matches any row" predicate.
 func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User, msg *transport.Message, log *slog.Logger) (context.Context, int64, bool) {
 	userID := owner.ID
-	jid := msg.From
+
+	// Resolve an explicit mapping. A group is keyed by its group JID; a personal
+	// chat tries every known identity of the sender so a LID-addressed message
+	// still matches its phone-form mapping row.
+	var m *store.WhatsAppMapping
 	if msg.IsGroup {
-		jid = msg.Chat
+		m = lookupWhatsAppMapping(ctx, db, log, msg.Chat)
+	} else {
+		keys := msg.Candidates
+		if len(keys) == 0 {
+			keys = []string{msg.From}
+		}
+		for _, k := range keys {
+			if hit := lookupWhatsAppMapping(ctx, db, log, k); hit != nil {
+				m = hit
+				break
+			}
+		}
 	}
 
-	m, err := db.GetWhatsAppMapping(ctx, jid)
-	if err != nil {
-		log.Error("whatsapp mapping lookup", "error", err, "jid", jid)
-	}
 	if m != nil {
 		role := m.Role
 		if msg.IsGroup && role == store.GlobalRoleSuperadmin {
@@ -566,24 +579,34 @@ func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User
 
 	ctx = authctx.WithUserID(ctx, userID)
 
-	// An unmapped GROUP is left unscoped and reported as unassigned. The group
-	// self-assignment flow (groupproject) then prompts the owner to pick a
-	// project, and the agent is never run for it — so nothing is ever written to
-	// or read from the unscoped project 0 (which is orphaned from every per-project
-	// view and whose reads leak across all projects via the "project 0 matches any
-	// row" predicate).
+	// No explicit mapping → the General default project. Both unmapped groups and
+	// unmapped personal chats act as the General assistant, scoped to a real
+	// project (never the unscoped project 0). assigned=false so a group's owner
+	// can still bind a specific project via chat (which overrides General).
+	gen, err := db.EnsureDefaultProject(ctx, owner.ID)
+	if err != nil || gen == nil {
+		log.Error("resolve general default project", "error", err)
+		return ctx, userID, false // fail closed: leave unscoped rather than pick a wrong project
+	}
+	ctx = authctx.WithProjectID(ctx, gen.ID)
+	ctx = authctx.WithProjectRole(ctx, store.ProjectRoleAdmin)
 	if msg.IsGroup {
-		return ctx, userID, false
+		ctx = authctx.WithProjectName(ctx, gen.Name)
 	}
+	return ctx, userID, false
+}
 
-	// An unmapped PERSONAL (1:1) chat falls back to the owner's first/personal
-	// project so the owner's private channel keeps working without touching the
-	// unscoped project 0.
-	if summaries, err := db.ListProjectsForUser(ctx, owner.ID); err == nil && len(summaries) > 0 {
-		ctx = authctx.WithProjectID(ctx, summaries[0].ID)
-		ctx = authctx.WithProjectRole(ctx, summaries[0].Role)
+// lookupWhatsAppMapping fetches a mapping by JID, logging (but not failing on) a
+// lookup error. Returns nil when the JID is empty or has no mapping.
+func lookupWhatsAppMapping(ctx context.Context, db store.Store, log *slog.Logger, jid string) *store.WhatsAppMapping {
+	if jid == "" {
+		return nil
 	}
-	return ctx, userID, true
+	m, err := db.GetWhatsAppMapping(ctx, jid)
+	if err != nil {
+		log.Error("whatsapp mapping lookup", "error", err, "jid", jid)
+	}
+	return m
 }
 
 // isOwnerSender reports whether a WhatsApp message came from the account owner —

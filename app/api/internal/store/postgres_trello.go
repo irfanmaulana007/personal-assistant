@@ -86,6 +86,30 @@ func (s *PostgresStore) ListTrelloBoards(ctx context.Context, workspaceID int64)
 	return out, rows.Err()
 }
 
+// ListLinkedTrelloBoards returns every board linked to the active project across
+// all of its linked workspaces, ordered by name. Used by the Trello skills so the
+// agent can read from and file to any of the project's boards, not just one.
+func (s *PostgresStore) ListLinkedTrelloBoards(ctx context.Context) ([]TrelloBoardLink, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, project_id, workspace_id, trello_id, name, url, created_at
+		 FROM trello_boards WHERE project_id = $1
+		 ORDER BY name ASC, id ASC`,
+		authctx.ProjectID(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("list linked trello boards: %w", err)
+	}
+	defer rows.Close()
+	var out []TrelloBoardLink
+	for rows.Next() {
+		var b TrelloBoardLink
+		if err := rows.Scan(&b.ID, &b.ProjectID, &b.WorkspaceID, &b.TrelloID, &b.Name, &b.URL, &b.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan trello board: %w", err)
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
 // AttachTrelloBoard links a Trello board under a workspace. The workspace must
 // belong to the active project. It is an upsert on (project_id, trello_id), so a
 // board can be moved between linked workspaces or have its name/url refreshed.
