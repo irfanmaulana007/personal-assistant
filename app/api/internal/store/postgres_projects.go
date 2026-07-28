@@ -99,9 +99,9 @@ func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUse
 	var p Project
 	err = s.pool.QueryRow(ctx,
 		`INSERT INTO projects (name, slug, owner_user_id) VALUES ($1, $2, $3)
-		 RETURNING id, name, slug, owner_user_id, created_at`,
+		 RETURNING id, name, slug, owner_user_id, is_default, created_at`,
 		name, slug, ownerUserID,
-	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.IsDefault, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
 	}
@@ -111,8 +111,8 @@ func (s *PostgresStore) CreateProject(ctx context.Context, name string, ownerUse
 func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, error) {
 	var p Project
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, slug, owner_user_id, created_at FROM projects WHERE id = $1`, id,
-	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt)
+		`SELECT id, name, slug, owner_user_id, is_default, created_at FROM projects WHERE id = $1`, id,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.IsDefault, &p.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -124,7 +124,7 @@ func (s *PostgresStore) GetProject(ctx context.Context, id int64) (*Project, err
 
 func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, slug, owner_user_id, created_at FROM projects ORDER BY id ASC`)
+		`SELECT id, name, slug, owner_user_id, is_default, created_at FROM projects ORDER BY id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
@@ -133,7 +133,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 	var out []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.IsDefault, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
 		out = append(out, p)
@@ -143,7 +143,7 @@ func (s *PostgresStore) ListProjects(ctx context.Context) ([]Project, error) {
 
 func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) ([]ProjectSummary, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT p.id, p.name, p.slug, p.owner_user_id, p.created_at, pm.role,
+		`SELECT p.id, p.name, p.slug, p.owner_user_id, p.is_default, p.created_at, pm.role,
 		        (SELECT count(*) FROM project_members m WHERE m.project_id = p.id) AS member_count
 		 FROM projects p
 		 JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1
@@ -156,12 +156,83 @@ func (s *PostgresStore) ListProjectsForUser(ctx context.Context, userID int64) (
 	var out []ProjectSummary
 	for rows.Next() {
 		var ps ProjectSummary
-		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Slug, &ps.OwnerUserID, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.Name, &ps.Slug, &ps.OwnerUserID, &ps.IsDefault, &ps.CreatedAt, &ps.Role, &ps.MemberCount); err != nil {
 			return nil, fmt.Errorf("scan project summary: %w", err)
 		}
 		out = append(out, ps)
 	}
 	return out, rows.Err()
+}
+
+// GetDefaultProject returns the single project flagged is_default (the "General"
+// project), or nil when none has been designated yet.
+func (s *PostgresStore) GetDefaultProject(ctx context.Context) (*Project, error) {
+	var p Project
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, slug, owner_user_id, is_default, created_at FROM projects WHERE is_default LIMIT 1`,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.IsDefault, &p.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get default project: %w", err)
+	}
+	return &p, nil
+}
+
+// SetDefaultProject makes id the sole default, clearing any previous default in
+// the same transaction (the partial unique index forbids two defaults at once).
+func (s *PostgresStore) SetDefaultProject(ctx context.Context, id int64) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin set default project: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `UPDATE projects SET is_default = false WHERE is_default AND id <> $1`, id); err != nil {
+		return fmt.Errorf("clear previous default: %w", err)
+	}
+	ct, err := tx.Exec(ctx, `UPDATE projects SET is_default = true WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("set default project: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("set default project: no project with id %d", id)
+	}
+	return tx.Commit(ctx)
+}
+
+// EnsureDefaultProject returns the current default project, creating a "General"
+// project owned by ownerUserID (with no membership row — the owner is the
+// superadmin, who accesses every project via their global role) and marking it
+// default when none exists yet. Safe to call on every WhatsApp/routine run.
+func (s *PostgresStore) EnsureDefaultProject(ctx context.Context, ownerUserID int64) (*Project, error) {
+	if p, err := s.GetDefaultProject(ctx); err != nil {
+		return nil, err
+	} else if p != nil {
+		return p, nil
+	}
+
+	slug, err := s.uniqueProjectSlug(ctx, "general")
+	if err != nil {
+		return nil, err
+	}
+	var p Project
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO projects (name, slug, owner_user_id, is_default) VALUES ('General', $1, $2, true)
+		 RETURNING id, name, slug, owner_user_id, is_default, created_at`,
+		slug, ownerUserID,
+	).Scan(&p.ID, &p.Name, &p.Slug, &p.OwnerUserID, &p.IsDefault, &p.CreatedAt)
+	if err != nil {
+		// A concurrent caller may have created the default between our check and
+		// insert (the partial unique index rejects the second write); fall back to
+		// whatever default now exists.
+		if existing, gerr := s.GetDefaultProject(ctx); gerr == nil && existing != nil {
+			return existing, nil
+		}
+		return nil, fmt.Errorf("ensure default project: %w", err)
+	}
+	return &p, nil
 }
 
 func (s *PostgresStore) UpdateProjectName(ctx context.Context, id int64, name string) error {

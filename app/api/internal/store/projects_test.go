@@ -365,6 +365,58 @@ func mustList(t *testing.T, s *PostgresStore, pid int64) []UserSkill {
 	return list
 }
 
+// TestDefaultProject covers the General default-project lifecycle:
+// lazy creation, idempotency, and reassignment with the single-default invariant.
+func TestDefaultProject(t *testing.T) {
+	s := newTestPostgres(t)
+	ctx := context.Background()
+	owner, _ := s.CreateUser(ctx, "owner@example.com", "h", GlobalRoleSuperadmin)
+
+	// No default exists on a fresh DB (migration seeds one only when users already
+	// existed at migration time; here the user is created after migration).
+	if p, err := s.GetDefaultProject(ctx); err != nil || p != nil {
+		t.Fatalf("GetDefaultProject on fresh DB = (%v, %v), want (nil, nil)", p, err)
+	}
+
+	// EnsureDefaultProject lazily creates "General" and marks it default.
+	gen, err := s.EnsureDefaultProject(ctx, owner.ID)
+	if err != nil || gen == nil {
+		t.Fatalf("EnsureDefaultProject: (%v, %v)", gen, err)
+	}
+	if gen.Name != "General" || !gen.IsDefault || gen.OwnerUserID != owner.ID {
+		t.Fatalf("General project = %+v, want name=General is_default=true owner=%d", gen, owner.ID)
+	}
+
+	// Idempotent: a second call returns the same project, not a duplicate.
+	again, err := s.EnsureDefaultProject(ctx, owner.ID)
+	if err != nil || again == nil || again.ID != gen.ID {
+		t.Fatalf("EnsureDefaultProject (2nd) = (%+v, %v), want same id %d", again, err, gen.ID)
+	}
+	if cur, err := s.GetDefaultProject(ctx); err != nil || cur == nil || cur.ID != gen.ID {
+		t.Fatalf("GetDefaultProject = (%+v, %v), want the General project id %d", cur, err, gen.ID)
+	}
+
+	// Reassigning the default clears the old one — exactly one default at a time.
+	other, _ := s.CreateProject(ctx, "Work", owner.ID)
+	if err := s.SetDefaultProject(ctx, other.ID); err != nil {
+		t.Fatalf("SetDefaultProject: %v", err)
+	}
+	cur, _ := s.GetDefaultProject(ctx)
+	if cur == nil || cur.ID != other.ID {
+		t.Fatalf("default after reassignment = %+v, want id %d", cur, other.ID)
+	}
+	all, _ := s.ListProjects(ctx)
+	defaults := 0
+	for _, p := range all {
+		if p.IsDefault {
+			defaults++
+		}
+	}
+	if defaults != 1 {
+		t.Fatalf("expected exactly one default project, found %d", defaults)
+	}
+}
+
 func contains(ss []string, want string) bool {
 	for _, s := range ss {
 		if s == want {

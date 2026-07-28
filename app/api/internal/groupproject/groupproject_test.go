@@ -129,33 +129,38 @@ func TestBoundGroupOrdinaryMessageReachesAgent(t *testing.T) {
 	}
 }
 
-// An unbound group intercepts every addressed message (the agent must not run
-// unscoped) and prompts the owner, listing projects.
-func TestUnboundGroupPromptsOwner(t *testing.T) {
+// An unbound group defaults to the General project (resolved upstream), so
+// ordinary chat now reaches the agent instead of being intercepted. The owner
+// can still list/bind a specific project with an explicit command.
+func TestUnboundGroupOrdinaryChatReachesAgent(t *testing.T) {
 	f := newFakeStore(store.Project{ID: 1, Name: "Personal", Slug: "personal"}, store.Project{ID: 2, Name: "Beta"})
 	s := testService(f)
 
-	reply, handled := s.Handle(context.Background(), "g@g.us", "hi there", 1, false, true)
-	if !handled {
-		t.Fatal("unbound group must handle every message")
+	for _, text := range []string{"hi there", "which project are you in?", "tolong buatkan reminder besok"} {
+		if reply, handled := s.Handle(context.Background(), "g@g.us", text, 1, false, true); handled {
+			t.Fatalf("unbound-group ordinary chat %q should reach the agent, got reply=%q", text, reply)
+		}
 	}
-	if !strings.Contains(reply, "not assigned") {
-		t.Fatalf("owner prompt should say it is unassigned, got: %q", reply)
+
+	// The owner can still list projects to bind one.
+	reply, handled := s.Handle(context.Background(), "g@g.us", "list projects", 1, false, true)
+	if !handled {
+		t.Fatal("owner 'list projects' must be handled")
 	}
 	if !strings.Contains(reply, "Personal") || !strings.Contains(reply, "Beta") {
-		t.Fatalf("owner prompt should list projects, got: %q", reply)
+		t.Fatalf("owner 'list projects' should list projects, got: %q", reply)
 	}
 }
 
-// A non-owner in an unbound group is told to ask the owner and never sees the
-// project list.
+// A non-owner cannot run a binding command in an unbound group and never sees
+// the owner's project names.
 func TestUnboundGroupNonOwnerNoLeak(t *testing.T) {
 	f := newFakeStore(store.Project{ID: 1, Name: "SecretProj"})
 	s := testService(f)
 
-	reply, handled := s.Handle(context.Background(), "g@g.us", "project apa?", 1, false, false)
+	reply, handled := s.Handle(context.Background(), "g@g.us", "list projects", 1, false, false)
 	if !handled {
-		t.Fatal("unbound group must handle every message")
+		t.Fatal("a non-owner binding command in an unbound group must be handled (refused)")
 	}
 	if strings.Contains(reply, "SecretProj") {
 		t.Fatalf("non-owner must not see project names, got: %q", reply)
