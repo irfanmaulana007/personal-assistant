@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/authctx"
 )
 
 // mongoMessageLog is the BSON shape of a message_log document. It maps to the
@@ -16,6 +18,7 @@ import (
 type mongoMessageLog struct {
 	ID        int64     `bson:"id"`
 	UserID    int64     `bson:"user_id"`
+	ProjectID int64     `bson:"project_id"`
 	Platform  string    `bson:"platform"`
 	Direction string    `bson:"direction"`
 	Sender    string    `bson:"sender"`
@@ -44,9 +47,17 @@ func (m *MongoStore) LogMessage(ctx context.Context, log *MessageLog) error {
 	if err != nil {
 		return err
 	}
+	// Attribute the message to the active project. Callers rarely set ProjectID on
+	// the struct, so fall back to the project carried on the context (same pattern
+	// as traces). This keeps a user's chat history scoped per project.
+	projectID := log.ProjectID
+	if projectID == 0 {
+		projectID = authctx.ProjectID(ctx)
+	}
 	doc := mongoMessageLog{
 		ID:        id,
 		UserID:    log.UserID,
+		ProjectID: projectID,
 		Platform:  log.Platform,
 		Direction: log.Direction,
 		Sender:    log.Sender,
@@ -63,8 +74,12 @@ func (m *MongoStore) LogMessage(ctx context.Context, log *MessageLog) error {
 
 func (m *MongoStore) GetMessageHistory(ctx context.Context, userID int64, platform string, limit int) ([]MessageLog, error) {
 	// Take the most-recent `limit` docs (created_at desc, id desc), then present
-	// them oldest-first.
+	// them oldest-first. Scope to the active project so a user's chat history is
+	// split per project; a zero project id (superadmin / unscoped) matches all.
 	filter := bson.M{"user_id": userID, "platform": platform}
+	if pid := authctx.ProjectID(ctx); pid != 0 {
+		filter["project_id"] = pid
+	}
 	opts := options.Find().
 		SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "id", Value: -1}}).
 		SetLimit(int64(limit))
@@ -86,6 +101,7 @@ func (m *MongoStore) GetMessageHistory(ctx context.Context, userID int64, platfo
 		logs = append(logs, MessageLog{
 			ID:        d.ID,
 			UserID:    d.UserID,
+			ProjectID: d.ProjectID,
 			Platform:  d.Platform,
 			Direction: d.Direction,
 			Sender:    d.Sender,

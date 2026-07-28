@@ -14,6 +14,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
+
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/authctx"
 )
 
 func newTestMongo(t *testing.T) *MongoStore {
@@ -222,6 +224,82 @@ func TestHybridGetUserActivity(t *testing.T) {
 	}
 	if act.Notes != 1 {
 		t.Fatalf("notes = %d, want 1", act.Notes)
+	}
+}
+
+// TestMongoMessageHistoryProjectScope verifies chat history is split per project:
+// LogMessage stamps the active project from the context, GetMessageHistory returns
+// only the active project's messages, and a zero (superadmin / unscoped) project
+// sees everything.
+func TestMongoMessageHistoryProjectScope(t *testing.T) {
+	m := newTestMongo(t)
+	base := context.Background()
+
+	p1 := authctx.WithProjectID(base, 1)
+	p2 := authctx.WithProjectID(base, 2)
+
+	// Two messages in project 1, one in project 2 — same user, same platform.
+	for _, c := range []context.Context{p1, p1, p2} {
+		if err := m.LogMessage(c, &MessageLog{UserID: 1, Platform: "web", Direction: "in", Body: "hi"}); err != nil {
+			t.Fatalf("log message: %v", err)
+		}
+	}
+
+	// Each project sees only its own messages.
+	if hist, err := m.GetMessageHistory(p1, 1, "web", 10); err != nil || len(hist) != 2 {
+		t.Fatalf("project 1 history = %d (%v), want 2", len(hist), err)
+	}
+	if hist, err := m.GetMessageHistory(p2, 1, "web", 10); err != nil || len(hist) != 1 {
+		t.Fatalf("project 2 history = %d (%v), want 1", len(hist), err)
+	}
+	// Every stored message carries its project id.
+	if hist, _ := m.GetMessageHistory(p1, 1, "web", 10); hist[0].ProjectID != 1 {
+		t.Fatalf("stamped project_id = %d, want 1", hist[0].ProjectID)
+	}
+	// An unscoped (project 0) context sees the full, cross-project history.
+	if hist, err := m.GetMessageHistory(base, 1, "web", 10); err != nil || len(hist) != 3 {
+		t.Fatalf("unscoped history = %d (%v), want 3", len(hist), err)
+	}
+}
+
+// TestMongoBackfillMessageLogProjectID verifies the 0002 migration re-stamps
+// message_log documents left without a project_id (those logged after 0001 ran but
+// before chat history became project-scoped), attributing them to the default
+// project so they stay visible under the project-filtered history view.
+func TestMongoBackfillMessageLogProjectID(t *testing.T) {
+	m := newTestMongo(t)
+	ctx := context.Background()
+
+	mustInsert := func(doc bson.M) {
+		if _, err := m.col(colMessageLog).InsertOne(ctx, doc); err != nil {
+			t.Fatalf("insert message_log: %v", err)
+		}
+	}
+	mustInsert(bson.M{"id": int64(1), "user_id": int64(1), "platform": "web"})                     // field absent
+	mustInsert(bson.M{"id": int64(2), "user_id": int64(1), "platform": "web", "project_id": int64(0)}) // 0 sentinel
+	mustInsert(bson.M{"id": int64(3), "user_id": int64(1), "platform": "web", "project_id": int64(5)}) // real project
+
+	if err := m.backfillMessageLogProjectID(ctx); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+
+	projectOf := func(id int64) int64 {
+		var doc struct {
+			ProjectID int64 `bson:"project_id"`
+		}
+		if err := m.col(colMessageLog).FindOne(ctx, bson.M{"id": id}).Decode(&doc); err != nil {
+			t.Fatalf("read back id %d: %v", id, err)
+		}
+		return doc.ProjectID
+	}
+	if got := projectOf(1); got != defaultProjectID {
+		t.Fatalf("id 1 (missing) project_id = %d, want %d", got, defaultProjectID)
+	}
+	if got := projectOf(2); got != defaultProjectID {
+		t.Fatalf("id 2 (0 sentinel) project_id = %d, want %d", got, defaultProjectID)
+	}
+	if got := projectOf(3); got != 5 {
+		t.Fatalf("id 3 (real project) project_id = %d, want 5 (must not be overwritten)", got)
 	}
 }
 
