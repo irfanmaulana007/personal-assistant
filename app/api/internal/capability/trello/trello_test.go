@@ -2,6 +2,7 @@ package trello
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/trello"
@@ -137,5 +138,71 @@ func TestMatchList(t *testing.T) {
 	// Empty name matches nothing.
 	if _, _, ok := matchList(lists, ""); ok {
 		t.Error("empty name should not match")
+	}
+}
+
+func TestMatchBoard(t *testing.T) {
+	boards := []boardRef{
+		{ID: "b1", Name: "Task Management"},
+		{ID: "b2", Name: "Issue Tracker"},
+		{ID: "b3", Name: "Side Projects"},
+	}
+
+	// Exact, case-insensitive.
+	if b, ok := matchBoard(boards, "issue tracker"); !ok || b.ID != "b2" {
+		t.Errorf("exact = (%+v, %v)", b, ok)
+	}
+	// Substring fallback ("side" -> "Side Projects").
+	if b, ok := matchBoard(boards, "side"); !ok || b.ID != "b3" {
+		t.Errorf("substring = (%+v, %v)", b, ok)
+	}
+	// Unknown board.
+	if _, ok := matchBoard(boards, "roadmap"); ok {
+		t.Error("roadmap should not match any board")
+	}
+	// Empty query matches nothing.
+	if _, ok := matchBoard(boards, "  "); ok {
+		t.Error("empty query should not match")
+	}
+	// An unnamed fallback board is never matched by name.
+	if _, ok := matchBoard([]boardRef{{ID: "b0"}}, "anything"); ok {
+		t.Error("unnamed board should not match by name")
+	}
+}
+
+func TestPickBoard(t *testing.T) {
+	one := []boardRef{{ID: "b1", Name: "Task Management"}}
+	many := []boardRef{
+		{ID: "b1", Name: "Task Management"},
+		{ID: "b2", Name: "Issue Tracker"},
+	}
+
+	// No boards linked → the not-configured message, no board.
+	if board, msg := pickBoard(nil, ""); msg != boardNotConfiguredMsg || board.ID != "" {
+		t.Errorf("no boards = (%+v, %q)", board, msg)
+	}
+
+	// Exactly one board, none named → use it, no message.
+	if board, msg := pickBoard(one, ""); msg != "" || board.ID != "b1" {
+		t.Errorf("single = (%+v, %q)", board, msg)
+	}
+
+	// Several boards, none named → ask which (message set, no board chosen).
+	board, msg := pickBoard(many, "")
+	if board.ID != "" || msg == "" {
+		t.Fatalf("ambiguous = (%+v, %q), want a prompt and no board", board, msg)
+	}
+	if !strings.Contains(msg, "Task Management") || !strings.Contains(msg, "Issue Tracker") {
+		t.Errorf("ambiguous prompt should list both boards: %q", msg)
+	}
+
+	// Several boards, one named → resolve to it.
+	if board, msg := pickBoard(many, "issue"); msg != "" || board.ID != "b2" {
+		t.Errorf("named = (%+v, %q)", board, msg)
+	}
+
+	// Named board that isn't linked → a prompt naming the linked boards, no board.
+	if board, msg := pickBoard(many, "Roadmap"); board.ID != "" || !strings.Contains(msg, "Roadmap") {
+		t.Errorf("unknown named = (%+v, %q)", board, msg)
 	}
 }
