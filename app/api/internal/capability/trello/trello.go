@@ -104,6 +104,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		return h.reportBug(ctx, apiKey, token, board, result.Entities)
 	case intent.ActionTrelloUpdateCard:
 		return h.updateCard(ctx, apiKey, token, board, result.Entities)
+	case intent.ActionTrelloArchiveCard:
+		return h.archiveCard(ctx, apiKey, token, board, result.Entities)
 	case intent.ActionTrelloGameIdea:
 		return h.createGameIdea(ctx, apiKey, token, board, result.Entities)
 	default:
@@ -607,6 +609,153 @@ func (h *Handler) replaceAcceptanceChecklist(ctx context.Context, apiKey, token,
 			h.log.Warn("trello add check item failed", "card", cardID, "error", err)
 		}
 	}
+}
+
+// archiveCard archives (closes) an existing card on the project's board so it
+// drops off the board and out of every future review. The card is identified by
+// (part of) its current title — as the review tool surfaces them — or by its raw
+// Trello card id / shortLink. Archiving is Trello's "delete": the card is hidden,
+// not destroyed, and can be restored from Trello's own UI.
+func (h *Handler) archiveCard(ctx context.Context, apiKey, token string, board boardRef, e map[string]string) (string, error) {
+	query := strings.TrimSpace(e["card"])
+	if query == "" {
+		return "Which card should I archive? Tell me its title (or part of it), or its Trello card id.", nil
+	}
+
+	card, msg, err := h.resolveArchiveTarget(ctx, apiKey, token, board.ID, query)
+	if err != nil {
+		h.log.Warn("trello resolve archive target failed", "error", err)
+		return fmt.Sprintf("Couldn't read the Trello board to find that card: %v", err), nil
+	}
+	if msg != "" {
+		return msg, nil
+	}
+
+	if _, err := h.client.ArchiveCard(ctx, apiKey, token, card.ID); err != nil {
+		h.log.Warn("trello archive card failed", "card", card.ID, "error", err)
+		return fmt.Sprintf("Couldn't archive the card: %v", err), nil
+	}
+
+	// Read-after-write: only report success once Trello confirms the card is now
+	// archived — the mirror of the create/update verification, which instead
+	// treats an archived card as a failure.
+	if err := h.verifyArchived(ctx, apiKey, token, card.ID); err != nil {
+		h.log.Warn("trello verify archive failed", "card", card.ID, "error", err)
+		return fmt.Sprintf("I tried to archive the card but couldn't verify it archived on Trello: %v", err), nil
+	}
+
+	name := strings.TrimSpace(card.Name)
+	if name == "" {
+		name = "the card"
+	}
+	return fmt.Sprintf("Archived %q%s — it's off the board and won't appear in reviews anymore.\n%s\nConfirm this to the user in their language.", name, onBoard(board), card.ShortURL), nil
+}
+
+// resolveArchiveTarget finds the single card an archive request refers to on the
+// given board. It matches by title first (exactly as the review tool surfaces
+// them); if nothing matches and the query looks like a Trello card id/shortLink,
+// it falls back to fetching that card by id and confirming it lives on this
+// board. It returns either a card (msg == "") or a message to relay to the model
+// (msg != "") — no match, an ambiguous title, an off-board id, or an
+// already-archived card.
+func (h *Handler) resolveArchiveTarget(ctx context.Context, apiKey, token, boardID, query string) (*trello.Card, string, error) {
+	cards, err := h.client.BoardCards(ctx, apiKey, token, boardID)
+	if err != nil {
+		return nil, "", err
+	}
+	switch matches := matchCards(cards, query); len(matches) {
+	case 1:
+		c := matches[0]
+		return &c, "", nil
+	case 0:
+		// No title match — fall through to an id lookup below.
+	default:
+		var names []string
+		for _, c := range matches {
+			names = append(names, fmt.Sprintf("%q", strings.TrimSpace(c.Name)))
+		}
+		return nil, fmt.Sprintf("That matches %d cards: %s. Which one should I archive? Give me a more specific title.", len(matches), strings.Join(names, ", ")), nil
+	}
+
+	// The query didn't match any open card's title. If it looks like a Trello card
+	// id/shortLink, try resolving it directly — but only archive it when it belongs
+	// to this project's board, so an id can't reach across into an unlinked board.
+	if !looksLikeCardID(query) {
+		return nil, fmt.Sprintf("I couldn't find a card matching %q on the Trello board. Try the exact title from a board review, or the card's id.", query), nil
+	}
+	card, err := h.client.GetCard(ctx, apiKey, token, query)
+	if err != nil {
+		return nil, fmt.Sprintf("I couldn't find a card with id %q on Trello: %v", query, err), nil
+	}
+	if card == nil || card.IDBoard != boardID {
+		return nil, fmt.Sprintf("The card with id %q isn't on this project's board, so I won't archive it.", query), nil
+	}
+	if card.Closed {
+		return nil, fmt.Sprintf("That card (%q) is already archived.", strings.TrimSpace(card.Name)), nil
+	}
+	return card, "", nil
+}
+
+// verifyArchived is the read-after-write check behind archiving: it re-reads the
+// card from Trello and confirms it is now closed before reporting success — the
+// mirror of verifyCard, which treats an archived card as a failure.
+func (h *Handler) verifyArchived(ctx context.Context, apiKey, token, cardID string) error {
+	got, err := h.client.GetCard(ctx, apiKey, token, cardID)
+	if err != nil {
+		return err
+	}
+	return checkArchived(got)
+}
+
+// checkArchived validates a card read back after an archive request: the card
+// must exist and be closed. Split out from verifyArchived so the rule is
+// unit-testable without a live Trello.
+func checkArchived(got *trello.Card) error {
+	if got == nil {
+		return fmt.Errorf("the card wasn't found after archiving it")
+	}
+	if !got.Closed {
+		return fmt.Errorf("the card is still active on the board (not archived)")
+	}
+	return nil
+}
+
+// looksLikeCardID reports whether s looks like a Trello card identifier rather
+// than a title — either a 24-character hex object id or an 8-character
+// alphanumeric shortLink (the form seen in card URLs). Both resolve through
+// GET /cards/{id}. It gates the id fallback in resolveArchiveTarget so an archive
+// query that failed to match a title is only tried as a direct id when it
+// plausibly is one.
+func looksLikeCardID(s string) bool {
+	s = strings.TrimSpace(s)
+	switch {
+	case len(s) == 24 && isHex(s):
+		return true
+	case len(s) == 8 && isAlnum(s):
+		return true
+	default:
+		return false
+	}
+}
+
+// isHex reports whether s is non-empty and all hex digits.
+func isHex(s string) bool {
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// isAlnum reports whether s is non-empty and all ASCII letters or digits.
+func isAlnum(s string) bool {
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // createGameIdea files an enriched game-idea card on the board's Ideas list
