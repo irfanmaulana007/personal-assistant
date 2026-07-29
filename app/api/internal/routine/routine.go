@@ -105,7 +105,7 @@ Reply with ONLY the message to send me — no preamble, no explanation.`,
 	{
 		Key:            "nightly_triage",
 		Name:           "Nightly triage",
-		Description:    "A nightly run: whatever you tell it to do. The default triages the day's failures — it scans the runs the assistant couldn't handle (errors and low-quality replies), files a bug card on the Trello Issue board for each recurring pattern (skipping duplicates), and refines the prompts of the skills that keep failing. Requires the Auto-Triage skill to be enabled.",
+		Description:    "A nightly run: whatever you tell it to do. The default triages the day's failures — it scans the runs the assistant couldn't handle (errors and low-quality replies), files a bug card on the Trello board named in the prompt (the Issue board by default) for each recurring pattern (skipping duplicates), and refines the prompts of the skills that keep failing. Edit the workspace/board name in the prompt to point triage at this project's own board. Requires the Auto-Triage skill to be enabled.",
 		DefaultTime:    "23:00",
 		DefaultEnabled: false,
 		MaxIterations:  20,
@@ -113,7 +113,7 @@ Reply with ONLY the message to send me — no preamble, no explanation.`,
 
 1. Call triage_scan_failures (no arguments) to pull the day's runs I couldn't handle automatically — errors and low-quality replies — grouped into recurring failure patterns.
 2. If it reports there is nothing to triage, reply with exactly NOTHING_TO_REPORT and nothing else — do not send a message.
-3. Otherwise, for each recurring pattern worth acting on (prioritise the ones that recurred most), call triage_file_bug with the group's signature copied verbatim, a clear English title, and a description covering the sample input, the error, the occurrence count, and the first/last-seen times. The tool detects duplicates and will comment on an existing card instead of filing a second one. Do NOT file a bug for a one-off.
+3. Otherwise, for each recurring pattern worth acting on (prioritise the ones that recurred most), call triage_file_bug with the group's signature copied verbatim, a clear English title, and a description covering the sample input, the error, the occurrence count, and the first/last-seen times. File the bug on Trello workspace "Personal Assistant", board "Issue" — pass workspace: "Personal Assistant" and board: "Issue" so the card lands on that board's Bug list (change these two names to point triage at this project's own workspace/board). The tool detects duplicates and will comment on an existing card instead of filing a second one. Do NOT file a bug for a one-off.
 4. When a recurring pattern is clearly caused by a specific skill's instructions, also call triage_improve_prompt to save a focused fix for that skill's prompt — keep what works, preserve tool names and required output markers exactly, and pass a one-line reason. Never tune the auto_triage or self_tuning skills.
 5. When done, write me a short WhatsApp message summarising which bugs you filed (or recurrences you noted) and any skill prompts you improved, one line each. If you ended up doing nothing, reply with exactly NOTHING_TO_REPORT instead.
 

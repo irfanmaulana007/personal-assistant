@@ -7,10 +7,12 @@
 //
 // It is meant to run unattended from the nightly triage routine, but every step
 // is an ordinary tool the agent can also invoke on request. Bug cards are filed
-// on the project's own Trello board (resolved per call, mirroring the trello
-// capability), on its Bug list; credentials are resolved per call from encrypted
-// settings, and a missing credential — or a project with no board configured —
-// is reported back as plain text so the model can tell the user to configure it.
+// on a Trello board resolved per call: the board named in the file-bug call
+// (matched among the project's linked boards, mirroring the trello capability),
+// or the project's single configured board when none is named — always onto that
+// board's Bug list. Credentials are resolved per call from encrypted settings,
+// and a missing credential — or a project with no board configured — is reported
+// back as plain text so the model can tell the user to configure it.
 package autotriage
 
 import (
@@ -86,12 +88,12 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		if apiKey == "" || token == "" {
 			return notConfiguredMsg, nil
 		}
-		_, boardID, err := h.settings.TrelloBoard(ctx)
+		boardID, msg, err := h.resolveBugBoard(ctx, result.Entities["workspace"], result.Entities["board"])
 		if err != nil {
 			return "", fmt.Errorf("resolve trello board: %w", err)
 		}
-		if boardID == "" {
-			return boardNotConfiguredMsg, nil
+		if msg != "" {
+			return msg, nil
 		}
 		return h.fileBug(ctx, apiKey, token, boardID, result.Entities)
 	default:
@@ -285,6 +287,86 @@ func normalizeError(s string) string {
 }
 
 // --- file_bug ---
+
+// resolveBugBoard picks the Trello board to file a bug on. When the routine
+// prompt names a board (optionally scoped by a workspace name), it is matched
+// among the project's linked boards so each project can point triage at its own
+// board — e.g. a dedicated "Issue" board — rather than the single legacy board.
+// When no board is named, it falls back to the project's configured board.
+//
+// It returns either a board id to file on (msg == "") or a message to relay to
+// the model (msg != "") when a named board can't be matched or nothing is
+// configured — never silently misfiling onto some other board.
+func (h *Handler) resolveBugBoard(ctx context.Context, wsName, boardName string) (boardID, msg string, err error) {
+	boardName = strings.TrimSpace(boardName)
+	if boardName == "" {
+		// No board named — use the project's single configured board.
+		_, id, err := h.settings.TrelloBoard(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve trello board: %w", err)
+		}
+		if strings.TrimSpace(id) == "" {
+			return "", boardNotConfiguredMsg, nil
+		}
+		return id, "", nil
+	}
+
+	links, err := h.store.ListLinkedTrelloBoards(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("list linked boards: %w", err)
+	}
+
+	// Optionally restrict candidates to a named workspace.
+	var allowWs map[int64]bool
+	if wsName = strings.TrimSpace(wsName); wsName != "" {
+		wss, err := h.store.ListTrelloWorkspaces(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("list linked workspaces: %w", err)
+		}
+		allowWs = map[int64]bool{}
+		for _, w := range wss {
+			if strings.EqualFold(strings.TrimSpace(w.Name), wsName) {
+				allowWs[w.ID] = true
+			}
+		}
+	}
+
+	var candidates []store.TrelloBoardLink
+	for _, l := range links {
+		if strings.TrimSpace(l.TrelloID) == "" {
+			continue
+		}
+		if allowWs != nil && !allowWs[l.WorkspaceID] {
+			continue
+		}
+		candidates = append(candidates, l)
+	}
+
+	// Exact (case-insensitive) name match first, then substring.
+	for _, l := range candidates {
+		if strings.EqualFold(strings.TrimSpace(l.Name), boardName) {
+			return l.TrelloID, "", nil
+		}
+	}
+	for _, l := range candidates {
+		if l.Name != "" && strings.Contains(strings.ToLower(l.Name), strings.ToLower(boardName)) {
+			return l.TrelloID, "", nil
+		}
+	}
+
+	// A board was named but nothing matched — tell the model which boards exist
+	// rather than falling back to an unrelated board.
+	var names []string
+	for _, l := range links {
+		if n := strings.TrimSpace(l.Name); n != "" {
+			names = append(names, fmt.Sprintf("%q", n))
+		}
+	}
+	if len(names) == 0 {
+		return "", boardNotConfiguredMsg, nil
+	}
+	return "", fmt.Sprintf("This project has no linked Trello board matching %q. Linked boards: %s. Ask the user which board bugs should go to, then pass its exact name.", boardName, strings.Join(names, ", ")), nil
+}
 
 func (h *Handler) fileBug(ctx context.Context, apiKey, token, boardID string, e map[string]string) (string, error) {
 	title := strings.TrimSpace(e["title"])
