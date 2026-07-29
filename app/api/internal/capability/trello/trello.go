@@ -41,7 +41,8 @@ type boardLister interface {
 }
 
 // boardRef is a linked Trello board the skills can act on: its Trello board id
-// and display name (name may be empty for the legacy settings-based fallback).
+// and display name (name is the board's Trello name; empty only if the linked
+// board itself has no name).
 type boardRef struct {
 	ID   string
 	Name string
@@ -114,10 +115,8 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 }
 
 // resolveBoards returns the boards the active project can act on: every board
-// linked via the Integrations page. As a fallback (a project that set an Active
-// board in settings but predates board-linking, or whose board wasn't backfilled
-// because it had no workspace id), it uses that single settings board so the
-// skills keep working.
+// linked via the Integrations → Trello page. A project with none linked has the
+// Trello skills disabled for it (the caller reports that back to the model).
 func (h *Handler) resolveBoards(ctx context.Context) ([]boardRef, error) {
 	links, err := h.store.ListLinkedTrelloBoards(ctx)
 	if err != nil {
@@ -128,17 +127,6 @@ func (h *Handler) resolveBoards(ctx context.Context) ([]boardRef, error) {
 		if id := strings.TrimSpace(l.TrelloID); id != "" {
 			boards = append(boards, boardRef{ID: id, Name: strings.TrimSpace(l.Name)})
 		}
-	}
-	if len(boards) > 0 {
-		return boards, nil
-	}
-	// Fallback: the legacy single Active board stored in settings.
-	_, boardID, err := h.settings.TrelloBoard(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if id := strings.TrimSpace(boardID); id != "" {
-		boards = append(boards, boardRef{ID: id})
 	}
 	return boards, nil
 }
@@ -184,7 +172,7 @@ func matchBoard(boards []boardRef, query string) (boardRef, bool) {
 }
 
 // boardNamesList joins the linked board names for a helpful prompt, quoting each
-// (an unnamed fallback board is shown as "(unnamed board)").
+// (a board with no name is shown as "(unnamed board)").
 func boardNamesList(boards []boardRef) string {
 	var names []string
 	for _, b := range boards {
@@ -260,8 +248,8 @@ func (h *Handler) renderBoard(ctx context.Context, b *strings.Builder, apiKey, t
 	}
 }
 
-// onBoard renders a ` on the "X" board` suffix for confirmations, or "" for an
-// unnamed (legacy single) board, so single-board projects still read naturally.
+// onBoard renders a ` on the "X" board` suffix for confirmations, or "" for a
+// board with no name, so single-board projects still read naturally.
 func onBoard(b boardRef) string {
 	if n := strings.TrimSpace(b.Name); n != "" {
 		return fmt.Sprintf(" on the %q board", n)

@@ -32,9 +32,6 @@ const (
 	KeyTrelloAPIKey = "trello.api_key" // encrypted (Trello API key)
 	KeyTrelloToken  = "trello.token"   // encrypted (Trello user token)
 
-	KeyTrelloWorkspaceID = "trello.workspace_id" // plaintext, project-scoped (Trello workspace/organization id)
-	KeyTrelloBoardID     = "trello.board_id"     // plaintext, project-scoped (the single Trello board this project uses)
-
 	KeyRemindersEnabled = "reminders_enabled" // plaintext "true"/"false"; absent ⇒ enabled
 
 	KeyReminderDigestTime  = "reminder_digest_time"  // legacy: local "HH:MM" daily recap (migrated to the start_of_day routine)
@@ -323,39 +320,6 @@ func (s *Service) SetTrelloCreds(ctx context.Context, apiKey, token string) erro
 	}
 	if err := s.setEncrypted(ctx, scopedSecretKey(ctx, KeyTrelloToken), token); err != nil {
 		return fmt.Errorf("store trello token: %w", err)
-	}
-	return nil
-}
-
-// TrelloBoard returns the Trello workspace and board this project is mapped to.
-// Unlike the credentials (which fall back to a global default), the mapping is
-// per-project: each project pins its own workspace/board and unconfigured
-// projects resolve to empty strings — the caller treats an empty board id as
-// "not configured for this project" rather than falling back to a shared board.
-// (In practice the mapping is never set globally, so the scoped read below is
-// effectively strict per-project.)
-func (s *Service) TrelloBoard(ctx context.Context) (workspaceID, boardID string, err error) {
-	workspaceID, err = s.getScopedString(ctx, KeyTrelloWorkspaceID)
-	if err != nil {
-		return "", "", fmt.Errorf("read trello workspace id: %w", err)
-	}
-	boardID, err = s.getScopedString(ctx, KeyTrelloBoardID)
-	if err != nil {
-		return "", "", fmt.Errorf("read trello board id: %w", err)
-	}
-	return workspaceID, boardID, nil
-}
-
-// SetTrelloBoard persists the Trello workspace/board mapping for the active
-// project. The ids are not secrets, so they are stored in plaintext. An empty
-// value for either clears that field (empty board id ⇒ Trello skills disabled
-// for the project until it is set again).
-func (s *Service) SetTrelloBoard(ctx context.Context, workspaceID, boardID string) error {
-	if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyTrelloWorkspaceID), []byte(workspaceID)); err != nil {
-		return fmt.Errorf("store trello workspace id: %w", err)
-	}
-	if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, KeyTrelloBoardID), []byte(boardID)); err != nil {
-		return fmt.Errorf("store trello board id: %w", err)
 	}
 	return nil
 }

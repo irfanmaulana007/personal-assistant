@@ -234,7 +234,6 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/integrations/websearch-key", projectAdmin(s.handleSetWebSearchKey))
 	mux.Handle("PUT /api/integrations/openai-key", projectAdmin(s.handleSetOpenAIKey))
 	mux.Handle("PUT /api/integrations/trello-creds", projectAdmin(s.handleSetTrelloCreds))
-	mux.Handle("PUT /api/integrations/trello-board", projectAdmin(s.handleSetTrelloBoard))
 	// Trello workspace/board linking (project → many workspaces → many boards).
 	mux.Handle("GET /api/integrations/trello/available-workspaces", projectAdmin(s.handleTrelloAvailableWorkspaces))
 	mux.Handle("GET /api/integrations/trello/workspaces", projectAdmin(s.handleListTrelloWorkspaces))
