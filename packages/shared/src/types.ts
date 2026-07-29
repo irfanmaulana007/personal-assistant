@@ -582,6 +582,10 @@ export interface Trace {
   /** What triggered the run: "chat" for an interactive message, or a routine
    *  key ("start_of_day" / "end_of_day") for a scheduled run. */
   source?: string;
+  /** Who actually sent the message that triggered a WhatsApp group run (display
+   *  name / phone). Group turns all share the owner's user_id, so this is what
+   *  shows which real participant said what. Absent for web and 1:1 chats. */
+  sender?: string;
   input: string;
   output: string;
   model: string;

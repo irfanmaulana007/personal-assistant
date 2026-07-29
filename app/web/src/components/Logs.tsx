@@ -65,6 +65,7 @@ function buildDebugText(t: Trace): string {
   add('Status', t.status);
   add('Created', t.created_at);
   add('User', t.user ? `${t.user} (#${t.user_id})` : `#${t.user_id}`);
+  if (t.sender) add('Sender', t.sender);
   add('Channel', t.platform);
   add('Source', sourceLabel(t.source) ?? t.source);
   add('Model', t.model);
@@ -484,9 +485,17 @@ export function Logs() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                        {/* For a WhatsApp group run every participant shares the
+                            owner's account, so lead with who actually sent the
+                            message (sender) and show the scoped account beneath. */}
                         <span className="block max-w-[10rem] truncate">
-                          {t.user || `#${t.user_id}`}
+                          {t.sender || t.user || `#${t.user_id}`}
                         </span>
+                        {t.sender && (
+                          <span className="block max-w-[10rem] truncate text-xs text-gray-400 dark:text-gray-500">
+                            {t.user || `#${t.user_id}`}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1">
@@ -697,6 +706,11 @@ function TraceDetail({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+          {trace.sender && (
+            <span>
+              <span className="text-gray-400 dark:text-gray-500">Sender:</span> {trace.sender}
+            </span>
+          )}
           <span>
             <span className="text-gray-400 dark:text-gray-500">User:</span>{' '}
             {trace.user || `#${trace.user_id}`}

@@ -124,7 +124,7 @@ func TestGetCardFetchesClosedAndList(t *testing.T) {
 	var gotFields string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotFields = r.URL.Query().Get("fields")
-		_, _ = w.Write([]byte(`{"id":"c1","name":"Task","idList":"L1","closed":true}`))
+		_, _ = w.Write([]byte(`{"id":"c1","name":"Task","idList":"L1","idBoard":"B1","closed":true}`))
 	}))
 	defer srv.Close()
 	orig := base
@@ -136,7 +136,7 @@ func TestGetCardFetchesClosedAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCard: %v", err)
 	}
-	for _, f := range []string{"idList", "closed"} {
+	for _, f := range []string{"idList", "idBoard", "closed"} {
 		if !strings.Contains(gotFields, f) {
 			t.Errorf("fields %q missing %q", gotFields, f)
 		}
@@ -144,8 +144,48 @@ func TestGetCardFetchesClosedAndList(t *testing.T) {
 	if card.IDList != "L1" {
 		t.Errorf("idList = %q, want L1", card.IDList)
 	}
+	if card.IDBoard != "B1" {
+		t.Errorf("idBoard = %q, want B1", card.IDBoard)
+	}
 	if !card.Closed {
 		t.Error("closed should decode as true")
+	}
+}
+
+// ArchiveCard archives a card by sending PUT /cards/{id} with closed=true (the
+// same mechanism Trello's UI "Archive" uses), and decodes the returned card.
+func TestArchiveCardSendsClosedPut(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		_, _ = w.Write([]byte(`{"id":"c1","name":"Task","closed":true,"shortUrl":"https://trello.com/c/x"}`))
+	}))
+	defer srv.Close()
+	orig := base
+	base = srv.URL
+	defer func() { base = orig }()
+
+	card, err := New().ArchiveCard(context.Background(), "k", "t", "c1")
+	if err != nil {
+		t.Fatalf("ArchiveCard: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method = %s, want PUT", gotMethod)
+	}
+	if gotPath != "/cards/c1" {
+		t.Errorf("path = %s, want /cards/c1", gotPath)
+	}
+	if gotQuery.Get("closed") != "true" {
+		t.Errorf("closed = %q, want true", gotQuery.Get("closed"))
+	}
+	if gotQuery.Get("key") != "k" || gotQuery.Get("token") != "t" {
+		t.Errorf("auth not set: key=%q token=%q", gotQuery.Get("key"), gotQuery.Get("token"))
+	}
+	if !card.Closed {
+		t.Error("returned card should be closed")
 	}
 }
 

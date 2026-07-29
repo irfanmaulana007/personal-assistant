@@ -115,6 +115,52 @@ func TestCheckPersisted(t *testing.T) {
 	}
 }
 
+// checkArchived is the read-after-write gate for archiving — the mirror of
+// checkPersisted: a card only counts as archived if it was read back and is
+// closed.
+func TestCheckArchived(t *testing.T) {
+	// Happy path: the card exists and is closed.
+	if err := checkArchived(&trello.Card{ID: "c1", Closed: true}); err != nil {
+		t.Errorf("closed card should pass, got %v", err)
+	}
+	// Still open → archiving didn't take.
+	if err := checkArchived(&trello.Card{ID: "c1", Closed: false}); err == nil {
+		t.Error("open card should fail verification")
+	}
+	// Nil card (couldn't read it back) → not archived.
+	if err := checkArchived(nil); err == nil {
+		t.Error("nil card should fail verification")
+	}
+}
+
+// looksLikeCardID decides whether an unmatched archive query is worth trying as
+// a direct Trello id/shortLink lookup.
+func TestLooksLikeCardID(t *testing.T) {
+	ids := []string{
+		"5f9a1b2c3d4e5f6a7b8c9d0e", // 24-char hex object id
+		"WZgR3Sdg",                 // 8-char shortLink
+		"abcd1234",                 // 8-char alphanumeric
+	}
+	for _, s := range ids {
+		if !looksLikeCardID(s) {
+			t.Errorf("looksLikeCardID(%q) = false, want true", s)
+		}
+	}
+	notIDs := []string{
+		"",                         // empty
+		"Add dark mode",            // a title (has spaces)
+		"Fix login bug on iOS",     // a longer title
+		"short",                    // 5 chars
+		"toolongtobeashortlink",    // wrong length, and not 24-hex
+		"zzzzzzzzzzzzzzzzzzzzzzzz", // 24 chars but not hex
+	}
+	for _, s := range notIDs {
+		if looksLikeCardID(s) {
+			t.Errorf("looksLikeCardID(%q) = true, want false", s)
+		}
+	}
+}
+
 func TestMatchList(t *testing.T) {
 	lists := []trello.List{
 		{ID: "l1", Name: "Backlog"},

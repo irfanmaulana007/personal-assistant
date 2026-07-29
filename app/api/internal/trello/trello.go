@@ -38,6 +38,7 @@ type Card struct {
 	Name     string  `json:"name"`
 	Desc     string  `json:"desc"`
 	IDList   string  `json:"idList"`
+	IDBoard  string  `json:"idBoard"`
 	ShortURL string  `json:"shortUrl"`
 	Closed   bool    `json:"closed"`
 	Labels   []Label `json:"labels"`
@@ -199,12 +200,13 @@ func (c *Client) BoardCards(ctx context.Context, apiKey, token, boardID string) 
 	return cards, nil
 }
 
-// GetCard fetches a single card by id. Used to confirm a just-created card
-// actually persisted (read-after-write verification) — it fetches idList and
-// closed so callers can check the card landed where it was filed and isn't
-// archived, not merely that the id resolves.
+// GetCard fetches a single card by id (its full object id or its 8-char
+// shortLink both resolve). Used to confirm a just-created card actually persisted
+// (read-after-write verification) — it fetches idList, idBoard, and closed so
+// callers can check the card landed where it was filed, belongs to the expected
+// board, and isn't archived, not merely that the id resolves.
 func (c *Client) GetCard(ctx context.Context, apiKey, token, cardID string) (*Card, error) {
-	q := url.Values{"fields": {"name,desc,idList,shortUrl,labels,closed"}}
+	q := url.Values{"fields": {"name,desc,idList,idBoard,shortUrl,labels,closed"}}
 	var card Card
 	if err := c.get(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
 		return nil, err
@@ -277,6 +279,20 @@ func (c *Client) UpdateCard(ctx context.Context, apiKey, token, cardID string, i
 		// An empty value clears the card's labels; a comma-joined list replaces them.
 		q.Set("idLabels", strings.Join(*in.LabelIDs, ","))
 	}
+	var card Card
+	if err := c.put(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
+		return nil, err
+	}
+	return &card, nil
+}
+
+// ArchiveCard archives a card and returns it. Trello has no separate "archive"
+// endpoint — a card is archived by setting closed=true via PUT, the same way the
+// UI's "Archive" action works. The card is hidden from the board and from
+// open-card listings (BoardCards filters to open), but is not destroyed and can
+// be restored from Trello.
+func (c *Client) ArchiveCard(ctx context.Context, apiKey, token, cardID string) (*Card, error) {
+	q := url.Values{"closed": {"true"}}
 	var card Card
 	if err := c.put(ctx, apiKey, token, "/cards/"+cardID, q, &card); err != nil {
 		return nil, err
