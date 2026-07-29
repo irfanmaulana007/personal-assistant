@@ -456,6 +456,9 @@ func (t *Transport) handleMessage(evt *events.Message) {
 		ID:         evt.Info.ID,
 		From:       senderJID,
 		Candidates: candidates,
+		// PushName is the sender's WhatsApp display name; it lets a group turn be
+		// attributed to the real participant rather than a generic owner label.
+		SenderName: evt.Info.PushName,
 		Chat:       evt.Info.Chat.ToNonAD().String(),
 		IsGroup:    evt.Info.IsGroup,
 		Text:       text,

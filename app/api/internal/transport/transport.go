@@ -13,6 +13,11 @@ type Message struct {
 	// or allowlist check matches whether WhatsApp addressed the sender by phone
 	// number or by LID. Always includes From; may be nil on non-WhatsApp channels.
 	Candidates []string
+	// SenderName is the sender's human-readable display name as carried by the
+	// platform (on WhatsApp, the message's PushName). Used to attribute a group
+	// message to the real participant who sent it — "who said what" — rather than
+	// stacking every group mention under one generic user. May be empty.
+	SenderName string
 	// Chat is the conversation the message belongs to and where a reply should
 	// be sent. For a 1:1 chat it equals From; for a group it is the group JID.
 	Chat string
