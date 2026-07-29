@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getRoutines, updateRoutine, runRoutine } from '../../api/client';
+import { useProjects } from '../../contexts/project';
 import { SkeletonFormCard } from '../ui/Skeleton';
 import { Toggle } from '../ui/Toggle';
 import type { Routine } from '../../types';
@@ -151,6 +152,7 @@ function RoutineCard({ routine, onChange }: { routine: Routine; onChange: (r: Ro
 }
 
 export function RoutinesSettings() {
+  const { activeProject } = useProjects();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -177,6 +179,14 @@ export function RoutinesSettings() {
         <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
           Scheduled prompts that run once a day through your assistant and send you the result over
           WhatsApp. Turn one on, set its time, and tailor its prompt.
+        </p>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          These settings apply to{' '}
+          <span className="font-medium text-gray-700 dark:text-gray-300">
+            {activeProject?.name ?? 'this project'}
+          </span>{' '}
+          only — each project enables, schedules, and tailors its routines independently. Switch
+          projects to configure another.
         </p>
       </div>
 

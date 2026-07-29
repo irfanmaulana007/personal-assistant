@@ -293,22 +293,28 @@ func (s *Service) run(ctx context.Context, d Def) (sent bool, message string, er
 	}
 
 	uctx := authctx.WithUserID(ctx, owner.ID)
-	// Scope the routine to the General default project, mirroring the owner's
-	// unmapped 1:1 WhatsApp chat. Without this the run carries project 0, so its
-	// trace is invisible on the per-project Logs/dashboards and any data it writes
-	// is orphaned in the unscoped project. It also keeps the routine's brief scoped
-	// to the same project the owner sees in a manual chat.
-	if gen, err := s.store.EnsureDefaultProject(ctx, owner.ID); err == nil && gen != nil {
-		uctx = authctx.WithProjectID(uctx, gen.ID)
-		uctx = authctx.WithProjectRole(uctx, store.ProjectRoleAdmin)
-	} else if err != nil {
-		s.log.Error("routine: resolve general default project", "error", err)
+	// Run scoped to the active project already on the context: the scheduler
+	// fires a routine once per project it is enabled for, and "run now" uses the
+	// superadmin's active project. Fall back to the owner's General default
+	// project only when the context carries no project, so a run never lands in
+	// the unscoped project 0 (which would make its trace invisible on the
+	// per-project Logs/dashboards and orphan any data it writes).
+	if authctx.ProjectID(uctx) == 0 {
+		if gen, err := s.store.EnsureDefaultProject(ctx, owner.ID); err == nil && gen != nil {
+			uctx = authctx.WithProjectID(uctx, gen.ID)
+		} else if err != nil {
+			s.log.Error("routine: resolve general default project", "error", err)
+		}
 	}
+	uctx = authctx.WithProjectRole(uctx, store.ProjectRoleAdmin)
 	if d.MaxIterations > 0 {
 		uctx = agent.WithMaxIterations(uctx, d.MaxIterations)
 	}
 
-	prompt := s.promptOf(ctx, d)
+	// Read the prompt from the project the run is scoped to, so a per-project
+	// prompt override is honoured (and the default-project fallback above reads
+	// that project's prompt).
+	prompt := s.promptOf(uctx, d)
 	start := time.Now()
 	res, err := s.agent.Run(uctx, prompt, nil, "")
 	s.recordTrace(uctx, owner.ID, d, prompt, res, err, int(time.Since(start).Milliseconds()))
@@ -470,6 +476,52 @@ func (s *Service) MigrateFromDigest(ctx context.Context) {
 	s.log.Info("migrated reminder digest to start_of_day routine", "time", old)
 }
 
+// MigrateToDefaultProject moves any legacy global routine settings — the
+// enabled/time/prompt/last_run values stored under the unscoped
+// routine_<key>_<field> keys, from before routines became per-project — onto the
+// owner's General default project, so a routine the owner had turned on keeps
+// running there instead of silently switching off. It runs once at startup
+// (after MigrateFromDigest, so the carried-over digest time moves too) and is
+// idempotent: once the global values are cleared it does nothing, and it never
+// clobbers a value already set for the default project.
+func (s *Service) MigrateToDefaultProject(ctx context.Context) {
+	owner, err := s.store.FirstAdmin(ctx)
+	if err != nil || owner == nil {
+		return
+	}
+	gen, err := s.store.EnsureDefaultProject(ctx, owner.ID)
+	if err != nil || gen == nil {
+		if err != nil {
+			s.log.Error("routine: migrate to default project — resolve default", "error", err)
+		}
+		return
+	}
+	pctx := authctx.WithProjectID(ctx, gen.ID)
+	moved := false
+	for _, d := range Catalog {
+		for _, field := range []string{"enabled", "time", "prompt", "last_run"} {
+			// ctx carries no project, so this reads the legacy global value.
+			global := s.settings.RoutineField(ctx, d.Key, field)
+			if global == "" {
+				continue
+			}
+			if s.settings.RoutineField(pctx, d.Key, field) == "" {
+				if err := s.settings.SetRoutineField(pctx, d.Key, field, global); err != nil {
+					s.log.Error("routine: migrate field to default project",
+						"routine", d.Key, "field", field, "error", err)
+					continue
+				}
+			}
+			// Clear the legacy global so it can never leak into another project.
+			_ = s.settings.SetRoutineField(ctx, d.Key, field, "")
+			moved = true
+		}
+	}
+	if moved {
+		s.log.Info("migrated global routine settings to default project", "project_id", gen.ID)
+	}
+}
+
 // StartScheduler runs the daily routine loop until ctx is cancelled.
 func (s *Service) StartScheduler(ctx context.Context) {
 	s.log.Info("routine scheduler started")
@@ -481,10 +533,25 @@ func (s *Service) StartScheduler(ctx context.Context) {
 			s.log.Info("routine scheduler stopped")
 			return
 		case <-ticker.C:
-			now := time.Now().In(s.timezone)
-			for _, d := range Catalog {
-				s.maybeRun(ctx, d, now)
-			}
+			s.runDueRoutines(ctx, time.Now().In(s.timezone))
+		}
+	}
+}
+
+// runDueRoutines evaluates every routine against every project on one tick.
+// Enablement, time, and the once-a-day last_run marker are all resolved per
+// project (from the project-scoped settings), so a routine fires independently
+// for each project it is turned on for and stays silent for the rest.
+func (s *Service) runDueRoutines(ctx context.Context, now time.Time) {
+	projects, err := s.store.ListProjects(ctx)
+	if err != nil {
+		s.log.Error("routine scheduler: list projects", "error", err)
+		return
+	}
+	for _, p := range projects {
+		pctx := authctx.WithProjectID(ctx, p.ID)
+		for _, d := range Catalog {
+			s.maybeRun(pctx, d, now)
 		}
 	}
 }

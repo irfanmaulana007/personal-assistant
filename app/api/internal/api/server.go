@@ -108,6 +108,13 @@ func (s *Server) Start(ctx context.Context) error {
 	projectAdmin := func(h http.HandlerFunc) http.Handler {
 		return s.authMiddleware(s.withProject(s.requireProjectAdmin(h)))
 	}
+	// superadminProject is a global superadmin acting on a specific project
+	// resolved from X-Project-Id (a superadmin may target any project). Used for
+	// the per-project routine surfaces, which are superadmin-only yet scoped to
+	// the active project.
+	superadminProject := func(h http.HandlerFunc) http.Handler {
+		return s.authMiddleware(s.requireSuperadmin(s.withProject(h)))
+	}
 
 	// Public routes
 	mux.HandleFunc("GET /api/health", s.handleHealth)
@@ -124,7 +131,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/preferences", protect(s.handleGetPreferences))
 	mux.Handle("GET /api/persona", protect(s.handleGetPersona))
 	mux.Handle("PUT /api/persona", protect(s.handleSetPersona))
-	mux.Handle("GET /api/routines", protect(s.handleListRoutines))
+	// Routines are configured and scheduled per project, so their read/write
+	// surfaces resolve the active project from X-Project-Id. The list is
+	// superadmin-only (as is the Workflow page it backs).
+	mux.Handle("GET /api/routines", superadminProject(s.handleListRoutines))
 
 	// Projects & RBAC (project-level RBAC enforced inside each handler via
 	// projectAccess on the {id} path param).
@@ -204,8 +214,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/skills/{id}/core", superadmin(s.handleSetSkillCore))
 	mux.Handle("PUT /api/admin/skills/{id}/prompt", superadmin(s.handleAdminSetSkillPrompt))
 	mux.Handle("POST /api/admin/skills/{id}/revert-tuned", superadmin(s.handleAdminRevertTuned))
-	mux.Handle("PUT /api/routines/{key}", superadmin(s.handleUpdateRoutine))
-	mux.Handle("POST /api/routines/{key}/run", superadmin(s.handleRunRoutine))
+	mux.Handle("PUT /api/routines/{key}", superadminProject(s.handleUpdateRoutine))
+	mux.Handle("POST /api/routines/{key}/run", superadminProject(s.handleRunRoutine))
 	mux.Handle("GET /api/pricing", superadmin(s.handleListPricing))
 	mux.Handle("PUT /api/pricing", superadmin(s.handleSetPricing))
 	mux.Handle("DELETE /api/pricing/{model}", superadmin(s.handleDeletePricing))

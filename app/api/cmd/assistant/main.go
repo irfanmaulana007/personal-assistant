@@ -201,6 +201,10 @@ func main() {
 	// old reminder digest — carry its configured time over on first boot.
 	routineSvc := routine.New(settingsSvc, db, assistant, timezone, cfg.Owner.WhatsAppJID, log)
 	routineSvc.MigrateFromDigest(ctx)
+	// Routines are now enabled/scheduled per project; move any legacy global
+	// routine settings onto the default project so a previously-enabled routine
+	// keeps running there rather than silently switching off.
+	routineSvc.MigrateToDefaultProject(ctx)
 
 	// Initialize WhatsApp transport
 	var wa *whatsapp.Transport
