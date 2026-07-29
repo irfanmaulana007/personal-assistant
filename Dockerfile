@@ -16,6 +16,10 @@ RUN pnpm install --frozen-lockfile
 # copied) is what vite.config.ts reads the app version from.
 COPY packages/ ./packages/
 COPY app/web/ ./app/web/
+# Sentry DSN for the browser client — baked into the bundle at build time. Empty
+# ⇒ Sentry disabled in the client (see app/web/src/lib/sentry.ts).
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 RUN pnpm --filter web build
 
 # Stage 2: Build server. SQLite was dropped (whatsmeow's session lives in
