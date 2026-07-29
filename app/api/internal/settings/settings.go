@@ -565,22 +565,40 @@ func (s *Service) ClearGroupTranslatePair(ctx context.Context, chatJID string) e
 
 // --- Daily routines (scheduled skills) ---
 
-// routineSettingKey composes the persisted key for a routine's field, e.g.
-// routine_start_of_day_time.
+// routineSettingKey composes the global (project-unscoped) persisted key for a
+// routine's field, e.g. routine_start_of_day_time. Kept as the base for
+// scopedRoutineKey and read directly only by the legacy-migration path.
 func routineSettingKey(key, field string) string {
 	return "routine_" + key + "_" + field
 }
 
-// RoutineField returns the raw stored value for a routine's field, or "" if
-// unset (callers supply their own defaults).
+// scopedRoutineKey namespaces a routine's field to the active project, so each
+// project keeps its own enabled/time/prompt/last_run state. Routines are
+// configured and scheduled per project — there is no shared global routine
+// state once the app has run (the routine service's one-time migration moves any
+// legacy global values onto the default project). When no project is on the
+// context (e.g. that migration reading the old globals) the plain base key is
+// used.
+func scopedRoutineKey(ctx context.Context, key, field string) string {
+	base := routineSettingKey(key, field)
+	if pid := authctx.ProjectID(ctx); pid > 0 {
+		return fmt.Sprintf("project:%d:%s", pid, base)
+	}
+	return base
+}
+
+// RoutineField returns the raw stored value for a routine's field in the active
+// project, or "" if unset (callers supply their own defaults). Resolution is
+// strictly per-project: a project with no stored value falls through to the
+// caller's code default, not to another project's setting.
 func (s *Service) RoutineField(ctx context.Context, key, field string) string {
-	v, _ := s.getString(ctx, routineSettingKey(key, field))
+	v, _ := s.getString(ctx, scopedRoutineKey(ctx, key, field))
 	return v
 }
 
-// SetRoutineField persists a routine's field value.
+// SetRoutineField persists a routine's field value for the active project.
 func (s *Service) SetRoutineField(ctx context.Context, key, field, value string) error {
-	return s.store.SetSetting(ctx, routineSettingKey(key, field), []byte(value))
+	return s.store.SetSetting(ctx, scopedRoutineKey(ctx, key, field), []byte(value))
 }
 
 // --- Response evaluation (LLM-as-judge) ---
