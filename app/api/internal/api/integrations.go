@@ -65,15 +65,11 @@ type integrationsResp struct {
 	OpenAIConfigured bool   `json:"openai_configured"`
 	OpenAIKeyMask    string `json:"openai_key_mask"`
 	// Trello key + token power the Trello Board Review and Card Creator skills.
+	// The boards the skills act on are managed via the Trello workspace/board
+	// links (see trello_links.go), not here.
 	TrelloConfigured bool   `json:"trello_configured"`
 	TrelloKeyMask    string `json:"trello_key_mask"`
 	TrelloTokenMask  string `json:"trello_token_mask"`
-	// Per-project Trello workspace/board mapping. The Trello skills only read and
-	// write the board this project is mapped to; an empty board id means the
-	// skills are disabled for the project until it is set.
-	TrelloBoardConfigured bool   `json:"trello_board_configured"`
-	TrelloWorkspaceID     string `json:"trello_workspace_id"`
-	TrelloBoardID         string `json:"trello_board_id"`
 }
 
 func statusFromComposio(s string) string {
@@ -135,15 +131,6 @@ func (s *Server) handleListIntegrations(w http.ResponseWriter, r *http.Request) 
 		resp.TrelloTokenMask = settings.Mask(tToken)
 	} else {
 		s.log.Warn("resolve trello creds", "error", err)
-	}
-
-	// Per-project Trello workspace/board mapping (which board the skills act on).
-	if wsID, boardID, err := s.settings.TrelloBoard(r.Context()); err == nil {
-		resp.TrelloBoardConfigured = boardID != ""
-		resp.TrelloWorkspaceID = wsID
-		resp.TrelloBoardID = boardID
-	} else {
-		s.log.Warn("resolve trello board", "error", err)
 	}
 
 	// Gather all connections per toolkit slug (a user may have several).
@@ -249,24 +236,6 @@ func (s *Server) handleSetTrelloCreds(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.settings.SetTrelloCreds(r.Context(), strings.TrimSpace(req.APIKey), strings.TrimSpace(req.Token)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
-		return
-	}
-	s.handleListIntegrations(w, r)
-}
-
-// handleSetTrelloBoard stores/clears the per-project Trello workspace + board
-// mapping (the single board the Trello skills read and write for this project).
-func (s *Server) handleSetTrelloBoard(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		WorkspaceID string `json:"workspace_id"`
-		BoardID     string `json:"board_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-	if err := s.settings.SetTrelloBoard(r.Context(), strings.TrimSpace(req.WorkspaceID), strings.TrimSpace(req.BoardID)); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save board mapping"})
 		return
 	}
 	s.handleListIntegrations(w, r)
