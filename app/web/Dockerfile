@@ -25,6 +25,10 @@ COPY packages/ ./packages/
 COPY app/web/ ./app/web/
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# Sentry DSN for the browser client — baked into the bundle at build time. Empty
+# ⇒ Sentry disabled in the client (see app/web/src/lib/sentry.ts).
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 # vite.config.ts reads the app version from the root package.json (already copied).
 RUN pnpm --filter web build
 

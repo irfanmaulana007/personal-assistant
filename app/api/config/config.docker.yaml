@@ -51,6 +51,13 @@ capabilities:
 security:
   encryption_key: "${ENCRYPTION_KEY}" # required — 32 bytes, base64 (openssl rand -base64 32)
 
+# Error + performance monitoring via Sentry. Disabled unless SENTRY_DSN is set.
+# environment falls back to APP_ENV (the top-level environment) when empty.
+sentry:
+  dsn: "${SENTRY_DSN}" # empty ⇒ Sentry disabled
+  environment: "" # empty ⇒ uses APP_ENV
+  traces_sample_rate: 1.0 # override with SENTRY_TRACES_SAMPLE_RATE
+
 logging:
   level: "info"
   format: "text"
