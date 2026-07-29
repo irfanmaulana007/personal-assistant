@@ -518,7 +518,12 @@ type Trace struct {
 	// Source is what triggered the run: "chat" for an interactive message
 	// (web/WhatsApp), or a routine key ("start_of_day" / "end_of_day") for a
 	// scheduled run. Empty is normalised to "chat" on write.
-	Source           string
+	Source string
+	// Sender is a human-readable label for who actually sent the message that
+	// triggered this run — used for WhatsApp group turns, where every participant
+	// shares the owner's UserID, so the Logs page can still show which real person
+	// (display name / phone) said what. Empty for web and 1:1 chats.
+	Sender           string
 	Input            string
 	Output           string
 	Model            string

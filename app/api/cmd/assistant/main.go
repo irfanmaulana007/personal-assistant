@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -236,6 +237,15 @@ func main() {
 			// (superadmin allowed for 1:1 only), else the owner's personal project.
 			uctx, userID, assigned := resolveWhatsAppScope(ctx, db, owner, msg, log)
 
+			// For a group, capture who actually sent the message (display name /
+			// phone) so the incoming log and the run trace attribute the turn to the
+			// real participant — not the generic owner the run is scoped to. Empty for
+			// 1:1 chats, where the sender already is the scoped user.
+			senderLabel := ""
+			if msg.IsGroup {
+				senderLabel = groupSenderLabel(msg)
+			}
+
 			// Group Translator skill: a "/t" command in a group is a
 			// self-contained translate/config request. Handle it directly and
 			// return — it bypasses the agent and is intentionally kept out of the
@@ -286,11 +296,15 @@ func main() {
 					logBody += " [image]"
 				}
 			}
+			inSender := msg.From
+			if senderLabel != "" {
+				inSender = senderLabel
+			}
 			_ = db.LogMessage(uctx, &store.MessageLog{
 				UserID:    userID,
 				Platform:  msg.Platform,
 				Direction: "in",
-				Sender:    msg.From,
+				Sender:    inSender,
 				Body:      logBody,
 			})
 
@@ -354,7 +368,7 @@ func main() {
 			// Record the trace (dashboard + logs). Use the scoped context so the
 			// trace is attributed to the WhatsApp run's project; otherwise it lands
 			// under project 0 and is filtered out of the project-scoped Logs page.
-			trace := &store.Trace{UserID: userID, Platform: msg.Platform, Input: msg.Text, LatencyMs: latencyMs}
+			trace := &store.Trace{UserID: userID, Platform: msg.Platform, Sender: senderLabel, Input: msg.Text, LatencyMs: latencyMs}
 			if err != nil {
 				trace.Status = "error"
 				trace.Error = err.Error()
@@ -537,6 +551,17 @@ func setupLogger(cfg config.LoggingConfig) *slog.Logger {
 func resolveWhatsAppScope(ctx context.Context, db store.Store, owner *store.User, msg *transport.Message, log *slog.Logger) (context.Context, int64, bool) {
 	userID := owner.ID
 
+	// In a group, attribute the turn to the participant who actually sent it when
+	// a personal mapping identifies them, so each sender's group mentions are
+	// logged under their own user instead of all stacking under the owner. Only
+	// the user id is taken here; the project and role still come from the group
+	// mapping resolved below (a group never adopts a personal chat's project).
+	if msg.IsGroup {
+		if uid := senderUserID(ctx, db, log, msg.Candidates); uid != 0 {
+			userID = uid
+		}
+	}
+
 	// Resolve an explicit mapping. A group is keyed by its group JID; a personal
 	// chat tries every known identity of the sender so a LID-addressed message
 	// still matches its phone-form mapping row.
@@ -607,6 +632,58 @@ func lookupWhatsAppMapping(ctx context.Context, db store.Store, log *slog.Logger
 		log.Error("whatsapp mapping lookup", "error", err, "jid", jid)
 	}
 	return m
+}
+
+// senderUserID resolves a WhatsApp sender to the user id a personal mapping
+// attributes them to, trying every one of the sender's identity candidates (so a
+// LID-addressed sender still matches their phone-form mapping row). Returns 0
+// when no candidate maps to a real user — the caller then keeps the owner id.
+// Used to attribute a group participant's turn to their own user.
+func senderUserID(ctx context.Context, db store.Store, log *slog.Logger, candidates []string) int64 {
+	for _, k := range candidates {
+		if hit := lookupWhatsAppMapping(ctx, db, log, k); hit != nil && hit.UserID != 0 {
+			return hit.UserID
+		}
+	}
+	return 0
+}
+
+// groupSenderLabel builds a human-readable identity for a WhatsApp group sender —
+// "<display name> (+<phone>)" when both are known, falling back to whichever is
+// available, and finally the raw sender JID. It labels who actually said a group
+// message so the logs attribute it to the real participant rather than the
+// generic owner the run is scoped to.
+func groupSenderLabel(msg *transport.Message) string {
+	name := strings.TrimSpace(msg.SenderName)
+	phone := senderPhone(msg)
+	switch {
+	case name != "" && phone != "":
+		return fmt.Sprintf("%s (%s)", name, phone)
+	case name != "":
+		return name
+	case phone != "":
+		return phone
+	default:
+		return msg.From
+	}
+}
+
+// senderPhone returns the sender's phone number in +E.164 form when one of the
+// identity candidates is a phone-form JID (…@s.whatsapp.net); "" otherwise (e.g.
+// a LID-only sender whose phone the client hasn't resolved yet).
+func senderPhone(msg *transport.Message) string {
+	for _, c := range msg.Candidates {
+		at := strings.IndexByte(c, '@')
+		if at <= 0 {
+			continue
+		}
+		if c[at+1:] == "s.whatsapp.net" {
+			if user := c[:at]; user != "" {
+				return "+" + user
+			}
+		}
+	}
+	return ""
 }
 
 // isOwnerSender reports whether a WhatsApp message came from the account owner —

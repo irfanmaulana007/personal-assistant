@@ -36,6 +36,7 @@ type mongoTrace struct {
 	ProjectID             int64            `bson:"project_id"`
 	Platform              string           `bson:"platform"`
 	Source                string           `bson:"source"`
+	Sender                string           `bson:"sender,omitempty"`
 	Input                 string           `bson:"input"`
 	Output                string           `bson:"output"`
 	Model                 string           `bson:"model"`
@@ -103,6 +104,7 @@ func (m *MongoStore) CreateTrace(ctx context.Context, t *Trace) (int64, error) {
 		ProjectID:             projectID,
 		Platform:              t.Platform,
 		Source:                source,
+		Sender:                t.Sender,
 		Input:                 t.Input,
 		Output:                t.Output,
 		Model:                 t.Model,
@@ -146,6 +148,7 @@ func (m *MongoStore) GetTrace(ctx context.Context, id int64) (*Trace, error) {
 		ProjectID:             doc.ProjectID,
 		Platform:              doc.Platform,
 		Source:                doc.Source,
+		Sender:                doc.Sender,
 		Input:                 doc.Input,
 		Output:                doc.Output,
 		Model:                 doc.Model,
@@ -244,6 +247,7 @@ func (m *MongoStore) ListTraces(ctx context.Context, f TraceFilter) ([]Trace, er
 			ProjectID:             d.ProjectID,
 			Platform:              d.Platform,
 			Source:                d.Source,
+			Sender:                d.Sender,
 			Input:                 d.Input,
 			Output:                d.Output,
 			Model:                 d.Model,
