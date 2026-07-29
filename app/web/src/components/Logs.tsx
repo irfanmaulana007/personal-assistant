@@ -324,8 +324,12 @@ export function Logs() {
     [setSearchParams],
   );
 
+  // Close by clearing the URL param only; the sync effect below reacts to the
+  // removed ?run= and clears `selected`. Clearing `selected` here too would race
+  // that effect — after setSelected(null) but before setSearchParams lands, the
+  // effect still sees the old ?run= and reopens the drawer (it took two closes
+  // to actually close). The URL is the single source of truth for open/closed.
   const closeDetail = useCallback(() => {
-    setSelected(null);
     setRunParam(null);
   }, [setRunParam]);
 
@@ -355,22 +359,37 @@ export function Logs() {
       .finally(() => setDetailLoading(false));
   }, []);
 
+  // Open a run purely by writing ?run=<id>; the sync effect below reacts and
+  // loads it. Opening only touches the URL (never `selected` directly) so it
+  // shares the single source of truth with closing and can't race it. The rich
+  // list-row trace is stashed here so the effect can seed the drawer with real
+  // meta instantly instead of a bare skeleton stub.
+  const rowTraceRef = useRef<Trace | null>(null);
   const openDetail = (t: Trace) => {
-    loadDetail(t);
+    rowTraceRef.current = t;
     setRunParam(t.id);
   };
 
-  // Open the run-detail drawer from ?run=<id> — chat reply "Log" links, reloads,
-  // and shared links all land here. Skips when that run is already open so it
-  // doesn't refetch after openDetail sets the param itself.
+  // Sync the drawer to ?run=<id> — the URL is the single source of truth for
+  // open/closed. Chat reply "Log" links, reloads, shared links, row clicks, and
+  // closes all land here: a present param opens the run, an absent one closes
+  // the drawer. This is the ONLY writer of `selected` from the URL, so open and
+  // close can't stomp each other. Skips when that run is already open so it
+  // doesn't refetch after getLog resolves.
   useEffect(() => {
     const runParam = searchParams.get('run');
-    if (!runParam) return;
+    if (!runParam) {
+      // Closing via a cleared URL param is a legitimate URL→state sync.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelected(null);
+      return;
+    }
     const id = Number(runParam);
     if (!id || selected?.id === id) return;
-    // Opening a drawer from a deep link is a legitimate one-time URL→state sync.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadDetail({ id } as Trace);
+    // Prefer the stashed list-row trace (real meta) over a bare { id } skeleton
+    // stub, which is all a deep link / reload gives us. Opening from the URL is
+    // a legitimate one-time URL→state sync.
+    loadDetail(rowTraceRef.current?.id === id ? rowTraceRef.current : ({ id } as Trace));
   }, [searchParams, selected?.id, loadDetail]);
 
   return (
