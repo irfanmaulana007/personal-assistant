@@ -17,6 +17,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/eval"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mailer"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcpoauth"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/pricing"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/settings"
@@ -46,6 +47,7 @@ type Server struct {
 	whatsapp   WhatsAppController
 	mailer     *mailer.Mailer
 	store      store.Store
+	mcpOAuth   *mcpoauth.Service
 	signingKey []byte
 	staticDir  string
 	port       int
@@ -67,6 +69,7 @@ func NewServer(
 	whatsapp WhatsAppController,
 	mailerSvc *mailer.Mailer,
 	store store.Store,
+	mcpOAuth *mcpoauth.Service,
 	signingKey []byte,
 	staticDir string,
 	port int,
@@ -85,6 +88,7 @@ func NewServer(
 		whatsapp:    whatsapp,
 		mailer:      mailerSvc,
 		store:       store,
+		mcpOAuth:    mcpOAuth,
 		signingKey:  signingKey,
 		staticDir:   staticDir,
 		port:        port,
@@ -123,6 +127,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/auth/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/forgot-password", s.handleForgotPassword)
+	// MCP OAuth callback — unauthenticated (the browser redirect carries no app
+	// session); validated by the opaque state. Renders a self-closing page.
+	mux.HandleFunc("GET /api/integrations/mcp/{provider}/oauth/callback", s.handleMCPOAuthCallback)
 
 	// Authenticated (any role)
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))
@@ -249,6 +256,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/integrations/mcp", projectAdmin(s.handleListMCP))
 	mux.Handle("PUT /api/integrations/mcp/{provider}", projectAdmin(s.handleSetMCPServer))
 	mux.Handle("POST /api/integrations/mcp/{provider}/test", projectAdmin(s.handleTestMCP))
+	mux.Handle("POST /api/integrations/mcp/{provider}/oauth/connect", projectAdmin(s.handleMCPOAuthConnect))
+	mux.Handle("DELETE /api/integrations/mcp/{provider}/oauth", projectAdmin(s.handleMCPOAuthDisconnect))
 	mux.Handle("PUT /api/integrations/mcp/notion/targets", projectAdmin(s.handleSetNotionTarget))
 	mux.Handle("DELETE /api/integrations/mcp/notion/targets/{kind}", projectAdmin(s.handleDeleteNotionTarget))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", projectAdmin(s.handleConnectIntegration))

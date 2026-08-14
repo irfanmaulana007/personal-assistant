@@ -379,6 +379,41 @@ type NotionTarget struct {
 	CreatedAt  time.Time
 }
 
+// MCPOAuthPending is an in-flight MCP OAuth authorization, keyed by the opaque
+// `state` we mint. Looked up at the OAuth callback (which carries no app
+// session). Secret fields are stored encrypted; the store treats them as opaque.
+type MCPOAuthPending struct {
+	State           string
+	ProjectID       int64
+	Provider        string
+	VerifierEnc     []byte
+	ClientID        string
+	ClientSecretEnc []byte
+	AuthEndpoint    string
+	TokenEndpoint   string
+	RedirectURI     string
+	Resource        string
+	Scopes          string
+	CreatedAt       time.Time
+}
+
+// MCPOAuthConnection is a completed MCP OAuth connection for a (project,
+// provider). Secret fields are stored encrypted; the store treats them as opaque.
+type MCPOAuthConnection struct {
+	ID              int64
+	ProjectID       int64
+	Provider        string
+	ClientID        string
+	ClientSecretEnc []byte
+	TokenEndpoint   string
+	AccessTokenEnc  []byte
+	RefreshTokenEnc []byte
+	Expiry          *time.Time
+	Scopes          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 // Activity is a logged sport/workout session, scoped to a user.
 type Activity struct {
 	ID          int64
@@ -908,6 +943,17 @@ type DataStore interface {
 	ListNotionTargets(ctx context.Context) ([]NotionTarget, error)
 	SetNotionTarget(ctx context.Context, kind, databaseID, name, url string) (*NotionTarget, error)
 	DeleteNotionTarget(ctx context.Context, kind string) error
+
+	// MCP OAuth (project-scoped). Pending rows are keyed by state (looked up at
+	// the unauthenticated callback); connection rows are one per (project,
+	// provider). Callback-path methods take explicit ids, not the request project.
+	CreateMCPOAuthPending(ctx context.Context, p MCPOAuthPending) error
+	GetMCPOAuthPending(ctx context.Context, state string) (*MCPOAuthPending, error)
+	DeleteMCPOAuthPending(ctx context.Context, state string) error
+	UpsertMCPOAuthConnection(ctx context.Context, c MCPOAuthConnection) error
+	GetMCPOAuthConnection(ctx context.Context, provider string) (*MCPOAuthConnection, error)
+	UpdateMCPOAuthToken(ctx context.Context, projectID int64, provider string, accessEnc, refreshEnc []byte, expiry *time.Time) error
+	DeleteMCPOAuthConnection(ctx context.Context, provider string) error
 
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)

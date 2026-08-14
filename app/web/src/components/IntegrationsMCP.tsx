@@ -4,6 +4,8 @@ import {
   getMCPIntegrations,
   setMCPServer,
   testMCPServer,
+  connectMCPOAuth,
+  disconnectMCPOAuth,
   setNotionTarget,
   deleteNotionTarget,
 } from '../api/client';
@@ -57,16 +59,31 @@ function ProviderIcon({ slug, name, dark }: { slug: string; name: string; dark: 
   );
 }
 
-// One MCP provider card: enable toggle, read/write mode, bearer token, optional
-// endpoint override, plus a connection test.
+function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+        ok
+          ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
+          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+// One MCP provider card. Enablement is the provider's skill (managed on the
+// Skills page); this card manages credentials/connection + access mode.
 function MCPServerCard({
   server,
   onChanged,
+  skillsPath,
 }: {
   server: MCPServer;
   onChanged: (d: MCPIntegrations) => void;
+  skillsPath: string;
 }) {
-  const [enabled, setEnabled] = useState(server.enabled);
   const [mode, setMode] = useState<MCPMode>(server.mode);
   const [endpoint, setEndpoint] = useState(server.endpoint);
   const [token, setToken] = useState('');
@@ -77,18 +94,18 @@ function MCPServerCard({
   const [testMsg, setTestMsg] = useState('');
   const dark = useIsDark();
 
+  const isOAuth = server.auth === 'oauth';
+  const ready = isOAuth ? !!server.connected : !!server.configured;
+
   const save = async () => {
     setBusy(true);
     setMsg('');
     try {
-      const payload: { enabled: boolean; mode: string; endpoint: string; token?: string } = {
-        enabled,
+      const payload: { mode: string; endpoint: string; token?: string } = {
         mode,
         endpoint: endpoint.trim(),
       };
-      // Only send the token when the user typed one — a blank field keeps the
-      // stored token untouched.
-      if (token.trim() !== '') payload.token = token.trim();
+      if (!isOAuth && token.trim() !== '') payload.token = token.trim();
       onChanged(await setMCPServer(server.slug, payload));
       setToken('');
       setMsg('Saved');
@@ -103,10 +120,10 @@ function MCPServerCard({
     setTesting(true);
     setTestMsg('');
     try {
-      const res = await testMCPServer(server.slug, {
-        endpoint: endpoint.trim(),
-        token: token.trim() || undefined,
-      });
+      const res = await testMCPServer(
+        server.slug,
+        isOAuth ? undefined : { endpoint: endpoint.trim(), token: token.trim() || undefined },
+      );
       setTestMsg(`✓ Connected — ${res.tool_count} tools available`);
     } catch (e) {
       setTestMsg(`✗ ${e instanceof Error ? e.message : 'Connection failed'}`);
@@ -115,13 +132,38 @@ function MCPServerCard({
     }
   };
 
+  const connect = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      const { redirect_url } = await connectMCPOAuth(server.slug);
+      window.open(redirect_url, '_blank', 'noopener,noreferrer');
+      setMsg('Authorize in the new tab, then return here — the page refreshes automatically.');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not start the connection');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      onChanged(await disconnectMCPOAuth(server.slug));
+      setMsg('Disconnected');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not disconnect');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const clearToken = async () => {
     setBusy(true);
     setMsg('');
     try {
-      onChanged(
-        await setMCPServer(server.slug, { enabled, mode, endpoint: endpoint.trim(), token: '' }),
-      );
+      onChanged(await setMCPServer(server.slug, { mode, endpoint: endpoint.trim(), token: '' }));
       setToken('');
       setMsg('Token removed');
     } catch (e) {
@@ -131,56 +173,38 @@ function MCPServerCard({
     }
   };
 
+  const statusLabel = ready
+    ? mode === 'readwrite'
+      ? `${isOAuth ? 'Connected' : 'Configured'} · read & write`
+      : `${isOAuth ? 'Connected' : 'Configured'} · read-only`
+    : isOAuth
+      ? 'Not connected'
+      : 'Not configured';
+
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <ProviderIcon slug={server.slug} name={server.name} dark={dark} />
           <div>
             <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">
               {server.name}
             </div>
-            <span
-              className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                server.enabled && server.configured
-                  ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
-                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-              }`}
-            >
-              {server.enabled && server.configured
-                ? mode === 'readwrite'
-                  ? 'Enabled · read & write'
-                  : 'Enabled · read-only'
-                : server.configured
-                  ? 'Disabled'
-                  : 'Not connected'}
-            </span>
+            <StatusBadge ok={ready && server.skill_enabled} label={statusLabel} />
           </div>
         </div>
-        {/* Enable toggle */}
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={() => setEnabled((v) => !v)}
-          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
-            enabled ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-gray-200 dark:bg-gray-700'
+        <Link
+          to={skillsPath}
+          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium transition ${
+            server.skill_enabled
+              ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:hover:bg-indigo-500/25'
+              : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25'
           }`}
+          title="Enable or disable this integration on the Skills page"
         >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
+          {server.skill_enabled ? 'Enabled · Skills' : 'Disabled · enable on Skills'}
+        </Link>
       </div>
-
-      {server.oauth_caveat && (
-        <p className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Railway’s hosted MCP is OAuth-first. A static token may only work against a token-guarded
-          proxy — override the endpoint below if needed.
-        </p>
-      )}
 
       <div className="mt-4 space-y-3">
         {/* Access mode */}
@@ -204,22 +228,24 @@ function MCPServerCard({
           </div>
         </div>
 
-        {/* Token */}
-        <div>
-          <label className={labelClass}>Bearer token</label>
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={
-              server.configured
-                ? `Saved (${server.token_mask}) — leave blank to keep`
-                : 'Paste the API token'
-            }
-            autoComplete="off"
-            className={inputClass}
-          />
-        </div>
+        {/* Token (token-auth providers only) */}
+        {!isOAuth && (
+          <div>
+            <label className={labelClass}>API token</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={
+                server.configured
+                  ? `Saved (${server.token_mask}) — leave blank to keep`
+                  : 'Paste the API token'
+              }
+              autoComplete="off"
+              className={inputClass}
+            />
+          </div>
+        )}
 
         {/* Endpoint (advanced) */}
         <div>
@@ -243,6 +269,27 @@ function MCPServerCard({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {isOAuth ? (
+          server.connected ? (
+            <button
+              type="button"
+              onClick={disconnect}
+              disabled={busy}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
+            >
+              Disconnect
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={connect}
+              disabled={busy}
+              className="rounded-xl bg-indigo-600 dark:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
+            >
+              Connect with OAuth
+            </button>
+          )
+        ) : null}
         <button
           type="button"
           onClick={save}
@@ -254,12 +301,12 @@ function MCPServerCard({
         <button
           type="button"
           onClick={test}
-          disabled={testing}
+          disabled={testing || (isOAuth && !server.connected)}
           className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-800/60 disabled:opacity-50"
         >
           {testing ? 'Testing…' : 'Test connection'}
         </button>
-        {server.configured && (
+        {!isOAuth && server.configured && (
           <button
             type="button"
             onClick={clearToken}
@@ -441,9 +488,9 @@ function NotionMappingCard({
   );
 }
 
-// IntegrationsMCP is the MCP servers settings sub-page: a back-link, a header,
-// a card per provider (Cloudflare, Railway, Notion), and the Notion database
-// mapping. All config is per-project.
+// IntegrationsMCP is the MCP servers settings sub-page: a card per provider
+// (Cloudflare uses an API token; Notion & Railway use OAuth), plus the Notion
+// database mapping. Enablement is per project via each provider's skill.
 export function IntegrationsMCP() {
   const { projectPath } = useProjects();
   const [data, setData] = useState<MCPIntegrations | null>(null);
@@ -452,25 +499,32 @@ export function IntegrationsMCP() {
 
   useEffect(() => {
     let active = true;
-    getMCPIntegrations()
-      .then((d) => {
-        if (active) {
-          setData(d);
-          setError('');
-        }
-      })
-      .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : 'Failed to load MCP integrations');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const refresh = () => {
+      getMCPIntegrations()
+        .then((d) => {
+          if (active) {
+            setData(d);
+            setError('');
+          }
+        })
+        .catch((e) => {
+          if (active) setError(e instanceof Error ? e.message : 'Failed to load MCP integrations');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+    refresh();
+    // Refresh when returning from an OAuth authorization tab.
+    window.addEventListener('focus', refresh);
     return () => {
       active = false;
+      window.removeEventListener('focus', refresh);
     };
   }, []);
 
-  const notionEnabled = data?.servers.some((s) => s.slug === 'notion' && s.enabled) ?? false;
+  const notionConnected = data?.servers.some((s) => s.slug === 'notion' && s.connected) ?? false;
+  const skillsPath = projectPath('settings/project/skills');
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
@@ -493,8 +547,13 @@ export function IntegrationsMCP() {
           MCP servers
         </h1>
         <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Connect Model Context Protocol servers so the assistant can use their tools. Each server
-          is enabled per project in read-only or read &amp; write mode.
+          Connect Model Context Protocol servers so the assistant can use their tools. Turn each one
+          on per project on the{' '}
+          <Link to={skillsPath} className="text-indigo-600 dark:text-indigo-400 hover:underline">
+            Skills
+          </Link>{' '}
+          page, then add credentials here. Cloudflare uses an API token; Notion and Railway use
+          OAuth.
         </p>
       </div>
 
@@ -506,9 +565,9 @@ export function IntegrationsMCP() {
         ) : data ? (
           <>
             {data.servers.map((s) => (
-              <MCPServerCard key={s.slug} server={s} onChanged={setData} />
+              <MCPServerCard key={s.slug} server={s} onChanged={setData} skillsPath={skillsPath} />
             ))}
-            {notionEnabled && (
+            {notionConnected && (
               <NotionMappingCard targets={data.notion_targets} onChanged={setData} />
             )}
           </>

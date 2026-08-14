@@ -211,4 +211,36 @@ var skillSeed = []Skill{
 		Description:    "Let the assistant triage its own failures. When on, it can scan recent runs it couldn't handle — errors and low-quality replies — group them into recurring patterns, file a bug card on the Trello Issue board (skipping duplicates), and refine the prompts of the skills that keep underperforming. Meant to run from the Nightly Triage routine; needs a Trello API key and token (set them on the Integrations page).",
 		Prompt:         "You can triage your own recent failures and turn the recurring ones into tracked bugs and prompt fixes. Use triage_scan_failures (no arguments) to pull recent runs you couldn't handle automatically — agent errors and low-quality replies — grouped into recurring patterns, each with a stable signature, an occurrence count, the skills involved, a sample input and error, and the current prompt of every skill that appears. For each pattern worth acting on (prioritise the ones that recurred most), call triage_file_bug with the group's signature copied verbatim, a clear English title, and a description that includes the sample input, the error, how many times it recurred, and the first/last-seen times — the tool detects duplicates and will comment on an existing card instead of filing a second one. When a recurring pattern is clearly caused by a specific skill's instructions, also call triage_improve_prompt to save a focused fix for that skill's prompt (keep what works, preserve tool names and required output markers exactly, pass a one-line reason). Only file a bug or change a prompt when the evidence is clear; never file for a one-off, and never tune the auto_triage or self_tuning skills. If Trello isn't configured, say so plainly.",
 	},
+	// MCP server integrations. Each is a per-project skill gating the tools of one
+	// remote MCP server; the tools themselves are resolved dynamically at runtime
+	// (internal/mcptools), so — unlike the skills above — these keys have no static
+	// entry in agent.skillTools. Credentials/connection live on the Integrations →
+	// MCP page (a token for Cloudflare, an OAuth connect for Notion/Railway).
+	{
+		Key:            "mcp_cloudflare",
+		Name:           "Cloudflare (MCP)",
+		Category:       "Integrations",
+		DefaultEnabled: false,
+		SortOrder:      20,
+		Description:    "Let the assistant use the Cloudflare MCP server — inspect Workers, KV, R2, D1, and search Cloudflare docs. Enable here, then add a Cloudflare API token and pick read-only or read & write on the Integrations → MCP page.",
+		Prompt:         "You can use Cloudflare's MCP tools (namespaced cloudflare__*) to inspect and manage the user's Cloudflare account — Workers, KV, R2, D1, and documentation search. Only call these tools when the user asks about their Cloudflare resources. Write actions are only available when the integration is set to read & write; if a tool isn't available, tell the user to enable it on the Integrations → MCP page. Never invent resources beyond what the tools return.",
+	},
+	{
+		Key:            "mcp_notion",
+		Name:           "Notion (MCP)",
+		Category:       "Integrations",
+		DefaultEnabled: false,
+		SortOrder:      21,
+		Description:    "Let the assistant use Notion as a task/issue tracker through the Notion MCP server — search, read, and (in read & write mode) create pages and database items. Enable here, then connect Notion via OAuth and map your task/issue databases on the Integrations → MCP page.",
+		Prompt:         "You can use Notion's MCP tools (namespaced notion__*) to search, read, and — in read & write mode — create or update pages and database items in the user's connected Notion workspace. Use them as the user's task and issue tracker: when they ask to list, add, or update tasks or issues, use the matching database (the Integrations → MCP page maps which database is the task tracker vs the issue tracker, surfaced in the tool guidance). Only claim you created or changed something after the tool call returns. If Notion isn't connected or a write tool isn't available, tell the user to connect it / enable read & write on the Integrations → MCP page.",
+	},
+	{
+		Key:            "mcp_railway",
+		Name:           "Railway (MCP)",
+		Category:       "Integrations",
+		DefaultEnabled: false,
+		SortOrder:      22,
+		Description:    "Let the assistant use the Railway MCP server — inspect projects, services, deployments, and variables. Enable here, then connect Railway via OAuth and pick read-only or read & write on the Integrations → MCP page.",
+		Prompt:         "You can use Railway's MCP tools (namespaced railway__*) to inspect and manage the user's Railway projects, services, deployments, and variables. Only call these tools when the user asks about their Railway infrastructure. Write actions are only available in read & write mode; if a tool isn't available, tell the user to connect Railway / enable read & write on the Integrations → MCP page. Never invent resources beyond what the tools return.",
+	},
 }

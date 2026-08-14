@@ -52,7 +52,43 @@ func (s *PostgresStore) seedSkills(ctx context.Context) error {
 			return fmt.Errorf("seed skill %s: %w", sk.Key, err)
 		}
 	}
+	if err := s.backfillMCPSkills(ctx); err != nil {
+		return fmt.Errorf("backfill mcp skills: %w", err)
+	}
 	return nil
+}
+
+// backfillMCPSkills is a one-time migration: MCP provider enablement moved from
+// the `mcp.<provider>.enabled` settings key (v1.0.40) to the skills framework.
+// It enables the matching skill for any project that had a provider turned on,
+// so upgrading doesn't strand a working configuration. Guarded by a settings
+// marker so it runs at most once.
+func (s *PostgresStore) backfillMCPSkills(ctx context.Context) error {
+	const marker = "mcp.skills_backfilled"
+	if v, err := s.GetSetting(ctx, marker); err != nil {
+		return err
+	} else if len(v) > 0 {
+		return nil // already ran
+	}
+	if _, err := s.pool.Exec(ctx,
+		`INSERT INTO project_skills (project_id, skill_id, enabled)
+		 SELECT sub.project_id, sk.id, true
+		 FROM (
+		   SELECT split_part(key, ':', 2)::bigint AS project_id,
+		          split_part(key, '.', 2) AS provider
+		   FROM settings
+		   WHERE (key LIKE 'project:%:mcp.cloudflare.enabled'
+		       OR key LIKE 'project:%:mcp.notion.enabled'
+		       OR key LIKE 'project:%:mcp.railway.enabled')
+		     AND convert_from(value, 'UTF8') = 'true'
+		 ) sub
+		 JOIN skills sk ON sk.project_id IS NULL AND sk.key = 'mcp_' || sub.provider
+		 WHERE EXISTS (SELECT 1 FROM projects p WHERE p.id = sub.project_id)
+		 ON CONFLICT (project_id, skill_id) DO UPDATE SET enabled = true`,
+	); err != nil {
+		return fmt.Errorf("backfill project_skills: %w", err)
+	}
+	return s.SetSetting(ctx, marker, []byte("true"))
 }
 
 // --- Skills ---
