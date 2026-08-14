@@ -31,6 +31,7 @@ import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 import { IntegrationsWhatsApp } from './components/IntegrationsWhatsApp';
 import { IntegrationsTrello } from './components/IntegrationsTrello';
+import { IntegrationsMCP } from './components/IntegrationsMCP';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
 import { GlobalDashboard } from './components/GlobalDashboard';
@@ -241,6 +242,14 @@ function App() {
               element={
                 <ProjectAdminRoute>
                   <IntegrationsTrello />
+                </ProjectAdminRoute>
+              }
+            />
+            <Route
+              path="integrations/mcp"
+              element={
+                <ProjectAdminRoute>
+                  <IntegrationsMCP />
                 </ProjectAdminRoute>
               }
             />

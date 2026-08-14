@@ -239,11 +239,6 @@ export interface Integrations {
   trello_configured: boolean;
   trello_key_mask: string;
   trello_token_mask: string;
-  // Per-project Trello workspace/board mapping. The Trello skills only act on the
-  // board this project is mapped to; empty board id ⇒ skills disabled here.
-  trello_board_configured: boolean;
-  trello_workspace_id: string;
-  trello_board_id: string;
 }
 
 // A Trello workspace (organization) linked to the active project. `id` is our DB
@@ -280,6 +275,43 @@ export interface TrelloRemoteBoard {
   id: string;
   name: string;
   url: string;
+}
+
+// --- MCP servers (Cloudflare / Railway / Notion) ---
+
+export type MCPMode = 'read' | 'readwrite';
+
+// One MCP provider's per-project configuration + status.
+export interface MCPServer {
+  slug: string;
+  name: string;
+  enabled: boolean;
+  mode: MCPMode;
+  endpoint: string;
+  default_endpoint: string;
+  configured: boolean; // a token is stored
+  token_mask: string;
+  oauth_caveat?: boolean; // provider is OAuth-first (Railway); a static token may need a proxy
+}
+
+// A labelled Notion database ("space") mapped to the project — e.g. the task
+// tracker or the issue tracker.
+export interface NotionTarget {
+  kind: string;
+  database_id: string;
+  name: string;
+  url: string;
+}
+
+export interface MCPIntegrations {
+  servers: MCPServer[];
+  notion_targets: NotionTarget[];
+}
+
+export interface MCPTestResult {
+  ok: boolean;
+  tool_count: number;
+  tools: string[];
 }
 
 export type WhatsAppState = 'disconnected' | 'pairing' | 'connected' | 'disabled';

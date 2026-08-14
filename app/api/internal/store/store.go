@@ -365,6 +365,20 @@ type TrelloBoardLink struct {
 	CreatedAt   time.Time
 }
 
+// NotionTarget maps a labelled Notion database (a "space") to a project so the
+// MCP-backed agent knows which database is the task tracker, which is the issue
+// tracker, etc. Kind is a free label ("task", "issue", …), unique per project;
+// DatabaseID is the Notion database id; Name/URL are cached for display.
+type NotionTarget struct {
+	ID         int64
+	ProjectID  int64
+	Kind       string
+	DatabaseID string
+	Name       string
+	URL        string
+	CreatedAt  time.Time
+}
+
 // Activity is a logged sport/workout session, scoped to a user.
 type Activity struct {
 	ID          int64
@@ -888,6 +902,12 @@ type DataStore interface {
 	ListLinkedTrelloBoards(ctx context.Context) ([]TrelloBoardLink, error)
 	AttachTrelloBoard(ctx context.Context, workspaceID int64, trelloID, name, url string) (*TrelloBoardLink, error)
 	DeleteTrelloBoard(ctx context.Context, id int64) error
+
+	// Notion MCP database mapping (project-scoped). A project maps labelled Notion
+	// databases (task, issue, …) that the MCP-backed agent targets.
+	ListNotionTargets(ctx context.Context) ([]NotionTarget, error)
+	SetNotionTarget(ctx context.Context, kind, databaseID, name, url string) (*NotionTarget, error)
+	DeleteNotionTarget(ctx context.Context, kind string) error
 
 	// Hiking (scoped to a user; names are canonical for typo-free reuse)
 	ListMountains(ctx context.Context, userID int64) ([]Mountain, error)

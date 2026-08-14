@@ -24,6 +24,7 @@ type Config struct {
 	Capabilities CapabilitiesConfig `yaml:"capabilities"`
 	Security     SecurityConfig     `yaml:"security"`
 	SMTP         SMTPConfig         `yaml:"smtp"`
+	Sentry       SentryConfig       `yaml:"sentry"`
 	Logging      LoggingConfig      `yaml:"logging"`
 }
 
@@ -146,6 +147,34 @@ type SMTPConfig struct {
 	FromName string `yaml:"from_name"`
 }
 
+// SentryConfig configures error and performance monitoring via Sentry. When DSN
+// is empty (the default for local development) Sentry stays disabled and the
+// application runs unchanged. The DSN and sample rate are typically supplied via
+// the SENTRY_* env vars (see applyEnvOverrides) rather than committed YAML.
+type SentryConfig struct {
+	// DSN is the Sentry project DSN. Empty disables Sentry entirely.
+	DSN string `yaml:"dsn"`
+	// Environment overrides the Sentry environment label; when empty it falls
+	// back to the top-level Environment ("local" / "production").
+	Environment string `yaml:"environment"`
+	// TracesSampleRate is the fraction of transactions sampled for performance
+	// tracing (0 disables tracing; errors are always captured). Defaults to 1.0
+	// — full sampling suits this low-traffic personal deployment.
+	TracesSampleRate float64 `yaml:"traces_sample_rate"`
+	// Debug logs the SDK's own diagnostics to stderr — useful when verifying the
+	// integration, noisy otherwise.
+	Debug bool `yaml:"debug"`
+}
+
+// SentryEnvironment resolves the environment label reported to Sentry: the
+// Sentry-specific override when set, otherwise the deployment's Environment.
+func (c *Config) SentryEnvironment() string {
+	if strings.TrimSpace(c.Sentry.Environment) != "" {
+		return c.Sentry.Environment
+	}
+	return c.Environment
+}
+
 type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
@@ -222,6 +251,9 @@ func defaults() *Config {
 			Port:     587,
 			FromName: "Personal Assistant",
 		},
+		Sentry: SentryConfig{
+			TracesSampleRate: 1.0,
+		},
 		Logging: LoggingConfig{
 			Level:  "info",
 			Format: "text",
@@ -273,6 +305,20 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SMTP_FROM_NAME"); v != "" {
 		cfg.SMTP.FromName = v
+	}
+	if v := os.Getenv("SENTRY_DSN"); v != "" {
+		cfg.Sentry.DSN = v
+	}
+	if v := os.Getenv("SENTRY_ENVIRONMENT"); v != "" {
+		cfg.Sentry.Environment = v
+	}
+	if v := os.Getenv("SENTRY_TRACES_SAMPLE_RATE"); v != "" {
+		if r, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Sentry.TracesSampleRate = r
+		}
+	}
+	if v := os.Getenv("SENTRY_DEBUG"); v == "true" || v == "1" {
+		cfg.Sentry.Debug = true
 	}
 }
 

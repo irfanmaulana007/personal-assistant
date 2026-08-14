@@ -28,6 +28,9 @@ vendor/
 
 # Node
 node_modules/
+# This is a pnpm workspace — npm/yarn lockfiles must never be committed.
+package-lock.json
+yarn.lock
 
 # Web client
 /app/web/dist/

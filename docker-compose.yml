@@ -3,7 +3,12 @@
 # separate images, mirroring production — use docker-compose.split.yml.
 services:
   assistant:
-    build: .
+    build:
+      context: .
+      args:
+        # Browser Sentry DSN — baked into the web bundle at build time. Empty ⇒
+        # client-side Sentry disabled.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     restart: unless-stopped
     ports:
       - '8090:8090'
@@ -27,6 +32,9 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-}
+      # Error + performance monitoring (server). Empty SENTRY_DSN ⇒ disabled.
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-}
     depends_on:
       postgres:
         condition: service_healthy

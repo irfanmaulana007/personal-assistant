@@ -33,6 +33,9 @@ import type {
   TrelloBoardLink,
   TrelloRemoteWorkspace,
   TrelloRemoteBoard,
+  MCPIntegrations,
+  MCPTestResult,
+  NotionTarget,
   WhatsAppStatus,
   ChannelValue,
   LogsResponse,
@@ -744,19 +747,6 @@ export async function setTrelloCreds(apiKey: string, token: string): Promise<Int
   });
 }
 
-// setTrelloBoard maps the active project to a Trello workspace + board (the
-// single board the Trello skills read and write for that project). Empty strings
-// clear the mapping, disabling the skills for the project.
-export async function setTrelloBoard(
-  workspaceId: string,
-  boardId: string,
-): Promise<Integrations> {
-  return request<Integrations>('/api/integrations/trello-board', {
-    method: 'PUT',
-    body: JSON.stringify({ workspace_id: workspaceId, board_id: boardId }),
-  });
-}
-
 // --- Trello workspace/board linking (project → many workspaces → many boards) ---
 
 // Live from Trello: workspaces the token can see (for the "add workspace" picker).
@@ -806,6 +796,57 @@ export async function attachTrelloBoard(
 
 export async function deleteTrelloBoard(id: number): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`/api/integrations/trello/boards/${id}`, { method: 'DELETE' });
+}
+
+// --- MCP servers (Cloudflare / Railway / Notion; per-project read-only or R/W) ---
+
+// Per-project MCP config for every supported provider + the Notion mapping.
+export async function getMCPIntegrations(): Promise<MCPIntegrations> {
+  return request<MCPIntegrations>('/api/integrations/mcp');
+}
+
+// Save a provider's config. token is optional: omit it to keep the stored token,
+// pass '' to clear it, or a new value to replace it.
+export async function setMCPServer(
+  provider: string,
+  cfg: { enabled: boolean; mode: string; endpoint: string; token?: string },
+): Promise<MCPIntegrations> {
+  const body: Record<string, unknown> = {
+    enabled: cfg.enabled,
+    mode: cfg.mode,
+    endpoint: cfg.endpoint,
+  };
+  if (cfg.token !== undefined) body.token = cfg.token;
+  return request<MCPIntegrations>(`/api/integrations/mcp/${provider}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+// Connect + list tools to verify a token. Pass endpoint/token to test before
+// saving; omit them to test the stored config.
+export async function testMCPServer(
+  provider: string,
+  cfg?: { endpoint?: string; token?: string },
+): Promise<MCPTestResult> {
+  return request<MCPTestResult>(`/api/integrations/mcp/${provider}/test`, {
+    method: 'POST',
+    body: JSON.stringify(cfg ?? {}),
+  });
+}
+
+// Map (upsert) a Notion database to the active project under a label.
+export async function setNotionTarget(t: NotionTarget): Promise<MCPIntegrations> {
+  return request<MCPIntegrations>('/api/integrations/mcp/notion/targets', {
+    method: 'PUT',
+    body: JSON.stringify(t),
+  });
+}
+
+export async function deleteNotionTarget(kind: string): Promise<MCPIntegrations> {
+  return request<MCPIntegrations>(`/api/integrations/mcp/notion/targets/${encodeURIComponent(kind)}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function connectIntegration(slug: string): Promise<{ redirect_url: string }> {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/agent"
 	calendarsvc "github.com/irfanmaulana007/personal-assistant/app/api/internal/calendar"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/composio"
@@ -234,7 +235,6 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("PUT /api/integrations/websearch-key", projectAdmin(s.handleSetWebSearchKey))
 	mux.Handle("PUT /api/integrations/openai-key", projectAdmin(s.handleSetOpenAIKey))
 	mux.Handle("PUT /api/integrations/trello-creds", projectAdmin(s.handleSetTrelloCreds))
-	mux.Handle("PUT /api/integrations/trello-board", projectAdmin(s.handleSetTrelloBoard))
 	// Trello workspace/board linking (project → many workspaces → many boards).
 	mux.Handle("GET /api/integrations/trello/available-workspaces", projectAdmin(s.handleTrelloAvailableWorkspaces))
 	mux.Handle("GET /api/integrations/trello/workspaces", projectAdmin(s.handleListTrelloWorkspaces))
@@ -244,6 +244,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/integrations/trello/workspaces/{id}/boards", projectAdmin(s.handleListTrelloBoards))
 	mux.Handle("POST /api/integrations/trello/workspaces/{id}/boards", projectAdmin(s.handleAttachTrelloBoard))
 	mux.Handle("DELETE /api/integrations/trello/boards/{id}", projectAdmin(s.handleDeleteTrelloBoard))
+	// MCP servers (per-project, read-only / read & write). Provider config + a
+	// connection test, plus the Notion database mapping (task/issue trackers).
+	mux.Handle("GET /api/integrations/mcp", projectAdmin(s.handleListMCP))
+	mux.Handle("PUT /api/integrations/mcp/{provider}", projectAdmin(s.handleSetMCPServer))
+	mux.Handle("POST /api/integrations/mcp/{provider}/test", projectAdmin(s.handleTestMCP))
+	mux.Handle("PUT /api/integrations/mcp/notion/targets", projectAdmin(s.handleSetNotionTarget))
+	mux.Handle("DELETE /api/integrations/mcp/notion/targets/{kind}", projectAdmin(s.handleDeleteNotionTarget))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", projectAdmin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", projectAdmin(s.handleDisconnectIntegration))
 	mux.Handle("DELETE /api/calendar/events", superadmin(s.handleClearCalendarEvents))
@@ -260,8 +267,12 @@ func (s *Server) Start(ctx context.Context) error {
 	// Serve static files (SPA fallback)
 	mux.Handle("/", s.spaHandler())
 
-	// Apply global middleware
-	handler := corsMiddleware(loggingMiddleware(s.log)(mux))
+	// Apply global middleware. The Sentry handler is outermost so it recovers
+	// panics from any handler, reports them, and re-raises — the request still
+	// fails, but with a captured issue. It is a passthrough when Sentry has no
+	// DSN configured, so this is safe to apply unconditionally.
+	sentryMiddleware := sentryhttp.New(sentryhttp.Options{Repanic: true})
+	handler := sentryMiddleware.Handle(corsMiddleware(loggingMiddleware(s.log)(mux)))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	server := &http.Server{

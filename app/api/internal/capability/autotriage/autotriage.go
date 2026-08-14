@@ -1,16 +1,20 @@
 // Package autotriage implements the Auto-Triage skill: it scans the assistant's
 // own recent runs for things it couldn't handle automatically — agent errors and
 // low-quality (poorly judged) replies — groups them into recurring patterns, and
-// helps the assistant act on them by filing a bug card on the Trello Issue board
-// (with duplicate detection) and by refining the prompts of the skills that keep
-// underperforming.
+// helps the assistant act on them by filing a bug card on the project's Trello
+// bug board (with duplicate detection) and by refining the prompts of the skills
+// that keep underperforming.
 //
 // It is meant to run unattended from the nightly triage routine, but every step
 // is an ordinary tool the agent can also invoke on request. Bug cards are filed
-// on the project's own Trello board (resolved per call, mirroring the trello
-// capability), on its Bug list; credentials are resolved per call from encrypted
-// settings, and a missing credential — or a project with no board configured —
-// is reported back as plain text so the model can tell the user to configure it.
+// on one of the project's linked Trello boards, resolved per call (see
+// resolveBugBoard): the board named in the file-bug call (matched among the
+// project's linked boards, optionally restricted to a named workspace, mirroring
+// the trello capability), or — when none is named — the linked board with a
+// dedicated Bug/Issue list (falling back to the sole/first linked board), always
+// onto that board's Bug list. Credentials are resolved per call from encrypted
+// settings, and a missing credential — or a project with no board linked — is
+// reported back as plain text so the model can tell the user to configure it.
 package autotriage
 
 import (
@@ -46,7 +50,7 @@ const (
 
 const notConfiguredMsg = "Trello is not configured — no Trello API key/token has been set. Ask the user to add their Trello API key and token on the Integrations page."
 
-const boardNotConfiguredMsg = "This project has no Trello board configured, so I can't file a bug for it. Ask the user to set the project's Trello workspace and board on the Integrations → Trello page."
+const boardNotConfiguredMsg = "This project has no Trello board linked, so I can't file a bug for it. Ask the user to link a Trello workspace and board on the Integrations → Trello page."
 
 // routineSources are excluded from the scan so triage never triages its own
 // scheduled runs (or the self-tuner's / morning briefing's).
@@ -86,17 +90,116 @@ func (h *Handler) Handle(ctx context.Context, result *intent.ParseResult) (strin
 		if apiKey == "" || token == "" {
 			return notConfiguredMsg, nil
 		}
-		_, boardID, err := h.settings.TrelloBoard(ctx)
+		boardID, msg, err := h.resolveBugBoard(ctx, apiKey, token, result.Entities["workspace"], result.Entities["board"])
 		if err != nil {
 			return "", fmt.Errorf("resolve trello board: %w", err)
 		}
-		if boardID == "" {
-			return boardNotConfiguredMsg, nil
+		if msg != "" {
+			return msg, nil
 		}
 		return h.fileBug(ctx, apiKey, token, boardID, result.Entities)
 	default:
 		return "I can scan recent failures, file a bug for one, or improve a skill's prompt.", nil
 	}
+}
+
+// resolveBugBoard picks the linked board auto-triage files a bug on. A board may
+// be named in the file-bug call (matched among the project's linked boards,
+// optionally restricted to a named workspace): an explicit name takes precedence
+// and is reported as unknown if it matches none. When no board is named, triage
+// runs unattended and can't ask, so it prefers the linked board with a dedicated
+// Bug/Issue list (the project's bug board), falling back to the sole linked board
+// — or, when none has a Bug list, the first linked board. It returns either a
+// board id (msg == "") or a message to relay to the model.
+func (h *Handler) resolveBugBoard(ctx context.Context, apiKey, token, wsName, boardName string) (boardID, msg string, err error) {
+	links, err := h.store.ListLinkedTrelloBoards(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Optionally restrict candidates to a named workspace.
+	var allowWs map[int64]bool
+	if wsName = strings.TrimSpace(wsName); wsName != "" {
+		wss, err := h.store.ListTrelloWorkspaces(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("list linked workspaces: %w", err)
+		}
+		allowWs = map[int64]bool{}
+		for _, w := range wss {
+			if strings.EqualFold(strings.TrimSpace(w.Name), wsName) {
+				allowWs[w.ID] = true
+			}
+		}
+	}
+
+	var boards []store.TrelloBoardLink
+	for _, l := range links {
+		if strings.TrimSpace(l.TrelloID) == "" {
+			continue
+		}
+		if allowWs != nil && !allowWs[l.WorkspaceID] {
+			continue
+		}
+		boards = append(boards, l)
+	}
+	if len(boards) == 0 {
+		return "", boardNotConfiguredMsg, nil
+	}
+
+	// An explicit board name wins: case-insensitive, exact match first, then
+	// substring.
+	if q := strings.TrimSpace(boardName); q != "" {
+		for _, b := range boards {
+			if strings.EqualFold(strings.TrimSpace(b.Name), q) {
+				return b.TrelloID, "", nil
+			}
+		}
+		for _, b := range boards {
+			if b.Name != "" && strings.Contains(strings.ToLower(b.Name), strings.ToLower(q)) {
+				return b.TrelloID, "", nil
+			}
+		}
+		var names []string
+		for _, b := range boards {
+			if n := strings.TrimSpace(b.Name); n != "" {
+				names = append(names, fmt.Sprintf("%q", n))
+			}
+		}
+		return "", fmt.Sprintf("This project has no linked Trello board matching %q. Linked boards: %s. Ask the user which board bugs should go to, then pass its exact name.", q, strings.Join(names, ", ")), nil
+	}
+
+	// No board named. One board: use it.
+	if len(boards) == 1 {
+		return boards[0].TrelloID, "", nil
+	}
+
+	// Several linked: prefer the board with a dedicated Bug/Issue list so bugs land
+	// on the project's bug board rather than an arbitrary one.
+	for _, b := range boards {
+		lists, err := h.client.BoardLists(ctx, apiKey, token, b.TrelloID)
+		if err != nil {
+			h.log.Warn("trello list lists failed", "board", b.TrelloID, "error", err)
+			continue
+		}
+		if hasBugList(lists) {
+			return b.TrelloID, "", nil
+		}
+	}
+	// None has a Bug list — fall back to the first linked board.
+	return boards[0].TrelloID, "", nil
+}
+
+// hasBugList reports whether any of the board's lists is a dedicated Bug/Issue
+// column (matched by name), so resolveBugBoard can prefer a real bug board over
+// PickList's first-list fallback.
+func hasBugList(lists []trello.List) bool {
+	for _, l := range lists {
+		n := strings.ToLower(strings.TrimSpace(l.Name))
+		if strings.Contains(n, "bug") || strings.Contains(n, "issue") {
+			return true
+		}
+	}
+	return false
 }
 
 // --- scan ---
