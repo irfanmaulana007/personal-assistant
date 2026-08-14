@@ -280,18 +280,24 @@ export interface TrelloRemoteBoard {
 // --- MCP servers (Cloudflare / Railway / Notion) ---
 
 export type MCPMode = 'read' | 'readwrite';
+export type MCPAuth = 'token' | 'oauth';
 
-// One MCP provider's per-project configuration + status.
+// One MCP provider's per-project configuration + status. Enablement lives in the
+// skills framework (skill_key / skill_enabled), toggled on the Skills page.
 export interface MCPServer {
   slug: string;
   name: string;
-  enabled: boolean;
+  auth: MCPAuth;
   mode: MCPMode;
   endpoint: string;
   default_endpoint: string;
-  configured: boolean; // a token is stored
-  token_mask: string;
-  oauth_caveat?: boolean; // provider is OAuth-first (Railway); a static token may need a proxy
+  skill_key: string;
+  skill_enabled: boolean;
+  // token-auth providers (Cloudflare):
+  configured?: boolean; // a token is stored
+  token_mask?: string;
+  // oauth providers (Notion, Railway):
+  connected?: boolean;
 }
 
 // A labelled Notion database ("space") mapped to the project — e.g. the task

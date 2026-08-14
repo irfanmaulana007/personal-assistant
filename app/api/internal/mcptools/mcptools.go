@@ -1,17 +1,18 @@
-// Package mcptools adapts a project's enabled MCP servers into agent tools: it
-// lists each enabled server's tools, exposes only those allowed by the server's
-// curated read/write classification and the project's access mode, and executes
-// tool calls through the MCP client. It implements agent.ToolProvider.
+// Package mcptools adapts a project's enabled MCP servers into agent tools. A
+// server's tools are exposed only when (a) the server's in-app skill is enabled
+// for the active project, and (b) it is configured/connected — a token for
+// token-auth providers (Cloudflare), or an OAuth connection for OAuth providers
+// (Notion, Railway). Exposed tools are further filtered by the server's curated
+// read/write classification and the project's access mode. It implements
+// agent.ToolProvider.
 //
 // Tool names are namespaced as "<provider>__<tool>" (e.g. notion__notion-search)
-// so routing is unambiguous and names never collide with the built-in or
-// Composio tools.
+// so routing is unambiguous and names never collide with built-in or Composio
+// tools.
 package mcptools
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcp"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/settings"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/store"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -42,15 +44,28 @@ type notionTargetStore interface {
 	ListNotionTargets(ctx context.Context) ([]store.NotionTarget, error)
 }
 
+// skillChecker reports which skills are enabled for a project.
+type skillChecker interface {
+	EnabledProjectSkillKeys(ctx context.Context, projectID int64) ([]string, error)
+}
+
+// oauthTokenSourcer returns an auto-refreshing OAuth token source for an
+// OAuth-auth provider connected to the active project.
+type oauthTokenSourcer interface {
+	TokenSource(ctx context.Context, provider string) (oauth2.TokenSource, error)
+}
+
 // Provider resolves and executes MCP tools for the active project.
 type Provider struct {
 	client   *mcp.Client
 	settings *settings.Service
 	store    notionTargetStore
+	skills   skillChecker
+	oauth    oauthTokenSourcer
 	log      *slog.Logger
 
 	mu    sync.Mutex
-	cache map[string]cacheEntry // key: pid|provider|endpoint|tokenHash
+	cache map[string]cacheEntry // key: pid|provider|endpoint
 }
 
 type cacheEntry struct {
@@ -59,49 +74,87 @@ type cacheEntry struct {
 }
 
 // New creates an MCP tool provider.
-func New(client *mcp.Client, settingsSvc *settings.Service, st notionTargetStore, log *slog.Logger) *Provider {
+func New(client *mcp.Client, settingsSvc *settings.Service, st notionTargetStore, skills skillChecker, oauth oauthTokenSourcer, log *slog.Logger) *Provider {
 	return &Provider{
 		client:   client,
 		settings: settingsSvc,
 		store:    st,
+		skills:   skills,
+		oauth:    oauth,
 		log:      log.With("component", "mcp-tools"),
 		cache:    map[string]cacheEntry{},
 	}
 }
 
-// serverConfig is a resolved, enabled MCP server for the active project.
+// serverConfig is a resolved, enabled+configured MCP server for the active project.
 type serverConfig struct {
 	info     mcp.ProviderInfo
 	endpoint string
-	token    string
+	auth     mcp.Auth
 	mode     mcp.Mode
 }
 
-// enabledServers returns the active project's enabled MCP servers (with a token).
+// enabledSkillSet returns the active project's enabled skill keys as a set.
+func (p *Provider) enabledSkillSet(ctx context.Context) map[string]bool {
+	keys, err := p.skills.EnabledProjectSkillKeys(ctx, authctx.ProjectID(ctx))
+	if err != nil {
+		p.log.Warn("read enabled skills", "error", err)
+		return nil
+	}
+	m := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		m[k] = true
+	}
+	return m
+}
+
+// resolveServer resolves one provider for the active project: it must have its
+// skill enabled and be configured (token) or connected (oauth). Returns ok=false
+// otherwise.
+func (p *Provider) resolveServer(ctx context.Context, info mcp.ProviderInfo, enabledSkills map[string]bool) (serverConfig, bool) {
+	if !enabledSkills[info.SkillKey] {
+		return serverConfig{}, false
+	}
+	cfg, err := p.settings.MCPServer(ctx, string(info.Slug))
+	if err != nil {
+		p.log.Warn("read mcp config", "provider", info.Slug, "error", err)
+		return serverConfig{}, false
+	}
+	endpoint := cfg.Endpoint
+	if endpoint == "" {
+		endpoint = info.DefaultEndpoint
+	}
+	var a mcp.Auth
+	switch info.Auth {
+	case mcp.AuthOAuth:
+		ts, err := p.oauth.TokenSource(ctx, string(info.Slug))
+		if err != nil {
+			return serverConfig{}, false // not connected
+		}
+		a = mcp.OAuthAuth(ts)
+	default:
+		if cfg.Token == "" {
+			return serverConfig{}, false // no token
+		}
+		a = mcp.TokenAuth(cfg.Token)
+	}
+	return serverConfig{info: info, endpoint: endpoint, auth: a, mode: mcp.Mode(cfg.Mode).Normalize()}, true
+}
+
+// enabledServers returns every provider enabled+configured for the active project.
 func (p *Provider) enabledServers(ctx context.Context) []serverConfig {
 	if authctx.ProjectID(ctx) == 0 {
 		return nil
 	}
+	enabled := p.enabledSkillSet(ctx)
+	if len(enabled) == 0 {
+		return nil
+	}
 	var out []serverConfig
 	for _, info := range mcp.Registry() {
-		cfg, err := p.settings.MCPServer(ctx, string(info.Slug))
-		if err != nil {
-			p.log.Warn("read mcp config", "provider", info.Slug, "error", err)
-			continue
+		if sc, ok := p.resolveServer(ctx, info, enabled); ok {
+			out = append(out, sc)
 		}
-		if !cfg.Enabled || cfg.Token == "" {
-			continue
-		}
-		endpoint := cfg.Endpoint
-		if endpoint == "" {
-			endpoint = info.DefaultEndpoint
-		}
-		out = append(out, serverConfig{
-			info:     info,
-			endpoint: endpoint,
-			token:    cfg.Token,
-			mode:     mcp.Mode(cfg.Mode).Normalize(),
-		})
 	}
 	return out
 }
@@ -171,29 +224,18 @@ func (p *Provider) Execute(ctx context.Context, name, argsJSON string) string {
 	if !found {
 		return "Unknown MCP provider for tool: " + name
 	}
-	cfg, err := p.settings.MCPServer(ctx, provider)
-	if err != nil {
-		p.log.Warn("read mcp config for execute", "provider", provider, "error", err)
-		return "Error reading the " + info.Name + " configuration."
+	sc, ok := p.resolveServer(ctx, info, p.enabledSkillSet(ctx))
+	if !ok {
+		return info.Name + " isn't enabled or connected for this project. Ask an admin to enable it on the Skills page and connect it on the Integrations → MCP page."
 	}
-	if !cfg.Enabled || cfg.Token == "" {
-		return info.Name + " isn't connected for this project. Ask an admin to enable it in Integrations → MCP servers."
-	}
-	endpoint := cfg.Endpoint
-	if endpoint == "" {
-		endpoint = info.DefaultEndpoint
-	}
-	mode := mcp.Mode(cfg.Mode).Normalize()
-
 	// Enforce the access mode server-side too: a call the model shouldn't have
-	// been offered (write tool in read-only mode) is refused. We use the cached
-	// tool metadata (populated by Tools() earlier this turn) for the read-only
-	// hint that annotation-classified providers rely on.
-	if !info.Exposes(tool, p.cachedHint(ctx, info, endpoint, cfg.Token, tool), mode) {
-		return fmt.Sprintf("%s is in read-only mode for this project, so %q is not allowed. Ask an admin to switch it to read & write in Integrations → MCP servers.", info.Name, tool)
+	// been offered (write tool in read-only mode) is refused. Uses cached tool
+	// metadata (populated by Tools() earlier this turn) for the annotation hint.
+	if !info.Exposes(tool, p.cachedHint(ctx, sc, tool), sc.mode) {
+		return fmt.Sprintf("%s is in read-only mode for this project, so %q is not allowed. Ask an admin to switch it to read & write on the Integrations → MCP page.", info.Name, tool)
 	}
 
-	out, err := p.client.CallTool(ctx, endpoint, cfg.Token, tool, json.RawMessage(argsJSON))
+	out, err := p.client.CallTool(ctx, sc.endpoint, sc.auth, tool, json.RawMessage(argsJSON))
 	if err != nil {
 		p.log.Warn("execute mcp tool", "provider", provider, "tool", tool, "error", err)
 		if out != "" {
@@ -204,10 +246,10 @@ func (p *Provider) Execute(ctx context.Context, name, argsJSON string) string {
 	return out
 }
 
-// listTools returns a server's advertised tools, cached per project+server for
-// a short TTL so we don't re-handshake on every turn.
+// listTools returns a server's advertised tools, cached per project+server for a
+// short TTL so we don't re-handshake on every turn.
 func (p *Provider) listTools(ctx context.Context, sc serverConfig) ([]mcp.ToolInfo, error) {
-	key := cacheKey(authctx.ProjectID(ctx), sc.info.Slug, sc.endpoint, sc.token)
+	key := cacheKey(authctx.ProjectID(ctx), sc.info.Slug, sc.endpoint)
 
 	p.mu.Lock()
 	if e, ok := p.cache[key]; ok && time.Now().Before(e.expiresAt) {
@@ -217,7 +259,7 @@ func (p *Provider) listTools(ctx context.Context, sc serverConfig) ([]mcp.ToolIn
 	}
 	p.mu.Unlock()
 
-	tools, err := p.client.ListTools(ctx, sc.endpoint, sc.token)
+	tools, err := p.client.ListTools(ctx, sc.endpoint, sc.auth)
 	if err != nil {
 		return nil, err
 	}
@@ -229,8 +271,8 @@ func (p *Provider) listTools(ctx context.Context, sc serverConfig) ([]mcp.ToolIn
 
 // cachedHint returns the read-only hint for a tool from the cache, or nil when
 // unknown (cache miss or the server didn't annotate it).
-func (p *Provider) cachedHint(ctx context.Context, info mcp.ProviderInfo, endpoint, token, tool string) *bool {
-	key := cacheKey(authctx.ProjectID(ctx), info.Slug, endpoint, token)
+func (p *Provider) cachedHint(ctx context.Context, sc serverConfig, tool string) *bool {
+	key := cacheKey(authctx.ProjectID(ctx), sc.info.Slug, sc.endpoint)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e, ok := p.cache[key]
@@ -277,9 +319,7 @@ func splitName(name string) (provider, tool string, ok bool) {
 	return name[:i], name[i+len(nameSep):], true
 }
 
-// cacheKey derives a stable cache key; the token is hashed so it isn't held in
-// the key in the clear.
-func cacheKey(projectID int64, provider mcp.Provider, endpoint, token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return fmt.Sprintf("%d|%s|%s|%s", projectID, provider, endpoint, hex.EncodeToString(sum[:8]))
+// cacheKey derives a stable cache key for a project+provider+endpoint.
+func cacheKey(projectID int64, provider mcp.Provider, endpoint string) string {
+	return fmt.Sprintf("%d|%s|%s", projectID, provider, endpoint)
 }

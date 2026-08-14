@@ -805,22 +805,33 @@ export async function getMCPIntegrations(): Promise<MCPIntegrations> {
   return request<MCPIntegrations>('/api/integrations/mcp');
 }
 
-// Save a provider's config. token is optional: omit it to keep the stored token,
-// pass '' to clear it, or a new value to replace it.
+// Save a provider's mode/endpoint (and token, for token-auth providers). token
+// is optional: omit it to keep the stored token, pass '' to clear it, or a new
+// value to replace it. Enablement is the provider's skill (Skills page).
 export async function setMCPServer(
   provider: string,
-  cfg: { enabled: boolean; mode: string; endpoint: string; token?: string },
+  cfg: { mode: string; endpoint: string; token?: string },
 ): Promise<MCPIntegrations> {
-  const body: Record<string, unknown> = {
-    enabled: cfg.enabled,
-    mode: cfg.mode,
-    endpoint: cfg.endpoint,
-  };
+  const body: Record<string, unknown> = { mode: cfg.mode, endpoint: cfg.endpoint };
   if (cfg.token !== undefined) body.token = cfg.token;
   return request<MCPIntegrations>(`/api/integrations/mcp/${provider}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
+}
+
+// Start the OAuth flow for an OAuth-auth provider (Notion, Railway). Returns the
+// authorization URL to open in a new tab; the flow finishes at the callback.
+export async function connectMCPOAuth(provider: string): Promise<{ redirect_url: string }> {
+  return request<{ redirect_url: string }>(`/api/integrations/mcp/${provider}/oauth/connect`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+// Remove an OAuth provider's connection for the active project.
+export async function disconnectMCPOAuth(provider: string): Promise<MCPIntegrations> {
+  return request<MCPIntegrations>(`/api/integrations/mcp/${provider}/oauth`, { method: 'DELETE' });
 }
 
 // Connect + list tools to verify a token. Pass endpoint/token to test before

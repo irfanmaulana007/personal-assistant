@@ -2,10 +2,12 @@
 // servers spoken over the streamable-HTTP transport, plus a registry of the
 // providers this app supports (Cloudflare, Railway, Notion).
 //
-// Each provider is a hosted MCP endpoint the user authenticates with a
-// per-project bearer token. The registry also carries a curated read/write
-// classification of each server's tools so a project can enable a server in
-// read-only or read & write mode (see ClassifyTool).
+// Each provider is a hosted MCP endpoint. Authentication is per provider: some
+// accept a static API token (Cloudflare), others require an OAuth 2.1 connect
+// flow (Notion, Railway — their hosted servers reject bearer tokens). The
+// registry also carries a curated read/write classification of each server's
+// tools so a project can enable a server in read-only or read & write mode, and
+// the skill key that gates the server per project.
 package mcp
 
 import "strings"
@@ -18,6 +20,18 @@ const (
 	Cloudflare Provider = "cloudflare"
 	Railway    Provider = "railway"
 	Notion     Provider = "notion"
+)
+
+// AuthMode is how a provider authenticates.
+type AuthMode string
+
+const (
+	// AuthToken authenticates with a static API token as an Authorization: Bearer
+	// header (Cloudflare).
+	AuthToken AuthMode = "token"
+	// AuthOAuth authenticates with an OAuth 2.1 authorization-code flow — dynamic
+	// client registration + PKCE + refresh (Notion, Railway).
+	AuthOAuth AuthMode = "oauth"
 )
 
 // Mode is a per-project access level for an enabled MCP server.
@@ -55,6 +69,14 @@ type ProviderInfo struct {
 	Name            string
 	DefaultEndpoint string
 
+	// Auth is how this provider authenticates (token or oauth).
+	Auth AuthMode
+
+	// SkillKey is the in-app skill that gates this provider per project. The
+	// provider's tools are only exposed when the skill is enabled for the active
+	// project (in addition to being configured/connected).
+	SkillKey string
+
 	// Read and Write are explicit, curated tool-name allow-lists (matched
 	// case-insensitively). A tool named here is always classified accordingly,
 	// regardless of what the server advertises.
@@ -77,6 +99,8 @@ var registry = []ProviderInfo{
 		Slug:            Notion,
 		Name:            "Notion",
 		DefaultEndpoint: "https://mcp.notion.com/mcp",
+		Auth:            AuthOAuth,
+		SkillKey:        "mcp_notion",
 		// The Notion hosted MCP server exposes a fixed set of 22 tools, so we
 		// classify all of them explicitly (strict allow-list, UseAnnotations off).
 		Read: []string{
@@ -100,6 +124,8 @@ var registry = []ProviderInfo{
 		Slug:            Cloudflare,
 		Name:            "Cloudflare",
 		DefaultEndpoint: "https://mcp.cloudflare.com/mcp",
+		Auth:            AuthToken,
+		SkillKey:        "mcp_cloudflare",
 		// Cloudflare's toolset is large and changes often; lean on the server's
 		// readOnlyHint annotation, with a few well-known reads seeded explicitly.
 		Read: []string{
@@ -112,8 +138,10 @@ var registry = []ProviderInfo{
 		Slug:            Railway,
 		Name:            "Railway",
 		DefaultEndpoint: "https://mcp.railway.com/mcp",
-		// Railway's hosted MCP is OAuth-first; a static bearer may only work via a
-		// token-guarded proxy. Same annotation-assisted classification as Cloudflare.
+		Auth:            AuthOAuth,
+		SkillKey:        "mcp_railway",
+		// Railway's hosted MCP requires OAuth. Same annotation-assisted read/write
+		// classification as Cloudflare.
 		Read: []string{
 			"list_projects", "get_project", "list_services", "list_deployments",
 			"get_deployment", "list_variables",
