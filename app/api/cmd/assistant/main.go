@@ -44,6 +44,8 @@ import (
 	googleint "github.com/irfanmaulana007/personal-assistant/app/api/internal/integration/google"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mailer"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcp"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcptools"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/observability"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/persona"
@@ -190,8 +192,14 @@ func main() {
 	// Composio-backed tools for the user's connected apps (optional).
 	composioTools := composiotools.New(composioClient, settingsSvc, log)
 
-	// LLM tool-calling agent (replaces the regex parser).
-	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, personaSvc, router, cfg.Owner, composioTools, log)
+	// MCP-backed tools for the project's enabled MCP servers (Cloudflare, Railway,
+	// Notion), each per-project in read-only or read & write mode.
+	mcpTools := mcptools.New(mcp.NewClient(), settingsSvc, db, log)
+
+	// LLM tool-calling agent (replaces the regex parser). Composio + MCP tools are
+	// combined behind the single ToolProvider seam.
+	toolProvider := agent.CombineProviders(composioTools, mcpTools)
+	assistant := agent.New(llmClient, settingsSvc, skillsSvc, memSvc, personaSvc, router, cfg.Owner, toolProvider, log)
 
 	// LLM-as-judge that scores the assistant's own replies inline (async, one
 	// judgement per reply). Shared by the web and WhatsApp ingress paths.
