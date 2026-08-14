@@ -13,6 +13,7 @@
   "dependencies": {
     "@personal-assistant/shared": "workspace:*",
     "@radix-ui/react-popover": "^1.1.19",
+    "@sentry/react": "^10.68.0",
     "date-fns": "^4.4.0",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",

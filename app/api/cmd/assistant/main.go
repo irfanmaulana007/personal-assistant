@@ -47,6 +47,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcp"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcptools"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/memory"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/observability"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/persona"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/routine"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/settings"
@@ -73,6 +74,19 @@ func main() {
 	// Setup logger
 	log := setupLogger(cfg.Logging)
 	log.Info("starting personal assistant", "owner", cfg.Owner.Name)
+
+	// Wire error + performance monitoring (Sentry). No-op when no DSN is set, so
+	// local development is unaffected. Flush buffered events on shutdown. The
+	// release is taken from the APP_VERSION env var when the deployment sets it.
+	flushSentry := observability.InitSentry(
+		cfg.Sentry.DSN,
+		cfg.SentryEnvironment(),
+		os.Getenv("APP_VERSION"),
+		cfg.Sentry.TracesSampleRate,
+		cfg.Sentry.Debug,
+		log,
+	)
+	defer flushSentry()
 
 	// Setup context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,6 +250,9 @@ func main() {
 		// are addressed by mentioning the assistant.
 		wa.SetGroupBypass(translate.IsCommand)
 		wa.SetMessageHandler(func(msg *transport.Message) {
+			// The transport invokes this on its own goroutine; a panic here would
+			// otherwise take the process down without a trace. Report it to Sentry.
+			defer observability.Recover()
 			// WhatsApp acts as the owner (first admin). Its data is scoped to
 			// that user; if setup hasn't happened yet, ask the user to set up.
 			owner, err := db.FirstAdmin(ctx)
@@ -330,6 +347,7 @@ func main() {
 					response = "The assistant isn't configured yet. Set the LLM API key in the web Settings page."
 				} else {
 					log.Error("agent run failed", "error", err)
+					observability.CaptureError(err, map[string]string{"component": "agent", "platform": msg.Platform})
 					response = "Sorry, I ran into a problem. Please try again."
 				}
 			} else {

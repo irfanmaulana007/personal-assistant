@@ -67,6 +67,16 @@ capabilities:
 security:
   encryption_key: "" # Set via ENCRYPTION_KEY env var (32 bytes, base64 encoded)
 
+# Error + performance monitoring via Sentry. Disabled when dsn is empty (the
+# default). The DSN is normally supplied via the SENTRY_DSN env var rather than
+# committed here. environment falls back to the top-level `environment` above
+# when empty. See the SENTRY_* entries in .env.example.
+sentry:
+  dsn: "${SENTRY_DSN}" # empty ⇒ Sentry disabled
+  environment: "" # empty ⇒ uses the top-level `environment` (local/production)
+  traces_sample_rate: 1.0 # 0 disables tracing; errors are always captured
+  debug: false
+
 logging:
   level: "info"
   format: "text"

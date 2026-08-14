@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   getIntegrations,
   setTrelloCreds,
-  setTrelloBoard,
   getTrelloWorkspaces,
   getTrelloBoards,
   getTrelloAvailableWorkspaces,
@@ -187,19 +186,10 @@ type WorkspaceGroup = { ws: TrelloWorkspaceLink; boards: TrelloBoardLink[] };
 
 // TrelloWorkspacesCard manages this project's Trello links: a project can link
 // many workspaces, and each workspace many boards, all chosen live from the
-// Trello API. The assistant reads and writes across all linked boards (asking
-// which to use when several are linked). One board is marked "Active" — the
-// default board for automated bug triage — persisted via the legacy
-// workspace/board mapping.
-function TrelloWorkspacesCard({
-  credsConfigured,
-  activeBoardId,
-  onSetActive,
-}: {
-  credsConfigured: boolean;
-  activeBoardId: string;
-  onSetActive: (workspaceTrelloId: string, boardTrelloId: string) => Promise<void>;
-}) {
+// Trello API. The assistant reads and writes across all linked boards, asking
+// which to use when several are linked; automated bug triage files onto the
+// linked board that has a Bug list. There is no single "active" board.
+function TrelloWorkspacesCard({ credsConfigured }: { credsConfigured: boolean }) {
   const [groups, setGroups] = useState<WorkspaceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -325,15 +315,6 @@ function TrelloWorkspacesCard({
     }
   };
 
-  const makeActive = async (wsTrelloId: string, boardTrelloId: string) => {
-    setMsg('');
-    try {
-      await onSetActive(wsTrelloId, boardTrelloId);
-    } catch (e) {
-      fail(e, 'Failed to set active board');
-    }
-  };
-
   const linkedWsIds = new Set(groups.map((g) => g.ws.trello_id));
   const pickableWs = (availableWs ?? []).filter((w) => !linkedWsIds.has(w.id));
 
@@ -351,8 +332,8 @@ function TrelloWorkspacesCard({
         tasks land on a board's <span className="font-medium">Backlog/Todo</span> list, bugs on its{' '}
         <span className="font-medium">Bug</span> list, ideas on its{' '}
         <span className="font-medium">Ideas</span> list (matched by name); when several boards are
-        linked it asks which to use. The board marked <span className="font-medium">Active</span> is
-        the default target for automated bug triage.
+        linked it asks which to use. Automated bug triage files onto the linked board that has a{' '}
+        <span className="font-medium">Bug</span> list.
       </p>
 
       {!credsConfigured ? (
@@ -393,45 +374,28 @@ function TrelloWorkspacesCard({
                 {boards.length === 0 && (
                   <p className="text-xs text-gray-400 dark:text-gray-500">No boards linked yet.</p>
                 )}
-                {boards.map((b) => {
-                  const active = b.trello_id === activeBoardId && activeBoardId !== '';
-                  return (
-                    <div
-                      key={b.id}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm text-gray-800 dark:text-gray-200">
-                          {b.name || b.trello_id}
-                        </span>
-                        {active && (
-                          <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {!active && (
-                          <button
-                            type="button"
-                            onClick={() => makeActive(ws.trello_id, b.trello_id)}
-                            className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/15"
-                          >
-                            Set active
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeBoard(b.id)}
-                          aria-label="Remove board"
-                          className="rounded-lg px-2 py-1 text-xs font-medium text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-500/15 dark:hover:text-red-400"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                {boards.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm text-gray-800 dark:text-gray-200">
+                        {b.name || b.trello_id}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => removeBoard(b.id)}
+                        aria-label="Remove board"
+                        className="rounded-lg px-2 py-1 text-xs font-medium text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
 
                 {boardPickerFor === ws.id ? (
                   <div className="flex items-center gap-2">
@@ -592,14 +556,7 @@ export function IntegrationsTrello() {
                 return d;
               }}
             />
-            <TrelloWorkspacesCard
-              credsConfigured={data.trello_configured}
-              activeBoardId={data.trello_board_id}
-              onSetActive={async (workspaceId, boardId) => {
-                const d = await setTrelloBoard(workspaceId, boardId);
-                setData(d);
-              }}
-            />
+            <TrelloWorkspacesCard credsConfigured={data.trello_configured} />
           </>
         ) : null}
       </div>

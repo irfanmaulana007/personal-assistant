@@ -747,19 +747,6 @@ export async function setTrelloCreds(apiKey: string, token: string): Promise<Int
   });
 }
 
-// setTrelloBoard maps the active project to a Trello workspace + board (the
-// single board the Trello skills read and write for that project). Empty strings
-// clear the mapping, disabling the skills for the project.
-export async function setTrelloBoard(
-  workspaceId: string,
-  boardId: string,
-): Promise<Integrations> {
-  return request<Integrations>('/api/integrations/trello-board', {
-    method: 'PUT',
-    body: JSON.stringify({ workspace_id: workspaceId, board_id: boardId }),
-  });
-}
-
 // --- Trello workspace/board linking (project → many workspaces → many boards) ---
 
 // Live from Trello: workspaces the token can see (for the "add workspace" picker).

@@ -3,6 +3,7 @@ module github.com/irfanmaulana007/personal-assistant
 go 1.25.8
 
 require (
+	github.com/getsentry/sentry-go v0.48.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
