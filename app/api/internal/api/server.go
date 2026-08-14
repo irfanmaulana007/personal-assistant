@@ -244,6 +244,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("GET /api/integrations/trello/workspaces/{id}/boards", projectAdmin(s.handleListTrelloBoards))
 	mux.Handle("POST /api/integrations/trello/workspaces/{id}/boards", projectAdmin(s.handleAttachTrelloBoard))
 	mux.Handle("DELETE /api/integrations/trello/boards/{id}", projectAdmin(s.handleDeleteTrelloBoard))
+	// MCP servers (per-project, read-only / read & write). Provider config + a
+	// connection test, plus the Notion database mapping (task/issue trackers).
+	mux.Handle("GET /api/integrations/mcp", projectAdmin(s.handleListMCP))
+	mux.Handle("PUT /api/integrations/mcp/{provider}", projectAdmin(s.handleSetMCPServer))
+	mux.Handle("POST /api/integrations/mcp/{provider}/test", projectAdmin(s.handleTestMCP))
+	mux.Handle("PUT /api/integrations/mcp/notion/targets", projectAdmin(s.handleSetNotionTarget))
+	mux.Handle("DELETE /api/integrations/mcp/notion/targets/{kind}", projectAdmin(s.handleDeleteNotionTarget))
 	mux.Handle("POST /api/integrations/{toolkit}/connect", projectAdmin(s.handleConnectIntegration))
 	mux.Handle("DELETE /api/integrations/{toolkit}", projectAdmin(s.handleDisconnectIntegration))
 	mux.Handle("DELETE /api/calendar/events", superadmin(s.handleClearCalendarEvents))
