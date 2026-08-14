@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/oauth2"
 )
 
 // dialTimeout bounds a single connect+list or connect+call round-trip.
@@ -36,6 +37,21 @@ func NewClient() *Client {
 	return &Client{impl: &mcpsdk.Implementation{Name: "personal-assistant", Version: "1.0"}}
 }
 
+// Auth carries how a connection authenticates: either a static bearer Token
+// (providers whose MCP accepts an API token, e.g. Cloudflare) or a refreshing
+// OAuth TokenSource (providers whose hosted MCP requires OAuth, e.g. Notion,
+// Railway). Exactly one is set.
+type Auth struct {
+	Token       string
+	TokenSource oauth2.TokenSource
+}
+
+// TokenAuth authenticates with a static bearer token.
+func TokenAuth(token string) Auth { return Auth{Token: token} }
+
+// OAuthAuth authenticates with an OAuth token source (auto-refreshing).
+func OAuthAuth(ts oauth2.TokenSource) Auth { return Auth{TokenSource: ts} }
+
 // bearerRoundTripper injects an Authorization: Bearer header on every request.
 type bearerRoundTripper struct {
 	token string
@@ -48,19 +64,37 @@ func (b bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return b.base.RoundTrip(req)
 }
 
-// connect opens an initialized session to endpoint authenticated with token.
-// The caller must Close the returned session.
-func (c *Client) connect(ctx context.Context, endpoint, token string) (*mcpsdk.ClientSession, error) {
-	httpClient := &http.Client{
-		Timeout:   dialTimeout,
-		Transport: bearerRoundTripper{token: token, base: http.DefaultTransport},
-	}
+// tokenSourceHandler adapts an oauth2.TokenSource to the SDK's OAuthHandler so
+// the streamable transport attaches (and refreshes) the bearer on each request.
+// A hard 401/403 surfaces as an error telling the caller to reconnect, since we
+// cannot run the interactive authorization flow from here.
+type tokenSourceHandler struct{ ts oauth2.TokenSource }
+
+func (h tokenSourceHandler) TokenSource(context.Context) (oauth2.TokenSource, error) {
+	return h.ts, nil
+}
+
+func (h tokenSourceHandler) Authorize(context.Context, *http.Request, *http.Response) error {
+	return fmt.Errorf("mcp: authorization required — reconnect the integration")
+}
+
+// connect opens an initialized session to endpoint with the given auth. The
+// caller must Close the returned session.
+func (c *Client) connect(ctx context.Context, endpoint string, a Auth) (*mcpsdk.ClientSession, error) {
 	// Request-response only: we never need server-initiated messages, and some
 	// servers mishandle the standalone SSE GET.
 	transport := &mcpsdk.StreamableClientTransport{
 		Endpoint:             endpoint,
-		HTTPClient:           httpClient,
 		DisableStandaloneSSE: true,
+	}
+	if a.TokenSource != nil {
+		transport.HTTPClient = &http.Client{Timeout: dialTimeout}
+		transport.OAuthHandler = tokenSourceHandler{ts: a.TokenSource}
+	} else {
+		transport.HTTPClient = &http.Client{
+			Timeout:   dialTimeout,
+			Transport: bearerRoundTripper{token: a.Token, base: http.DefaultTransport},
+		}
 	}
 	sess, err := mcpsdk.NewClient(c.impl, nil).Connect(ctx, transport, nil)
 	if err != nil {
@@ -70,8 +104,8 @@ func (c *Client) connect(ctx context.Context, endpoint, token string) (*mcpsdk.C
 }
 
 // ListTools returns every tool the server advertises, following pagination.
-func (c *Client) ListTools(ctx context.Context, endpoint, token string) ([]ToolInfo, error) {
-	sess, err := c.connect(ctx, endpoint, token)
+func (c *Client) ListTools(ctx context.Context, endpoint string, a Auth) ([]ToolInfo, error) {
+	sess, err := c.connect(ctx, endpoint, a)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +132,8 @@ func (c *Client) ListTools(ctx context.Context, endpoint, token string) ([]ToolI
 // CallTool invokes a tool and returns its textual result. A tool-level error
 // (CallToolResult.IsError) is returned as an error carrying the server's text so
 // the caller can surface it to the model.
-func (c *Client) CallTool(ctx context.Context, endpoint, token, name string, args json.RawMessage) (string, error) {
-	sess, err := c.connect(ctx, endpoint, token)
+func (c *Client) CallTool(ctx context.Context, endpoint string, a Auth, name string, args json.RawMessage) (string, error) {
+	sess, err := c.connect(ctx, endpoint, a)
 	if err != nil {
 		return "", err
 	}

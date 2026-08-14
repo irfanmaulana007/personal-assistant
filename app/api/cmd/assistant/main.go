@@ -45,6 +45,7 @@ import (
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/llm"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mailer"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcp"
+	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcpoauth"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/mcptools"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/memory"
 	"github.com/irfanmaulana007/personal-assistant/app/api/internal/observability"
@@ -193,8 +194,10 @@ func main() {
 	composioTools := composiotools.New(composioClient, settingsSvc, log)
 
 	// MCP-backed tools for the project's enabled MCP servers (Cloudflare, Railway,
-	// Notion), each per-project in read-only or read & write mode.
-	mcpTools := mcptools.New(mcp.NewClient(), settingsSvc, db, log)
+	// Notion). Each provider is gated by its per-project skill and authenticated by
+	// a token (Cloudflare) or an OAuth connection (Notion, Railway).
+	mcpOAuth := mcpoauth.New(db, encKey, log)
+	mcpTools := mcptools.New(mcp.NewClient(), settingsSvc, db, db, mcpOAuth, log)
 
 	// LLM tool-calling agent (replaces the regex parser). Composio + MCP tools are
 	// combined behind the single ToolProvider seam.
@@ -498,6 +501,7 @@ func main() {
 			waCtl,
 			mailerSvc,
 			db,
+			mcpOAuth,
 			signingKey[:],
 			cfg.Web.StaticDir,
 			cfg.Web.Port,

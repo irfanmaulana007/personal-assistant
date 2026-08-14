@@ -60,6 +60,40 @@ func TestAnnotationAssistedClassification(t *testing.T) {
 	}
 }
 
+func TestRegistryAuthAndSkillKeys(t *testing.T) {
+	want := map[Provider]struct {
+		auth     AuthMode
+		skillKey string
+	}{
+		Cloudflare: {AuthToken, "mcp_cloudflare"},
+		Notion:     {AuthOAuth, "mcp_notion"},
+		Railway:    {AuthOAuth, "mcp_railway"},
+	}
+	seen := map[Provider]bool{}
+	for _, info := range Registry() {
+		w, ok := want[info.Slug]
+		if !ok {
+			t.Errorf("unexpected provider %q", info.Slug)
+			continue
+		}
+		seen[info.Slug] = true
+		if info.Auth != w.auth {
+			t.Errorf("%s auth = %q, want %q", info.Slug, info.Auth, w.auth)
+		}
+		if info.SkillKey != w.skillKey {
+			t.Errorf("%s skill key = %q, want %q", info.Slug, info.SkillKey, w.skillKey)
+		}
+		if info.DefaultEndpoint == "" {
+			t.Errorf("%s has no default endpoint", info.Slug)
+		}
+	}
+	for slug := range want {
+		if !seen[slug] {
+			t.Errorf("provider %q missing from registry", slug)
+		}
+	}
+}
+
 func TestModeNormalize(t *testing.T) {
 	if Mode("").Normalize() != ModeRead {
 		t.Error("empty mode should normalize to read")

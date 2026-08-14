@@ -46,10 +46,13 @@ const (
 
 // mcpKey builds the per-provider MCP setting key for a field. The keys are
 // project-scoped at read/write time (mcp.<provider>.<field>). Fields:
-//   - "enabled": "true"/"false" (plaintext); absent ⇒ disabled
-//   - "mode":    "read"/"readwrite" (plaintext); absent ⇒ read
+//   - "mode":     "read"/"readwrite" (plaintext); absent ⇒ read
 //   - "endpoint": override URL (plaintext); empty ⇒ provider default
-//   - "token":   bearer token (encrypted)
+//   - "token":    bearer token (encrypted; token-auth providers only)
+//
+// Enablement is NOT stored here — it lives in the skills framework (the
+// mcp_<provider> skill toggled per project). A legacy "enabled" key written by
+// v1.0.40 is read once by the store's one-time backfill, then ignored.
 func mcpKey(provider, field string) string { return "mcp." + provider + "." + field }
 
 // DefaultReminderTime is used when the user hasn't configured one.
@@ -333,10 +336,10 @@ func (s *Service) SetTrelloCreds(ctx context.Context, apiKey, token string) erro
 }
 
 // MCPServerConfig is the resolved per-project configuration for one MCP server.
-// Endpoint is the raw stored override ("" ⇒ the caller should apply the
-// provider default); Token is decrypted.
+// Endpoint is the raw stored override ("" ⇒ the caller should apply the provider
+// default); Token is the decrypted bearer token (token-auth providers only).
+// Enablement is not here — it is the mcp_<provider> skill.
 type MCPServerConfig struct {
-	Enabled  bool
 	Mode     string
 	Endpoint string
 	Token    string
@@ -345,10 +348,6 @@ type MCPServerConfig struct {
 // MCPServer resolves the active project's configuration for an MCP provider
 // (with the global value as fallback, like the other integration credentials).
 func (s *Service) MCPServer(ctx context.Context, provider string) (MCPServerConfig, error) {
-	enabled, err := s.getScopedString(ctx, mcpKey(provider, "enabled"))
-	if err != nil {
-		return MCPServerConfig{}, fmt.Errorf("read mcp enabled: %w", err)
-	}
 	mode, err := s.getScopedString(ctx, mcpKey(provider, "mode"))
 	if err != nil {
 		return MCPServerConfig{}, fmt.Errorf("read mcp mode: %w", err)
@@ -361,22 +360,15 @@ func (s *Service) MCPServer(ctx context.Context, provider string) (MCPServerConf
 	if err != nil {
 		return MCPServerConfig{}, fmt.Errorf("read mcp token: %w", err)
 	}
-	return MCPServerConfig{Enabled: enabled == "true", Mode: mode, Endpoint: endpoint, Token: token}, nil
+	return MCPServerConfig{Mode: mode, Endpoint: endpoint, Token: token}, nil
 }
 
-// SetMCPServer persists the non-secret MCP config (enabled/mode/endpoint) for a
-// provider, scoped to the active project. The token is managed separately by
-// SetMCPToken so a config edit never has to re-send the secret.
-func (s *Service) SetMCPServer(ctx context.Context, provider string, enabled bool, mode, endpoint string) error {
-	enabledStr := "false"
-	if enabled {
-		enabledStr = "true"
-	}
+// SetMCPServer persists the non-secret MCP config (mode/endpoint) for a provider,
+// scoped to the active project. The token is managed separately by SetMCPToken so
+// a config edit never has to re-send the secret.
+func (s *Service) SetMCPServer(ctx context.Context, provider, mode, endpoint string) error {
 	if mode != "readwrite" {
 		mode = "read"
-	}
-	if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, mcpKey(provider, "enabled")), []byte(enabledStr)); err != nil {
-		return fmt.Errorf("store mcp enabled: %w", err)
 	}
 	if err := s.store.SetSetting(ctx, scopedSecretKey(ctx, mcpKey(provider, "mode")), []byte(mode)); err != nil {
 		return fmt.Errorf("store mcp mode: %w", err)
