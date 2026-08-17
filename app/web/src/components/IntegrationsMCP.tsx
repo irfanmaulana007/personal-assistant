@@ -488,10 +488,89 @@ function NotionMappingCard({
   );
 }
 
-// IntegrationsMCP is the MCP servers settings sub-page: a card per provider
-// (Cloudflare uses an API token; Notion & Railway use OAuth), plus the Notion
-// database mapping. Enablement is per project via each provider's skill.
-export function IntegrationsMCP() {
+// MCPProviderCard is the compact Integrations-list entry for a single MCP
+// provider — it mirrors the Trello card: a brand icon, a connection badge, and
+// a link into that provider's own detail page.
+function MCPProviderCard({ server }: { server: MCPServer }) {
+  const { projectPath } = useProjects();
+  const dark = useIsDark();
+  const ready = server.auth === 'oauth' ? !!server.connected : !!server.configured;
+  const status = ready
+    ? {
+        label: 'Connected',
+        cls: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
+      }
+    : {
+        label: 'Not connected',
+        cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+      };
+
+  return (
+    <Link
+      to={projectPath(`integrations/${server.slug}`)}
+      className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+    >
+      <div className="flex items-center gap-3">
+        <ProviderIcon slug={server.slug} name={server.name} dark={dark} />
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">{server.name}</div>
+          <span
+            className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.cls}`}
+          >
+            {status.label}
+          </span>
+        </div>
+      </div>
+      <span className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400">
+        Manage
+        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+          <path
+            fillRule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </span>
+    </Link>
+  );
+}
+
+// MCPServerCards renders one MCPProviderCard per MCP provider, shown directly on
+// the Integrations index. It replaces the old single "MCP servers" umbrella card
+// so each provider (Cloudflare, Railway, Notion) is a first-class entry, exactly
+// like the Trello integration. It fetches its own status, like WhatsAppCard.
+export function MCPServerCards() {
+  const [servers, setServers] = useState<MCPServer[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getMCPIntegrations()
+      .then((d) => {
+        if (active) setServers(d.servers);
+      })
+      .catch(() => {
+        if (active) setServers([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!servers) return null;
+  return (
+    <>
+      {servers.map((s) => (
+        <MCPProviderCard key={s.slug} server={s} />
+      ))}
+    </>
+  );
+}
+
+// IntegrationsMCPServer is a single MCP provider's settings page: its
+// credentials/connection card plus — for Notion — the database mapping.
+// Enablement is per project via the provider's skill. One route per provider
+// links here from the Integrations index, mirroring the Trello detail page.
+export function IntegrationsMCPServer({ slug }: { slug: string }) {
   const { projectPath } = useProjects();
   const [data, setData] = useState<MCPIntegrations | null>(null);
   const [loading, setLoading] = useState(true);
@@ -523,7 +602,8 @@ export function IntegrationsMCP() {
     };
   }, []);
 
-  const notionConnected = data?.servers.some((s) => s.slug === 'notion' && s.connected) ?? false;
+  const server = data?.servers.find((s) => s.slug === slug);
+  const notionConnected = slug === 'notion' && !!server?.connected;
   const skillsPath = projectPath('settings/project/skills');
 
   return (
@@ -544,16 +624,20 @@ export function IntegrationsMCP() {
 
       <div className="mt-2">
         <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
-          MCP servers
+          {server?.name ?? 'MCP server'}
         </h1>
         <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Connect Model Context Protocol servers so the assistant can use their tools. Turn each one
-          on per project on the{' '}
+          Connect the {server?.name ?? 'MCP'} server so the assistant can use its tools. Turn it on
+          per project on the{' '}
           <Link to={skillsPath} className="text-indigo-600 dark:text-indigo-400 hover:underline">
             Skills
           </Link>{' '}
-          page, then add credentials here. Cloudflare uses an API token; Notion and Railway use
-          OAuth.
+          page, then add credentials here.
+          {server
+            ? server.auth === 'oauth'
+              ? ' It authorizes with OAuth.'
+              : ' It uses an API token.'
+            : ''}
         </p>
       </div>
 
@@ -562,16 +646,16 @@ export function IntegrationsMCP() {
           <SkeletonFormCard fields={3} />
         ) : error ? (
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-        ) : data ? (
+        ) : !server ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Unknown MCP server “{slug}”.</p>
+        ) : (
           <>
-            {data.servers.map((s) => (
-              <MCPServerCard key={s.slug} server={s} onChanged={setData} skillsPath={skillsPath} />
-            ))}
-            {notionConnected && (
+            <MCPServerCard server={server} onChanged={setData} skillsPath={skillsPath} />
+            {notionConnected && data && (
               <NotionMappingCard targets={data.notion_targets} onChanged={setData} />
             )}
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );

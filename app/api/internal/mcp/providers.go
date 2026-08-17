@@ -135,9 +135,13 @@ var registry = []ProviderInfo{
 		UseAnnotations: true,
 	},
 	{
-		Slug:            Railway,
-		Name:            "Railway",
-		DefaultEndpoint: "https://mcp.railway.com/mcp",
+		Slug: Railway,
+		Name: "Railway",
+		// Railway serves its hosted MCP at the origin root, not a /mcp path
+		// (POST /mcp is a 404). The endpoint must also equal the resource its
+		// protected-resource metadata advertises ("https://mcp.railway.com"),
+		// or OAuth discovery's RFC 9728 resource check rejects the mismatch.
+		DefaultEndpoint: "https://mcp.railway.com",
 		Auth:            AuthOAuth,
 		SkillKey:        "mcp_railway",
 		// Railway's hosted MCP requires OAuth. Same annotation-assisted read/write

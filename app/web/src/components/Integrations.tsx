@@ -12,6 +12,7 @@ import type {
   IntegrationStatus,
 } from '../types';
 import { WhatsAppCard } from './WhatsAppCard';
+import { MCPServerCards } from './IntegrationsMCP';
 import { Skeleton, SkeletonCard } from './ui/Skeleton';
 import { useIsDark } from '../lib/useChartTheme';
 import { useProjects } from '../contexts/project';
@@ -166,7 +167,7 @@ export function Integrations() {
             </div>
           )}
           <TrelloCard configured={data.trello_configured} />
-          <MCPCard />
+          <MCPServerCards />
           <WhatsAppCard />
         </>
       ) : null}
@@ -203,51 +204,6 @@ function TrelloCard({ configured }: { configured: boolean }) {
           >
             {status.label}
           </span>
-        </div>
-      </div>
-      <span className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400">
-        Manage
-        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
-          <path
-            fillRule="evenodd"
-            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </span>
-    </Link>
-  );
-}
-
-// MCPCard links to the MCP servers sub-page (Cloudflare, Railway, Notion), each
-// enabled per project in read-only or read & write mode.
-function MCPCard() {
-  const { projectPath } = useProjects();
-  return (
-    <Link
-      to={projectPath('integrations/mcp')}
-      className="mt-6 flex items-center justify-between rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
-    >
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 ring-1 ring-inset ring-gray-100 dark:bg-gray-700 dark:ring-gray-600">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className="h-5 w-5 text-gray-500 dark:text-gray-300"
-            aria-hidden="true"
-          >
-            <rect x="2" y="4" width="20" height="6" rx="1.5" />
-            <rect x="2" y="14" width="20" height="6" rx="1.5" />
-            <path d="M6 7h.01M6 17h.01" strokeLinecap="round" />
-          </svg>
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-50">MCP servers</div>
-          <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Cloudflare · Railway · Notion
-          </div>
         </div>
       </div>
       <span className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400">
