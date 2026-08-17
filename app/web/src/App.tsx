@@ -31,7 +31,7 @@ import { Profile } from './components/Profile';
 import { Integrations } from './components/Integrations';
 import { IntegrationsWhatsApp } from './components/IntegrationsWhatsApp';
 import { IntegrationsTrello } from './components/IntegrationsTrello';
-import { IntegrationsMCP } from './components/IntegrationsMCP';
+import { IntegrationsMCPServer } from './components/IntegrationsMCP';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ProjectProvider } from './contexts/ProjectContext';
 import { GlobalDashboard } from './components/GlobalDashboard';
@@ -246,10 +246,26 @@ function App() {
               }
             />
             <Route
-              path="integrations/mcp"
+              path="integrations/cloudflare"
               element={
                 <ProjectAdminRoute>
-                  <IntegrationsMCP />
+                  <IntegrationsMCPServer slug="cloudflare" />
+                </ProjectAdminRoute>
+              }
+            />
+            <Route
+              path="integrations/railway"
+              element={
+                <ProjectAdminRoute>
+                  <IntegrationsMCPServer slug="railway" />
+                </ProjectAdminRoute>
+              }
+            />
+            <Route
+              path="integrations/notion"
+              element={
+                <ProjectAdminRoute>
+                  <IntegrationsMCPServer slug="notion" />
                 </ProjectAdminRoute>
               }
             />
