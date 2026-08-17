@@ -80,7 +80,13 @@ func (s *PostgresStore) backfillMCPSkills(ctx context.Context) error {
 		   WHERE (key LIKE 'project:%:mcp.cloudflare.enabled'
 		       OR key LIKE 'project:%:mcp.notion.enabled'
 		       OR key LIKE 'project:%:mcp.railway.enabled')
-		     AND convert_from(value, 'UTF8') = 'true'
+		     -- Compare the raw bytea against the bytes of 'true' rather than
+		     -- convert_from(value,'UTF8'): Postgres may evaluate this predicate on
+		     -- settings rows that don't match the key filter above, and some
+		     -- settings store non-UTF8 binary (e.g. encrypted values). Decoding
+		     -- those throws 22021 and aborts boot seeding. A bytea comparison is
+		     -- byte-exact-equivalent for the target rows and never decodes.
+		     AND value = convert_to('true', 'UTF8')
 		 ) sub
 		 JOIN skills sk ON sk.project_id IS NULL AND sk.key = 'mcp_' || sub.provider
 		 WHERE EXISTS (SELECT 1 FROM projects p WHERE p.id = sub.project_id)
