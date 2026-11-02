@@ -6,9 +6,16 @@ on:
 
 jobs:
   review:
+    # Required: a called workflow cannot get more permissions than its caller grants.
+    # Without this block the review fails at startup (the default token is read-only).
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
     uses: irfanmaulana007/ai-review/.github/workflows/claude-review.yml@main
     secrets: inherit
-    # Opsional:
+    # Optional:
     # with:
     #   model: "opus"
-    #   extra_instructions: "Instruksi khusus repo ini"
+    #   extra_instructions: "Repo-specific instructions"
